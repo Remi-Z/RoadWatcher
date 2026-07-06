@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DashcamEvidence.Core/DashcamEvidence.Core.csproj" />
+    <Project Path="src/DashcamEvidence.WinUI/DashcamEvidence.WinUI.csproj">
+      <Platform Project="x64" />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DashcamEvidence.Checks/DashcamEvidence.Checks.csproj" />
+  </Folder>
+</Solution>

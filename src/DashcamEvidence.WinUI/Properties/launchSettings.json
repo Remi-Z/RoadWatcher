@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "DashcamEvidence.WinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "DashcamEvidence.WinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
