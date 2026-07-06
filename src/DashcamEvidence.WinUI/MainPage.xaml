@@ -42,6 +42,7 @@
 
                 <CommandBar Grid.Row="1" DefaultLabelPosition="Right" IsOpen="False">
                     <AppBarButton Label="Smart Inspect" Click="SmartInspect_Click" />
+                    <AppBarButton Label="Scan Road" Click="ScanRoad_Click" />
                     <AppBarButton Label="Set Start" Click="MarkStart_Click" />
                     <AppBarButton Label="Set End" Click="MarkEnd_Click" />
                     <AppBarButton Label="Seek Selected" Click="SeekSelected_Click" />
@@ -81,6 +82,9 @@
                     <TextBox x:Name="NotesBox" Header="Notes" AcceptsReturn="True" Height="96" TextWrapping="Wrap" />
 
                     <Button Content="Add Incident" Click="AddIncident_Click" HorizontalAlignment="Stretch" />
+
+                    <TextBlock Text="Detected vehicles" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <ListView x:Name="RoadScanList" MinHeight="120" SelectionChanged="RoadScanList_SelectionChanged" />
 
                     <TextBlock Text="Saved incidents" Style="{ThemeResource SubtitleTextBlockStyle}" />
                     <ListView x:Name="IncidentList" MinHeight="180" SelectionChanged="IncidentList_SelectionChanged" />

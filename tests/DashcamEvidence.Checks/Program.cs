@@ -85,6 +85,22 @@ Check(!rejected.Match.IsMatched, "GPX alignment should reject points outside the
 Check(SmartInspectMerge.FillIfEmpty("manual plate", "") == "manual plate", "Smart inspect merge should not overwrite manual text with blank output.");
 Check(SmartInspectMerge.FillIfEmpty("", "ABC123") == "ABC123", "Smart inspect merge should fill blank manual text.");
 
+var cvDefaults = CvAnalysisOptions.Default();
+Check(cvDefaults.ScanFps == 2, "CV scanner should default to 2 fps.");
+Check(Math.Abs(cvDefaults.MinConfidence - 0.35f) < 0.001f, "CV scanner should default to 0.35 confidence.");
+Check(cvDefaults.OutputRoot.EndsWith(Path.Combine("DashcamEvidence", "scans")), "CV scanner should default output under DashcamEvidence scans.");
+
+var missingModelStatus = OpenCvRecordingScanner.VehicleModelStatus(cvDefaults);
+Check(missingModelStatus.Contains("vehicle model missing", StringComparison.OrdinalIgnoreCase), "CV scanner should report a missing vehicle model without crashing.");
+
+var bikeLane = new BikeLaneDetection([new CvPoint(10, 90), new CvPoint(60, 20), new CvPoint(120, 20), new CvPoint(170, 90)], 0.8f);
+var inLaneVehicle = new VehicleDetection(new CvRect(65, 45, 35, 30), "car", 0.9f, VehicleRoadPosition.Unknown);
+var nearLaneVehicle = new VehicleDetection(new CvRect(175, 45, 30, 30), "car", 0.9f, VehicleRoadPosition.Unknown);
+var otherLaneVehicle = new VehicleDetection(new CvRect(260, 45, 30, 30), "car", 0.9f, VehicleRoadPosition.Unknown);
+Check(OpenCvRecordingScanner.ClassifyVehiclePosition(inLaneVehicle.Bounds, bikeLane) == VehicleRoadPosition.InBikeLane, "CV scanner should classify vehicles inside the bike lane polygon.");
+Check(OpenCvRecordingScanner.ClassifyVehiclePosition(nearLaneVehicle.Bounds, bikeLane) == VehicleRoadPosition.NearBikeLane, "CV scanner should classify vehicles near the bike lane polygon.");
+Check(OpenCvRecordingScanner.ClassifyVehiclePosition(otherLaneVehicle.Bounds, bikeLane) == VehicleRoadPosition.OtherLane, "CV scanner should classify vehicles away from the bike lane polygon.");
+
 var tempRoot = Path.Combine(Path.GetTempPath(), "DashcamEvidenceChecks", Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(tempRoot);
 var manifestPath = Path.Combine(tempRoot, "manifest.json");

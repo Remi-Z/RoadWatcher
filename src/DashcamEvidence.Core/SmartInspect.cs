@@ -120,6 +120,10 @@ public static class FrameExtractor
         Directory.CreateDirectory(outputFolder);
         var samples = new List<FrameSample>();
         var offsets = SampleOffsets(currentOffset, duration);
+        if (!ToolingCheck.CheckOnPath("ffmpeg").IsAvailable)
+        {
+            return await OpenCvFrameExtractor.ExtractAsync(videoPath, offsets, outputFolder, cancellationToken);
+        }
 
         for (var index = 0; index < offsets.Count; index++)
         {

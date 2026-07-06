@@ -14,6 +14,7 @@ namespace DashcamEvidence_WinUI;
 public sealed partial class MainPage : Page
 {
     private readonly ObservableCollection<IncidentListItem> _incidentItems = [];
+    private readonly ObservableCollection<RoadScanListItem> _roadScanItems = [];
     private readonly List<GpsPoint> _gpsPoints = [];
     private readonly string _manifestPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -23,6 +24,7 @@ public sealed partial class MainPage : Page
     private Recording? _recording;
     private TimeSpan _duration = TimeSpan.Zero;
     private bool _isInspecting;
+    private bool _isScanning;
 
     public MainPage()
     {
@@ -31,6 +33,7 @@ public sealed partial class MainPage : Page
         CategoryBox.ItemsSource = Enum.GetValues<IncidentCategory>();
         CategoryBox.SelectedItem = IncidentCategory.FailToYield;
         IncidentList.ItemsSource = _incidentItems;
+        RoadScanList.ItemsSource = _roadScanItems;
 
         VideoPlayer.SetMediaPlayer(new MediaPlayer());
         VideoPlayer.MediaPlayer.MediaOpened += MediaPlayer_MediaOpened;
@@ -133,6 +136,48 @@ public sealed partial class MainPage : Page
         }
     }
 
+    private async void ScanRoad_Click(object sender, RoutedEventArgs e)
+    {
+        if (_recording is null)
+        {
+            SetStatus("Import a recording before scanning the road.", InfoBarSeverity.Warning);
+            return;
+        }
+
+        if (_isScanning)
+        {
+            return;
+        }
+
+        _isScanning = true;
+        try
+        {
+            var options = CvAnalysisOptions.FromEnvironment();
+            var modelStatus = OpenCvRecordingScanner.VehicleModelStatus(options);
+            SetStatus($"OpenCV scan: sampling {options.ScanFps:0.##} fps; {modelStatus}...");
+
+            var result = await Task.Run(() => OpenCvRecordingScanner.ScanAsync(_recording, options));
+            _roadScanItems.Clear();
+            foreach (var frame in result.Frames)
+            {
+                foreach (var vehicle in frame.Vehicles)
+                {
+                    _roadScanItems.Add(new RoadScanListItem(frame, vehicle));
+                }
+            }
+
+            SetStatus($"OpenCV scan complete: {result.Frames.Count} frames, {_roadScanItems.Count} vehicles. {result.OutputFolder}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"OpenCV scan failed: {ex.Message}", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            _isScanning = false;
+        }
+    }
+
     private void AddIncident_Click(object sender, RoutedEventArgs e)
     {
         if (_recording is null)
@@ -207,6 +252,26 @@ public sealed partial class MainPage : Page
     }
 
     private void IncidentList_SelectionChanged(object sender, SelectionChangedEventArgs e) => SeekSelectedIncident();
+
+    private void RoadScanList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (RoadScanList.SelectedItem is not RoadScanListItem item || VideoPlayer.MediaPlayer.Source is null)
+        {
+            return;
+        }
+
+        VideoPlayer.MediaPlayer.PlaybackSession.Position = item.Frame.Offset;
+        StartOffsetBox.Text = FormatSeconds(item.Frame.Offset);
+        var endOffset = _duration > TimeSpan.Zero
+            ? Min(item.Frame.Offset + TimeSpan.FromSeconds(10), _duration)
+            : item.Frame.Offset + TimeSpan.FromSeconds(10);
+        EndOffsetBox.Text = FormatSeconds(endOffset);
+        CategoryBox.SelectedItem = item.Vehicle.RoadPosition is VehicleRoadPosition.InBikeLane or VehicleRoadPosition.NearBikeLane
+            ? IncidentCategory.BikeLaneObstruction
+            : IncidentCategory.Other;
+        VehicleBox.Text = $"{item.Vehicle.Label}, {item.Vehicle.RoadPosition}, confidence {item.Vehicle.Confidence:0.00}";
+        NotesBox.Text = $"OpenCV detected {item.Vehicle.Label} at {item.Frame.Offset:mm\\:ss} ({item.Vehicle.RoadPosition}).";
+    }
 
     private void SeekSelected_Click(object sender, RoutedEventArgs e) => SeekSelectedIncident();
 
@@ -372,7 +437,7 @@ public sealed partial class MainPage : Page
         var ffprobe = ToolingCheck.CheckOnPath("ffprobe");
         SetStatus(ffmpeg.IsAvailable && ffprobe.IsAvailable
             ? "ffmpeg and ffprobe found. Clip extraction can be added next."
-            : "ffmpeg/ffprobe not found on PATH. Review/export summaries work now; install ffmpeg before real clip extraction.");
+            : "ffmpeg/ffprobe not found on PATH. OpenCV frame fallback is available for review; install ffmpeg before real clip extraction.");
     }
 
     private static decimal? TryDecimal(string text) =>
@@ -399,5 +464,11 @@ public sealed partial class MainPage : Page
             $"{Incident.Category} | {Incident.StartOffset:mm\\:ss}-{Incident.EndOffset:mm\\:ss} | {Blank(Incident.Plate)}";
 
         private static string Blank(string value) => string.IsNullOrWhiteSpace(value) ? "no plate" : value;
+    }
+
+    private sealed record RoadScanListItem(FrameDetection Frame, VehicleDetection Vehicle)
+    {
+        public override string ToString() =>
+            $"{Frame.Offset:mm\\:ss} | {Vehicle.Label} | {Vehicle.RoadPosition} | {Vehicle.Confidence:0.00}";
     }
 }
