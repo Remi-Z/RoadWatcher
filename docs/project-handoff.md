@@ -1,160 +1,258 @@
-# Dashcam Evidence Project Handoff
+# RoadWatcher Rewrite Handoff
 
-Last updated: 2026-07-06
+Last updated: 2026-07-07
 
-## Goal
+## Current State
 
-Build a local-first Windows app for reviewing dashcam recordings, attaching GPS/location evidence, drafting incident summaries, and preparing evidence packets or RoadWatch report inputs without uploading source videos by default.
+The old WinUI/.NET app has been hard-replaced by a web-native rewrite scaffold.
+The runnable app today is the React/Vite evidence workstation:
 
-## Current spec
+- Video preview panel with transport controls and referenced-media posture.
+- Route/map review panel showing raw GPX, matched route, and projected official
+  feature markers.
+- dnd-kit evidence reel timeline with reorderable clips and browser-local
+  trim/split/duplicate/remove controls plus a selected-clip command menu.
+- Incident inspector with conservative, editable evidence language.
+- Manual incident Start/End timing edits persist after clip selection and are
+  used in export packet JSON/file naming.
+- Browser-local draft save and restore path with visible app status.
+- Browser-native media import fallback that records selected files by reference,
+  queues proxy jobs for imported videos, and appends conservative placeholder
+  clips to the editable evidence reel.
+- Browser-native GPX import fallback that parses timed track points, updates the
+  route preview, persists the route in snapshots, and queues Valhalla matching.
+- Browser-native GeoJSON import fallback that normalizes supported stop sign,
+  traffic signal, bike lane, and crosswalk features, projects them onto the
+  active route, persists official source features in snapshots, and queues GIS
+  projection jobs.
+- Browser-native RoadWatcher project JSON import that restores portable review
+  snapshots first, then falls back to GeoJSON parsing for non-project JSON.
+- Editable component slot registry for Rust/Cargo, GPStitch, Valhalla, OSRM,
+  GIS layers, FFmpeg, and CV model paths/status/notes; slot data is saved in
+  project snapshots and included in evidence packet Markdown/JSON.
+- Export packet preview that generates browser-downloadable Markdown and JSON
+  artifacts from the current incident draft, clips, source media references, and
+  projected features.
+- Restorable RoadWatcher project snapshot download alongside export packets, so
+  portable `*-project.json` files can be re-imported through the browser import
+  path.
+- Export preview invalidation when later review edits, timeline edits, imports,
+  or slot edits make generated download links stale.
+- Review readiness summary that reports browser-fallback packet availability,
+  native component slots still marked `needed`, and blocked/failed jobs in both
+  the UI and exported evidence packet.
+- Projected road-feature review rows with timing, confidence, and provenance.
+- Editable projected road-feature review status/notes, carried into snapshots
+  and exported evidence packets.
+- Processing job rail with explicit blocked slots.
+- Session media and install/data slot panels.
 
-- Keep original dashcam recordings in place; import by reference only.
-- Read video start/duration from `ffprobe` when available, with file timestamp fallback.
-- Import GPX tracks, match incident offsets to the nearest GPS point, and fill coordinates when the match is within 30 seconds.
-- Let the operator manually set incident start/end offsets from the WinUI media player.
-- Let the operator enter or override category, plate, vehicle notes, address/location notes, coordinates, and narrative.
-- Save local state to `%LOCALAPPDATA%\DashcamEvidence\manifest.json`.
-- Export selected incidents to `Documents\DashcamEvidence Exports\<timestamp>-<incident-id>\summary.md` and `summary.json`.
-- Optional Smart Inspect extracts nearby frames and sends them to OpenAI only when `OPENAI_API_KEY` is set.
-- Optional OpenCV road scan samples frames locally, detects green bike-lane candidates, detects vehicles when a local ONNX model is configured, and writes annotated frames plus `scan.json`.
-- RoadWatch submission should remain browser-automation-assisted with manual review before final submit. Do not build a raw HTTP submitter unless the site exposes a stable documented API.
+Tests currently cover:
 
-## Project shape
+- Timeline clipping, trimming, splitting, duplication, removal, reordering, and
+  reel-duration math.
+- Job state transitions.
+- Projection of official GIS-style features onto timed route segments.
+- Projected road-feature default review state, UI edit flow, and evidence packet
+  export status/notes.
+- Smoke rendering of the workstation regions.
+- Regression coverage for timeline clip selection updating inspector timing and
+  edited timeline clips appearing in export Markdown.
+- Regression coverage for manual inspector Start/End edits persisting after clip
+  selection and exporting through packet JSON.
+- Browser-local project snapshot and evidence packet builder coverage.
+- UI coverage for editing/saving incident drafts and generating export packet
+  previews.
+- Browser project repository coverage for restore, malformed storage, and
+  unavailable storage.
+- Download artifact coverage for Markdown/JSON packet files and parseable
+  RoadWatcher project snapshot JSON.
+- Export invalidation coverage for incident draft and component slot edits after
+  a packet preview has been generated.
+- Review readiness helper coverage for browser fallback and native-ready states,
+  plus UI and evidence packet coverage.
+- UI coverage for restored drafts, download links, and projected feature review
+  rows.
+- Media import coverage for browser-selected files, queued proxy jobs, and
+  placeholder reel clips for imported videos.
+- GPX import coverage for timed track parsing, invalid GPX rejection, Valhalla
+  job creation, and UI route import.
+- GeoJSON import coverage for point/line normalization, unsupported-layer
+  rejection, GIS job creation, UI projection, and snapshot official-feature
+  persistence.
+- RoadWatcher project JSON import coverage for restoring incident, media, route,
+  and projected feature state without treating project snapshots as GeoJSON.
+- Component slot coverage for editable references/status/notes, project snapshot
+  persistence, evidence packet export, and older-snapshot fallback.
 
-- `DashcamEvidence.slnx` - solution file.
-- `src/DashcamEvidence.Core` - pure app/domain logic: manifest, GPX parsing, metadata, frame extraction, OpenCV scanning, export.
-- `src/DashcamEvidence.WinUI` - Windows UI, file pickers, media player, Smart Inspect/OpenAI adapter.
-- `tests/DashcamEvidence.Checks` - small console self-checks. This is the current test harness.
-- `docs/roadwatch-batch.md` - RoadWatch browser automation notes and field observations.
-- `docs/opencv-deferred.md` - intentionally deferred OpenCV/model work.
+## Verified Commands
 
-## Current progress
-
-Done:
-
-- Basic WinUI review shell exists with import recording, import GPX, load/save manifest, add incident, seek selected incident, and export selected incident.
-- GPX parsing, nearest-point matching, manifest round-trip, summary export, and frame sample offset clamping are covered by console checks.
-- Smart Inspect path exists:
-  - `FrameExtractor` samples five frames around current offset.
-  - `ffmpeg` is used when available.
-  - `OpenCvFrameExtractor` is fallback when `ffmpeg` is missing.
-  - `GpxTimelineMatcher` fills location from GPX.
-  - `OpenAiVisionInspector` calls the OpenAI Responses API only when `OPENAI_API_KEY` exists.
-- OpenCV road scan path is in progress:
-  - `OpenCvRecordingScanner.cs` added.
-  - `CvAnalysisOptions` reads `DASHCAM_CV_SCAN_FPS`, `DASHCAM_CV_MIN_CONFIDENCE`, `DASHCAM_CV_VEHICLE_MODEL`, and `DASHCAM_CV_VEHICLE_LABELS`.
-  - Green lane candidate detection writes annotated frames.
-  - Vehicle DNN detection is optional and reports a clear missing-model status.
-  - WinUI now has a `Scan Road` button and a `Detected vehicles` list.
-  - Selecting a detected vehicle seeks the player, fills a 10-second incident window, chooses `BikeLaneObstruction` for in/near bike lane detections, and writes basic vehicle notes.
-- RoadWatch investigation notes exist in `docs/roadwatch-batch.md`; current decision is browser automation with manual final submit.
-
-Uncommitted work present when this handoff was written:
-
-- Modified `src/DashcamEvidence.Core/DashcamEvidence.Core.csproj` to add `OpenCvSharp4` and `OpenCvSharp4.runtime.win`.
-- Modified `src/DashcamEvidence.Core/SmartInspect.cs` to add OpenCV frame fallback.
-- Added `src/DashcamEvidence.Core/OpenCvRecordingScanner.cs`.
-- Modified `src/DashcamEvidence.WinUI/MainPage.xaml` to add `Scan Road` and detected vehicle list UI.
-- Modified `src/DashcamEvidence.WinUI/MainPage.xaml.cs` to wire the road scan and detected-vehicle selection.
-- Modified `tests/DashcamEvidence.Checks/Program.cs` with OpenCV option/status/classification checks.
-- Added docs under `docs/`.
-
-## Verification status
-
-Passing on 2026-07-06:
-
-```powershell
-dotnet run --project tests\DashcamEvidence.Checks\DashcamEvidence.Checks.csproj
-```
-
-Output:
-
-```text
-DashcamEvidence checks passed.
-```
-
-Passing on 2026-07-06 after NuGet network access was allowed:
-
-```powershell
-dotnet build DashcamEvidence.slnx
-```
-
-Output:
-
-```text
-Build succeeded.
-0 Warning(s)
-0 Error(s)
-```
-
-Note: the first sandboxed build failed at restore with `NU1301` because `api.nuget.org:443` was blocked. The unrestricted retry restored packages and built successfully.
-
-## Run commands
+Passing on 2026-07-07:
 
 ```powershell
-dotnet run --project src\DashcamEvidence.WinUI\DashcamEvidence.WinUI.csproj
+pnpm test
 ```
+
+Result: 11 files, 49 tests passing.
+
+Passing on 2026-07-07:
 
 ```powershell
-dotnet build DashcamEvidence.slnx
-dotnet run --project tests\DashcamEvidence.Checks\DashcamEvidence.Checks.csproj
+pnpm build
 ```
 
-## Runtime knobs
+Result: TypeScript and Vite production build succeeded.
 
-- `OPENAI_API_KEY` - enables Smart Inspect vision calls. If missing, Smart Inspect still extracts frames and performs GPX alignment, but vision is skipped.
-- `OPENAI_MODEL` - optional model override for Smart Inspect. Current code default is `gpt-5.5`; verify this before relying on it.
-- `DASHCAM_CV_SCAN_FPS` - OpenCV scan sampling rate. Default: `2`.
-- `DASHCAM_CV_MIN_CONFIDENCE` - DNN confidence threshold. Default: `0.35`.
-- `DASHCAM_CV_VEHICLE_MODEL` - local ONNX model path for vehicle detection.
-- `DASHCAM_CV_VEHICLE_LABELS` - local label file path for the vehicle model.
+Follow-up Bash/WSL check on 2026-07-07:
 
-## Important behavior boundaries
+- `node --version` returned `v24.17.0`; `npm --version` returned `11.13.0`.
+- `cargo`, `rustc`, and `uv` were not on PATH in this shell.
+- The global `pnpm` entry pointed at the Windows-side pnpm shim and failed from
+  WSL with `UtilBindVsockAnyPort:309: socket failed 1`.
+- Corepack could not fetch pnpm because DNS/network access to
+  `registry.npmjs.org` was unavailable.
+- The checked-in `node_modules` tree contained Windows Rollup/esbuild optional
+  native packages only; `./node_modules/.bin/vitest run --config
+  vitest.config.mjs` failed under Linux because
+  `@rollup/rollup-linux-x64-gnu` was missing.
+- `./node_modules/.bin/tsc -b --pretty false` passed.
 
-- Do not upload full videos by default.
+## Important Environment Notes
+
+- `node` and `npm` work.
+- `uv` worked in the previous PowerShell-oriented verification; it was not on
+  PATH in the follow-up Bash/WSL shell.
+- `pnpm` 11.7.0 is the active package manager. `pnpm-workspace.yaml` approves
+  the required `esbuild` postinstall used by Vite. The previous verification
+  used pnpm successfully; the follow-up Bash/WSL shell saw only a failing
+  Windows-side pnpm shim.
+- Rust/Cargo was not on PATH, so Tauri Rust code is scaffolded but not built.
+- Vitest/Vite needed elevated execution in the sandbox because esbuild was
+  denied parent-directory access while resolving config files.
+- `uv run --project sidecars\roadwatcher-cv roadwatcher-cv` was blocked by
+  uv cache permissions in this sandbox. Direct Python verification worked with
+  `PYTHONPATH=sidecars\roadwatcher-cv\src`.
+- Old WinUI text/code files were removed. The leftover old WinUI binary assets
+  under `src/DashcamEvidence.WinUI\Assets\` were deleted in the follow-up
+  handoff check.
+
+## Rendered Browser QA
+
+Checked with the in-app browser against `http://127.0.0.1:5173/`:
+
+- Page title: `RoadWatcher Evidence Workstation`.
+- First meaningful screen rendered; no Vite/framework overlay.
+- Console warnings/errors: none.
+- Timeline interaction verified: selecting `Approach` updates inspector Start to
+  `13:32` and End to `13:56`.
+- Editable inspector workflow verified: plate/narrative edit, draft save status,
+  and export packet preview generation.
+- Latest rendered smoke check verified projected feature review rows and
+  generated JSON/Markdown download links.
+- Latest GPX/import smoke check verified the import control, visible timed-route
+  point count, Valhalla slot visibility, export links, and a clean browser
+  console.
+- Latest GIS/import smoke check verified the import control, projected feature
+  rows, GIS slot visibility, export links, and a clean browser console.
+- Latest JSON/export smoke check verified the import control, route/GIS sections,
+  generated JSON/Markdown download links, and only Vite/React dev info in the
+  browser console.
+- Latest slot-registry coverage verified Valhalla slot edits persist into
+  browser-local snapshots and export Markdown.
+- Latest browser slot smoke verified seven component slots render, Valhalla can
+  be marked `configured`, and exported Markdown includes the edited
+  Valhalla reference and notes.
+- Latest timeline-editing coverage verified selected clip trim, split,
+  duplicate, remove, selected-clip action menu fallback, contiguous reel timing,
+  and export Markdown updates.
+- Latest browser timeline smoke verified the selected-clip action menu resets
+  after commands, produces a four-clip edited reel, removes the duplicate copy,
+  and exports Markdown with the split clip ranges.
+- Latest project snapshot export coverage verified `*-project.json` downloads
+  parse with `parseSnapshot`, retain edited clips/media/jobs, and remain distinct
+  from evidence packet JSON.
+- Latest browser project snapshot smoke verified three export downloads,
+  including `local-...-browser42-project.json`; the decoded project snapshot
+  retained plate `BROWSER42`, incident clip source range `840-852`, 4 jobs, and
+  2 media references with no browser console warnings/errors.
+- Latest media-import implementation coverage verified a browser-imported video
+  becomes a referenced media asset, queues a proxy job, appends an editable
+  `Imported ...` reel clip, and appears in exported Markdown.
+- Latest browser load smoke after the media-import timeline change verified the
+  RoadWatcher screen, timeline, and import control render with no browser
+  warnings/errors.
+- Latest stale-export coverage verified packet preview links disappear after
+  incident draft or component slot edits and the app status asks the reviewer to
+  regenerate the packet.
+- Latest browser stale-export smoke verified a generated 3-link export preview
+  disappears after changing the Valhalla slot status, with no browser
+  warnings/errors.
+- Latest review-readiness coverage verified the UI and packet export show
+  browser fallback availability, native slot blockers, and blocked jobs from one
+  shared helper.
+- Latest browser readiness smoke verified the rendered panel shows packet
+  availability, `5 native slots need attention`, and the Valhalla blocker with
+  no browser warnings/errors.
+- Latest projected-feature review coverage verified projected features default
+  to `needs_review`, reviewer status/notes can be edited in the UI, and packet
+  Markdown/JSON carry that review state.
+- Latest browser projected-feature smoke verified the traffic signal review
+  status control changes to `included` with no browser warnings/errors.
+- Latest inspector timing coverage verified selecting a clip fills incident
+  timing once, manual Start/End edits remain visible, and exported JSON carries
+  the reviewer-entered timing.
+- Mobile-width smoke check rendered meaningful content and had no console
+  warnings/errors.
+
+## Files To Know
+
+- `src/App.tsx` - primary workstation UI composition.
+- `src/data/demoProject.ts` - seeded local project data and explicit slots.
+- `src/features/timeline/timelineModel.ts` - tested evidence reel edit and
+  timing math.
+- `src/features/geo/projection.ts` - tested route-feature projection helper.
+  Projection output now includes reviewer status/notes.
+- `src/features/geo/gpxImport.ts` - tested browser GPX parsing and Valhalla-job
+  fallback.
+- `src/features/geo/geoJsonImport.ts` - tested browser GeoJSON official-feature
+  normalization and GIS-job fallback.
+- `src/features/jobs/jobModel.ts` - tested processing job state helpers.
+- `src/features/media/mediaImport.ts` - tested browser media import fallback and
+  proxy-job / placeholder timeline clip generation.
+- `src/features/project/projectState.ts` - tested project snapshot and evidence
+  packet model, including component slot export state.
+- `src/features/project/browserProjectRepository.ts` - browser-local persistence
+  fallback.
+- `src/features/project/downloadArtifacts.ts` - Markdown/JSON download artifact
+  builder for evidence packets and restorable project snapshots.
+- `src/features/project/reviewReadiness.ts` - shared review-readiness summary
+  for UI and exported packets.
+- `src-tauri/` - Tauri 2 scaffold and first command slot.
+- `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
+- `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.
+- `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
+
+## Next Best Implementation Slice
+
+1. Install Rust/Cargo and verify `pnpm tauri:dev`.
+2. Add SQLite project creation in Rust, including a project folder with
+   `project.sqlite`, `assets/`, `proxies/`, `exports/`, and `logs/`.
+3. Replace seeded demo data with Tauri command-backed project state.
+4. Replace browser media import fallback with Tauri file handles/real paths,
+   metadata probing, hash records, and native FFmpeg proxy workers.
+5. Replace browser GPX parsing with Tauri-backed GPX persistence and local
+   Valhalla map matching, with OSRM Match wired as the simpler fallback.
+6. Wire official GIS imports and reprojection behind real local configuration
+   slots.
+7. Replace browser GeoJSON projection with Turf.js MVP helpers and production
+   PostGIS/CRS-normalization import.
+8. Replace browser-local storage/download fallback with SQLite and native export
+   once Tauri command-backed storage is available.
+
+## Boundaries To Preserve
+
+- Keep source videos referenced, not copied by default.
+- Keep full-video uploads out of scope.
+- Keep AI/CV/map outputs conservative and editable.
 - Do not auto-submit RoadWatch reports.
-- Do not claim a legal violation with AI output; keep notes neutral and evidence-focused.
-- Keep manual operator fields editable. Smart Inspect and road scan should suggest/fill, not lock.
-- Clip extraction is still not implemented. Export currently writes summaries only.
-- OpenCV scan output goes under `%LOCALAPPDATA%\DashcamEvidence\scans\<recording-id>`.
-
-## Next to-dos
-
-1. Commit the current OpenCV scan slice if it is still desired.
-   - First run `git status --short --branch`.
-   - Re-run `dotnet build DashcamEvidence.slnx`.
-   - Re-run `dotnet run --project tests\DashcamEvidence.Checks\DashcamEvidence.Checks.csproj`.
-   - Commit the core/UI/check/docs changes together or split docs into a second commit.
-
-2. Add the smallest useful clip export.
-   - Use `ffmpeg` only when `ToolingCheck.CheckOnPath("ffmpeg").IsAvailable`.
-   - Add `ClipPath` to `EvidencePacket` only if the UI needs to display it immediately; otherwise writing the clip beside summaries is enough.
-   - Command shape:
-
-```powershell
-ffmpeg -y -ss <startSeconds> -i <recording.SourcePath> -t <durationSeconds> -c copy incident.mp4
-```
-
-3. Make RoadWatch batch automation only after real reporter data and sample incident rows exist.
-   - Input should be a local private CSV.
-   - Stop at review page for each incident.
-   - Save receipt HTML and image/PDF after explicit human submit.
-   - Use `docs/roadwatch-batch.md` as the page contract.
-
-4. Improve OpenCV only with real sample footage.
-   - Choose one ONNX vehicle model and label file.
-   - Document its expected output shape.
-   - Tune green lane detection against local footage.
-   - Add real tracking only after per-frame detections are useful. Current one-detection-one-track behavior is deliberate.
-
-5. Add UI polish only after the workflow works end to end.
-   - Show annotated frame/crop preview for selected road scan item.
-   - Add a clear scan progress/cancel affordance.
-   - Keep this in `MainPage.xaml` / `MainPage.xaml.cs` until it becomes painful.
-
-## Known risks
-
-- `OpenAiVisionInspector` currently defaults to `gpt-5.5`; confirm model availability before depending on Smart Inspect.
-- OpenCV DNN parsing assumes YOLO-like ONNX output. A different model shape needs a small parser change.
-- Green bike-lane detection is color-threshold based and will be noisy until tested against real footage.
-- Manifest currently keeps only the latest loaded/imported recording when saving from the UI.
+- Do not pretend missing native components are implemented; leave visible slots.

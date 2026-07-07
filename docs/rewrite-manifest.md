@@ -1,0 +1,199 @@
+# RoadWatcher Web-Native Rewrite Manifest
+
+This manifest is for future agents continuing the rewrite. It records concrete
+progress, explicit slots, and the next implementation order.
+
+## Product Target
+
+Build a Windows-first, local-first evidence workstation:
+
+- Tauri shell with React/TypeScript UI.
+- Rust orchestration for files, SQLite project state, native FFmpeg jobs,
+  Valhalla process control, and sidecar execution.
+- Python sidecars for the vendored GPStitch fork and local CV scanning.
+- GPX-first sync, local Valhalla matching, official GIS projection, multi-clip
+  evidence reel assembly, and auditable packet exports.
+
+## Completed In This Slice
+
+- Replaced the old `.NET/WinUI` project files with a React/Vite app.
+- Added tested domain helpers for timeline editing, jobs, and GIS projection.
+- Added a dense evidence workstation UI that renders and builds.
+- Added editable inspector state, browser-local draft save/restore behavior, and
+  export packet preview generation.
+- Added project snapshot and packet builder helpers that can become Tauri DTOs.
+- Added browser-downloadable Markdown/JSON evidence packet artifacts.
+- Added projected road-feature review rows with provenance.
+- Added browser-native media import fallback that records selected files as
+  referenced assets, queues proxy jobs for imported videos, and appends
+  conservative placeholder clips to the editable evidence reel.
+- Added browser-native GPX import fallback that parses timed track points,
+  updates the route preview, persists route points in snapshots, and queues
+  Valhalla matching.
+- Added browser-native GeoJSON import fallback that normalizes supported official
+  road features, projects them onto the active route, persists official feature
+  sources in snapshots, and queues GIS projection jobs.
+- Added browser-native RoadWatcher project JSON import that restores portable
+  review snapshots before falling back to GeoJSON parsing.
+- Added editable component slot registry for Rust/Cargo, GPStitch, Valhalla,
+  OSRM Match fallback, official GIS layers, FFmpeg/ffprobe, and CV model data;
+  status/reference/notes persist in snapshots and evidence packet exports.
+- Added browser-local timeline editing controls for selected clip trim, split,
+  duplicate, and remove, with a selected-clip action menu fallback; exports
+  reflect the edited reel while native FFmpeg render remains a future slot.
+- Added restorable RoadWatcher project snapshot download artifacts beside the
+  evidence packet JSON/Markdown exports, closing the browser import/export loop.
+- Added stale-export invalidation so generated packet/project downloads disappear
+  after later review edits, timeline edits, imports, or slot changes.
+- Added a shared review-readiness summary for UI and evidence packets so browser
+  fallback exportability and native blockers stay visible.
+- Added editable projected-feature review status/notes so stop signs, signals,
+  bike lanes, and crosswalk projections remain reviewer-controlled before
+  packet export.
+- Fixed incident inspector timing editability so selected clips can seed
+  Start/End, then reviewer-entered timing persists into export JSON/file names.
+- Added Tauri 2 scaffold under `src-tauri/`.
+- Added Python sidecar slot for CV model configuration checks.
+- Added GPStitch fork slot with licensing reminder.
+- Added explicit UI and docs slots for missing user-provided components.
+- Removed leftover legacy WinUI binary assets from
+  `src/DashcamEvidence.WinUI/Assets/`.
+
+## Current Verification
+
+```powershell
+pnpm test
+pnpm build
+```
+
+Both passed on 2026-07-07. Current test count is 11 files / 49 tests.
+
+Rendered browser QA previously passed for load, console health, timeline clip
+selection, editable draft save, export packet preview, and a mobile-width smoke
+check. The latest slice added automated UI coverage for restored drafts,
+download links, projected feature review rows, and RoadWatcher project JSON
+restore. Component slot tests cover editable references/status/notes, snapshot
+persistence, evidence packet export, and fallback to seeded slots for older
+snapshots. The latest browser smoke verified the import control, route/GIS
+sections, generated JSON/Markdown download links, and only Vite/React dev info
+in the browser console. The latest slot smoke verified seven component slots,
+editable Valhalla `configured` state, and exported Markdown containing the
+edited Valhalla reference and notes. Timeline editing tests cover trim, split,
+duplicate, remove, the selected-clip action menu fallback, contiguous reel
+timing, and export Markdown updates. The latest browser timeline smoke used the
+action menu to produce a four-clip edited reel and export Markdown with the
+split clip ranges. Project snapshot export tests verify `*-project.json`
+downloads parse through `parseSnapshot` and retain edited clips, media, and jobs.
+The latest browser project snapshot smoke verified three export downloads,
+decoded the `local-...-browser42-project.json` artifact, and confirmed plate
+`BROWSER42`, incident clip range `840-852`, 4 jobs, 2 media references, and no
+browser console warnings/errors.
+Media import tests verify browser-selected videos become referenced media
+assets, queued proxy jobs, editable placeholder reel clips, and exported
+Markdown entries. The latest browser load smoke after that change verified the
+RoadWatcher screen, timeline, and import control render with no browser
+warnings/errors. Stale-export tests verify incident draft and component slot
+edits hide previously generated packet links and ask the reviewer to regenerate
+the packet. Browser stale-export smoke verified a generated 3-link export
+preview disappears after changing the Valhalla slot status, with no browser
+warnings/errors. Review-readiness tests cover browser fallback, native-ready
+state, UI rendering, and exported packet content from one shared helper. Browser
+readiness smoke verified the rendered panel shows packet availability, `5 native
+slots need attention`, and the Valhalla blocker with no browser warnings/errors.
+Projected-feature review tests verify default `needs_review` state, UI
+status/note edits, and packet Markdown/JSON export of reviewer decisions.
+Browser projected-feature smoke verified the traffic signal review status
+control changes to `included` with no browser warnings/errors.
+Inspector timing tests verify selected clips seed Start/End once, manual edits
+stay visible, and packet JSON carries the reviewer-entered timing.
+Follow-up Bash/WSL check on 2026-07-07 verified `node v24.17.0`, `npm
+11.13.0`, and a passing TypeScript build via `./node_modules/.bin/tsc -b
+--pretty false`. Full Vitest/Vite verification from this shell is blocked
+because the current `node_modules` tree contains Windows Rollup/esbuild optional
+native packages only, while the Linux Rollup package
+`@rollup/rollup-linux-x64-gnu` is missing. The Windows-side pnpm shim and
+Windows command interop also fail from this shell with
+`UtilBindVsockAnyPort:309: socket failed 1`; Corepack cannot fetch pnpm without
+network/DNS access.
+
+## Known Gaps
+
+- Rust/Cargo is not installed on this machine, so Tauri is unverified.
+- SQLite project storage is not implemented yet.
+- Browser-local project snapshots and data-URL downloads are implemented only as
+  a fallback; Tauri should replace this with SQLite-backed project folders and
+  native export files while preserving the portable snapshot schema.
+- Browser media import is a fallback only. It now adds placeholder reel clips for
+  imported videos, but Tauri still needs real file handles or paths, hashing,
+  metadata probing, duration detection, FFmpeg proxy generation, and render jobs.
+- Browser GPX import is a fallback only. Tauri still needs persisted GPX assets,
+  Valhalla map matching, OSRM fallback, and official-feature reprojection
+  against the matched route.
+- Browser GeoJSON import is a fallback only. It supports WGS84 Point and
+  LineString features for MVP review. Turf.js should own richer browser geometry
+  operations, and PostGIS should own production import, CRS normalization, and
+  spatial indexing.
+- React Konva is installed but the current timeline is HTML/dnd-kit with tested
+  edit controls. Upgrade to Konva when the timeline needs canvas-scale
+  thumbnails, waveforms, zoom, and dense marker rendering.
+- MapLibre is installed but the current map is an SVG implementation preview.
+  Replace with MapLibre once local/offline basemap and route layers are ready.
+- GPStitch has not been vendored yet.
+- Valhalla/OSRM adapters are not implemented yet.
+- Official GIS import and CRS normalization are not implemented yet.
+- CV scan only has a configuration sidecar stub.
+- RoadWatch browser automation remains deferred.
+
+## User-Filled Slots
+
+| Slot | Needed For | Current Placeholder |
+| --- | --- | --- |
+| Rust/Cargo | Tauri dev/build and Rust command implementation | `src-tauri/` scaffold |
+| GPStitch fork | Telemetry sync and overlay processing | `sidecars/roadwatcher-gpstitch/README.md` |
+| Valhalla York/GTA data | Local map matching | Editable UI slot + blocked job |
+| OSRM Match fallback | Simpler GPX matching fallback | Editable optional UI slot |
+| Official GIS layers | Stop signs/lights/bike lanes projection | Editable UI slot |
+| FFmpeg/ffprobe | Proxy generation and metadata probing | Editable UI slot + proxy jobs |
+| ONNX model + labels | Local vehicle/CV scan | Editable UI slot + `roadwatcher-cv --model --labels` |
+
+## Next Agent Checklist
+
+1. Verify toolchain:
+   - `node --version`
+   - `npm --version`
+   - `cargo --version`
+   - `uv --version`
+2. Run:
+   - `pnpm install`
+   - `pnpm test`
+   - `pnpm build`
+3. If Cargo exists, run:
+   - `pnpm tauri:dev`
+4. Add Rust tests for project folder creation and command DTOs before
+   implementing SQLite storage.
+5. Implement a minimal SQLite-backed project:
+   - project metadata
+   - media asset records
+   - GPX track records
+   - jobs table
+   - timeline clips
+   - projected feature records
+6. Replace browser-local project save/download fallback with Tauri
+   command-backed SQLite save and native file export.
+7. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
+   demo fallback only for empty projects.
+8. Replace browser import fallback with real media import by reference and
+   hash/metadata jobs.
+9. Replace browser GPX parsing with persisted GPX import and local Valhalla map
+   matching.
+10. Replace browser GeoJSON projection with Turf.js MVP geometry and production
+   PostGIS import/indexing.
+11. Add FFmpeg proxy generation with GPU probe and CPU fallback.
+
+## Design Guardrails
+
+- Dense operational workstation, not a landing page.
+- No large marketing hero, no decorative orbs, no generic card grid.
+- Keep controls compact and clear.
+- Preserve conservative evidence language and source provenance.
+- Make blocked native/data requirements visible in the app.
