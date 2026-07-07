@@ -31,7 +31,11 @@ describe("native command bridge", () => {
   });
 
   it("invokes the typed Tauri command when a bridge function is provided", async () => {
-    const invoke = vi.fn().mockResolvedValue({ projectId: "native-1", sqlitePath: "C:/RoadWatcher/native-1/project.sqlite" });
+    const invoke = vi.fn().mockResolvedValue({
+      projectId: "native-1",
+      projectDirectory: "C:/RoadWatcher/native-1",
+      sqlitePath: "C:/RoadWatcher/native-1/project.sqlite"
+    });
     const bridge = createNativeCommandBridge({ runtime: detectNativeRuntime({ __TAURI_INTERNALS__: {} }), invoke });
 
     const result = await bridge.invoke("project_create", { projectName: "Ride review", rootDirectory: "C:/RoadWatcher" });
@@ -41,7 +45,26 @@ describe("native command bridge", () => {
       ok: true,
       status: "invoked",
       command: "project_create",
-      response: { projectId: "native-1", sqlitePath: "C:/RoadWatcher/native-1/project.sqlite" }
+      response: {
+        projectId: "native-1",
+        projectDirectory: "C:/RoadWatcher/native-1",
+        sqlitePath: "C:/RoadWatcher/native-1/project.sqlite"
+      }
+    });
+  });
+
+  it("rejects malformed native responses after invoking Tauri", async () => {
+    const invoke = vi.fn().mockResolvedValue({ projectId: "native-1", sqlitePath: "C:/RoadWatcher/native-1/project.sqlite" });
+    const bridge = createNativeCommandBridge({ runtime: detectNativeRuntime({ __TAURI_INTERNALS__: {} }), invoke });
+
+    const result = await bridge.invoke("project_create", { projectName: "Ride review", rootDirectory: "C:/RoadWatcher" });
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      ok: false,
+      status: "invalid_response",
+      command: "project_create",
+      missingFields: ["projectDirectory"]
     });
   });
 
@@ -61,7 +84,12 @@ describe("native command bridge", () => {
   });
 
   it("passes through complete requests with additional metadata", async () => {
-    const invoke = vi.fn().mockResolvedValue({ mediaId: "media-1", proxyJobId: "job-1" });
+    const invoke = vi.fn().mockResolvedValue({
+      mediaId: "media-1",
+      hash: "sha256:abc123",
+      durationSeconds: 42,
+      proxyJobId: "job-1"
+    });
     const bridge = createNativeCommandBridge({ runtime: detectNativeRuntime({ __TAURI_INTERNALS__: {} }), invoke });
     const request = { projectId: "project-1", sourcePath: "D:/Dashcam/front.mp4", importMode: "reference" };
 

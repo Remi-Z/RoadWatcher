@@ -64,6 +64,8 @@ Build a Windows-first, local-first evidence workstation:
   can call typed commands once a real Tauri `invoke` function is wired.
 - Added bridge request validation so required DTO fields are checked before any
   native command invoke is attempted.
+- Added bridge response validation so malformed native DTOs are rejected after
+  invoke before the app accepts native data.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -83,7 +85,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-07. Current test count is 14 files / 59 tests.
+Both passed on 2026-07-07. Current test count is 14 files / 60 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -104,6 +106,9 @@ downloads parse through `parseSnapshot` and retain edited clips, media, and jobs
 Native setup artifact tests verify `*-native-setup.md` downloads include saved
 slot references, verification commands, linked blocked jobs, runtime mode, and
 planned Tauri command slots with request/response field manifests.
+Native command bridge tests verify browser fallback, missing invoke bridge,
+invalid requests, malformed native responses, and successful
+dependency-injected invoke calls.
 The latest browser project snapshot smoke before the standalone setup artifact
 verified three export downloads, decoded the `local-...-browser42-project.json`
 artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4
@@ -152,7 +157,8 @@ network/DNS access.
   implemented or invoked yet.
 - The native command bridge is dependency-injected and tested, but the app does
   not import Tauri `invoke` yet. Browser mode returns explicit fallback results.
-  Required request fields are validated before Tauri invoke is called.
+  Required request fields are validated before Tauri invoke is called, and
+  required response fields are validated before native data is accepted.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
   imported videos, but Tauri still needs real file handles or paths, hashing,
   metadata probing, duration detection, FFmpeg proxy generation, and render jobs.

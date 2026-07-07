@@ -66,6 +66,7 @@ describe("download artifacts", () => {
     expect(artifact.content).toContain("Runtime mode: Browser fallback");
     expect(artifact.content).toContain("Bridge status: browser_fallback");
     expect(artifact.content).toContain("Bridge validation: required request fields are checked before invoke");
+    expect(artifact.content).toContain("Response validation: required response fields are checked after invoke");
     expect(artifact.content).toContain("project_create");
     expect(artifact.content).toContain("request: projectName, rootDirectory");
     expect(artifact.content).toContain("response: projectId, projectDirectory, sqlitePath");

@@ -18,7 +18,7 @@ export type NativeCommandBridgeResult =
     }
   | {
       ok: false;
-      status: Exclude<NativeBridgeStatus, "ready"> | "invalid_request";
+      status: Exclude<NativeBridgeStatus, "ready"> | "invalid_request" | "invalid_response";
       command: NativeCommandName;
       fallback: string;
       message: string;
@@ -73,18 +73,43 @@ export function createNativeCommandBridge(options: NativeCommandBridgeOptions): 
         };
       }
 
+      const response = await options.invoke(command, request);
+      const responseMissingFields = contract?.responseFields.filter((field) => !hasField(response, field)) ?? [];
+
+      if (responseMissingFields.length > 0) {
+        return {
+          ok: false,
+          status: "invalid_response",
+          command,
+          fallback,
+          missingFields: responseMissingFields,
+          message: `Native command response is missing required field${
+            responseMissingFields.length === 1 ? "" : "s"
+          }: ${responseMissingFields.join(", ")}.`
+        };
+      }
+
       return {
         ok: true,
         status: "invoked",
         command,
-        response: await options.invoke(command, request)
+        response
       };
     }
   };
 }
 
 function hasRequestField(request: Record<string, unknown>, field: string): boolean {
-  return Object.prototype.hasOwnProperty.call(request, field) && request[field] !== undefined && request[field] !== null;
+  return hasField(request, field);
+}
+
+function hasField(value: unknown, field: string): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(record, field) && record[field] !== undefined && record[field] !== null;
 }
 
 function bridgeStatus(options: NativeCommandBridgeOptions): NativeBridgeStatus {
