@@ -47,6 +47,9 @@ Build a Windows-first, local-first evidence workstation:
   after later review edits, timeline edits, imports, or slot changes.
 - Added a shared review-readiness summary for UI and evidence packets so browser
   fallback exportability and native blockers stay visible.
+- Added a native setup checklist generated from component slots and blocked jobs
+  so UI and evidence packets show each missing install/data slot, its saved
+  reference, a verification command, and related blocked jobs.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -97,7 +100,8 @@ edits hide previously generated packet links and ask the reviewer to regenerate
 the packet. Browser stale-export smoke verified a generated 3-link export
 preview disappears after changing the Valhalla slot status, with no browser
 warnings/errors. Review-readiness tests cover browser fallback, native-ready
-state, UI rendering, and exported packet content from one shared helper. Browser
+state, native setup checklist rows, UI rendering, and exported packet content
+from one shared helper. Browser
 readiness smoke verified the rendered panel shows packet availability, `5 native
 slots need attention`, and the Valhalla blocker with no browser warnings/errors.
 Projected-feature review tests verify default `needs_review` state, UI
@@ -123,6 +127,9 @@ network/DNS access.
 - Browser-local project snapshots and data-URL downloads are implemented only as
   a fallback; Tauri should replace this with SQLite-backed project folders and
   native export files while preserving the portable snapshot schema.
+- The native setup checklist is informational and slot-backed. It records saved
+  references and verification commands, but it does not execute toolchain or data
+  checks until Tauri commands are available.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
   imported videos, but Tauri still needs real file handles or paths, hashing,
   metadata probing, duration detection, FFmpeg proxy generation, and render jobs.

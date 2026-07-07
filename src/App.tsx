@@ -584,6 +584,22 @@ function ReviewReadinessPanel({ readiness }: { readiness: ReviewReadiness }) {
           {readiness.openComponentSlots.length === 0 && readiness.blockedJobs.length === 0 && <li>None recorded.</li>}
         </ul>
       </div>
+      <div className="native-checklist">
+        <strong>Native setup checklist</strong>
+        <div className="native-checklist-list">
+          {readiness.nativeChecklist.map((item) => (
+            <article className="native-checklist-row" key={item.id}>
+              <div>
+                <StatusPill status={item.state === "ready" ? "ready" : item.state === "blocked" ? "blocked" : "queued"} label={item.state} />
+                <strong>{item.label}</strong>
+              </div>
+              <span>{item.reference}</span>
+              <code>{item.verifyCommand}</code>
+              {item.blockingJobs.length > 0 && <small>jobs: {item.blockingJobs.join(", ")}</small>}
+            </article>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

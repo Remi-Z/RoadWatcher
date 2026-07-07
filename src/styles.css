@@ -599,6 +599,8 @@ h1 {
 .slot-list,
 .media-list,
 .readiness-blockers,
+.native-checklist,
+.native-checklist-list,
 .feature-review-list {
   display: grid;
   gap: 8px;
@@ -788,6 +790,64 @@ h1 {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.native-checklist {
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+}
+
+.native-checklist > strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.native-checklist-list {
+  margin-top: 8px;
+}
+
+.native-checklist-row {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.native-checklist-row > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.native-checklist-row strong,
+.native-checklist-row span,
+.native-checklist-row small,
+.native-checklist-row code {
+  overflow-wrap: anywhere;
+}
+
+.native-checklist-row strong {
+  font-size: 12px;
+}
+
+.native-checklist-row span,
+.native-checklist-row small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.native-checklist-row code {
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: #eef3f7;
+  color: #233143;
+  font-size: 11px;
 }
 
 .media-row,

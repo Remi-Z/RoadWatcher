@@ -252,6 +252,9 @@ describe("RoadWatcher workstation", () => {
     expect(readinessPanel as HTMLElement).toHaveTextContent("Packet export available");
     expect(readinessPanel as HTMLElement).toHaveTextContent("5 native slots need attention");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Valhalla map match");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("Native setup checklist");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("cargo --version");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("valhalla_service <path-to-valhalla.json>");
   });
 
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {

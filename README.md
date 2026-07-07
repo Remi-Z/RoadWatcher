@@ -21,8 +21,10 @@ Markdown/JSON artifacts plus a restorable RoadWatcher project snapshot JSON from
 the current draft, then invalidate when later edits make those downloads stale.
 A review-readiness panel and exported packet section summarize whether the
 browser fallback can export and which native slots/jobs still block the full
-workflow. Projected road features are reviewer-markable as `needs_review`,
-`included`, or `excluded`, with notes carried into packet exports.
+workflow, including a native setup checklist with per-slot references,
+verification commands, and linked blocked jobs. Projected road features are
+reviewer-markable as `needs_review`, `included`, or `excluded`, with notes
+carried into packet exports.
 Missing components and data sources are
 tracked as editable slot records with status, reference, and notes so the
 handoff remains durable. The Tauri and Python sidecar slots are scaffolded, but

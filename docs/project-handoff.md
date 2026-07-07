@@ -41,6 +41,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Review readiness summary that reports browser-fallback packet availability,
   native component slots still marked `needed`, and blocked/failed jobs in both
   the UI and exported evidence packet.
+- Native setup checklist rows generated from component slots and blocked jobs,
+  including saved references, verification commands, and linked blocked jobs in
+  both the UI and exported evidence packet.
 - Projected road-feature review rows with timing, confidence, and provenance.
 - Editable projected road-feature review status/notes, carried into snapshots
   and exported evidence packets.
@@ -70,7 +73,7 @@ Tests currently cover:
 - Export invalidation coverage for incident draft and component slot edits after
   a packet preview has been generated.
 - Review readiness helper coverage for browser fallback and native-ready states,
-  plus UI and evidence packet coverage.
+  native setup checklist rows, plus UI and evidence packet coverage.
 - UI coverage for restored drafts, download links, and projected feature review
   rows.
 - Media import coverage for browser-selected files, queued proxy jobs, and
@@ -226,7 +229,7 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `src/features/project/downloadArtifacts.ts` - Markdown/JSON download artifact
   builder for evidence packets and restorable project snapshots.
 - `src/features/project/reviewReadiness.ts` - shared review-readiness summary
-  for UI and exported packets.
+  and native setup checklist for UI and exported packets.
 - `src-tauri/` - Tauri 2 scaffold and first command slot.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.

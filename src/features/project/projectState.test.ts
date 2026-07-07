@@ -61,7 +61,15 @@ describe("project state", () => {
     expect(packet.summaryJson.reviewReadiness).toMatchObject({
       mode: "browser_fallback",
       canExportPacket: true,
-      openComponentSlots: ["York/GTA Valhalla data"]
+      openComponentSlots: ["York/GTA Valhalla data"],
+      nativeChecklist: [
+        expect.objectContaining({
+          id: "valhalla",
+          state: "blocked",
+          verifyCommand: "valhalla_service <path-to-valhalla.json>",
+          blockingJobs: ["Valhalla map match"]
+        })
+      ]
     });
     expect(packet.summaryJson.componentSlots[0]).toMatchObject({
       label: "York/GTA Valhalla data",
@@ -70,6 +78,10 @@ describe("project state", () => {
     });
     expect(packet.summaryMarkdown).toContain("## Review Readiness");
     expect(packet.summaryMarkdown).toContain("Browser fallback can export packets");
+    expect(packet.summaryMarkdown).toContain("## Native Setup Checklist");
+    expect(packet.summaryMarkdown).toContain("York/GTA Valhalla data: blocked");
+    expect(packet.summaryMarkdown).toContain("verify: valhalla_service <path-to-valhalla.json>");
+    expect(packet.summaryMarkdown).toContain("jobs: Valhalla map match");
     expect(packet.summaryMarkdown).toContain("## Component Slots");
     expect(packet.summaryMarkdown).toContain("York/GTA Valhalla data");
     expect(packet.summaryMarkdown).toContain("C:/roadwatcher/valhalla/greater-toronto.json");

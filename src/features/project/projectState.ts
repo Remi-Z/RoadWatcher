@@ -131,6 +131,14 @@ function buildMarkdown(packet: EvidencePacket["summaryJson"]): string {
       return `- ${slot.label}: ${slot.status}; reference: ${reference}${notes}`;
     })
     .join("\n");
+  const nativeChecklistLines = packet.reviewReadiness.nativeChecklist
+    .map((item) => {
+      const reference = item.reference.trim() || "(blank)";
+      const jobs = item.blockingJobs.length > 0 ? `; jobs: ${item.blockingJobs.join(", ")}` : "";
+      const notes = item.notes.trim() ? `; notes: ${item.notes.trim()}` : "";
+      return `- ${item.label}: ${item.state}; reference: ${reference}; verify: ${item.verifyCommand}${jobs}${notes}`;
+    })
+    .join("\n");
 
   return `# RoadWatcher Evidence Summary
 
@@ -152,6 +160,9 @@ ${clipLines || "- No clips saved."}
 - Summary: ${packet.reviewReadiness.summary}
 - Open component slots: ${packet.reviewReadiness.openComponentSlots.join(", ") || "none"}
 - Blocked jobs: ${packet.reviewReadiness.blockedJobs.join(", ") || "none"}
+
+## Native Setup Checklist
+${nativeChecklistLines || "- No native setup slots saved."}
 
 ## Imported Route
 - Timed route points: ${packet.route.length}
