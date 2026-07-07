@@ -1,6 +1,7 @@
 import type { ComponentSlot, MediaAsset, IncidentDraft } from "../../data/demoProject";
 import { normalizeProjectedFeatureReview, type OfficialRoadFeature, type ProjectedRoadFeature, type TimedRoutePoint } from "../geo/projection";
 import type { WorkstationJob } from "../jobs/jobModel";
+import type { NativeRuntimeStatus } from "../native/runtimeEnvironment";
 import type { TimelineClip } from "../timeline/timelineModel";
 import { summarizeReviewReadiness, type ReviewReadiness } from "./reviewReadiness";
 
@@ -43,6 +44,10 @@ export interface EvidencePacket {
   };
 }
 
+export interface EvidencePacketOptions {
+  runtimeStatus?: NativeRuntimeStatus;
+}
+
 export function createProjectSnapshot(input: ProjectSnapshotInput): ProjectSnapshot {
   return {
     schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -71,14 +76,15 @@ export function restoreProjectSnapshot(snapshot: ProjectSnapshot): ProjectSnapsh
   };
 }
 
-export function buildEvidencePacket(snapshot: ProjectSnapshot): EvidencePacket {
+export function buildEvidencePacket(snapshot: ProjectSnapshot, options: EvidencePacketOptions = {}): EvidencePacket {
   const fileBaseName = `roadwatcher-evidence-${stableIncidentKey(snapshot.incident)}`;
   const reviewReadiness = summarizeReviewReadiness({
     clips: snapshot.clips,
     componentSlots: snapshot.componentSlots ?? [],
     jobs: snapshot.jobs,
     media: snapshot.media,
-    projectedFeatures: snapshot.projectedFeatures
+    projectedFeatures: snapshot.projectedFeatures,
+    runtimeStatus: options.runtimeStatus
   });
   const summaryJson = {
     schemaVersion: snapshot.schemaVersion,
@@ -158,6 +164,8 @@ ${clipLines || "- No clips saved."}
 - Mode: ${packet.reviewReadiness.mode === "native_ready" ? "Native ready" : "Browser fallback"}
 - Runtime mode: ${packet.reviewReadiness.runtime.label}
 - Runtime summary: ${packet.reviewReadiness.runtime.summary}
+- Bridge status: ${packet.reviewReadiness.runtime.bridgeStatus}
+- Bridge summary: ${packet.reviewReadiness.runtime.bridgeSummary}
 - Packet export: ${packet.reviewReadiness.canExportPacket ? "available" : "needs media and clips"}
 - Summary: ${packet.reviewReadiness.summary}
 - Open component slots: ${packet.reviewReadiness.openComponentSlots.join(", ") || "none"}

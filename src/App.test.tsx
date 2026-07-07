@@ -12,6 +12,7 @@ import {
 } from "./data/demoProject";
 import type { ProjectRepository } from "./features/project/browserProjectRepository";
 import { createProjectSnapshot, parseSnapshot, serializeSnapshot, type ProjectSnapshot } from "./features/project/projectState";
+import { detectNativeRuntime } from "./features/native/runtimeEnvironment";
 
 describe("RoadWatcher workstation", () => {
   it("renders the core evidence review regions", () => {
@@ -263,6 +264,15 @@ describe("RoadWatcher workstation", () => {
     expect(readinessPanel as HTMLElement).toHaveTextContent("Runtime mode");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Browser fallback");
     expect(readinessPanel as HTMLElement).toHaveTextContent("project_create");
+  });
+
+  it("shows a ready Tauri bridge when a native invoke adapter is available", () => {
+    render(<App nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })} />);
+
+    const readinessPanel = screen.getByRole("heading", { name: "Review readiness" }).closest("section");
+    expect(readinessPanel).not.toBeNull();
+    expect(readinessPanel as HTMLElement).toHaveTextContent("ready");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("Tauri invoke bridge is available");
   });
 
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {

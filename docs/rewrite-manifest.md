@@ -66,6 +66,10 @@ Build a Windows-first, local-first evidence workstation:
   native command invoke is attempted.
 - Added bridge response validation so malformed native DTOs are rejected after
   invoke before the app accepts native data.
+- Added a browser-safe Tauri invoke adapter that only imports
+  `@tauri-apps/api/core` after detecting a Tauri shell, marks the bridge ready
+  when resolved, and carries that runtime bridge status into UI readiness and
+  evidence packet exports.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -85,7 +89,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-07. Current test count is 14 files / 60 tests.
+Both passed on 2026-07-07. Current test count is 15 files / 65 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -109,6 +113,9 @@ planned Tauri command slots with request/response field manifests.
 Native command bridge tests verify browser fallback, missing invoke bridge,
 invalid requests, malformed native responses, and successful
 dependency-injected invoke calls.
+Tauri invoke adapter tests verify browser fallback does not load Tauri APIs,
+detected shell mode wraps `@tauri-apps/api/core.invoke`, and exported packet
+readiness can carry a supplied ready bridge status.
 The latest browser project snapshot smoke before the standalone setup artifact
 verified three export downloads, decoded the `local-...-browser42-project.json`
 artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4
@@ -156,9 +163,12 @@ network/DNS access.
   command names and DTO fields, but the Rust commands themselves are not
   implemented or invoked yet.
 - The native command bridge is dependency-injected and tested, but the app does
-  not import Tauri `invoke` yet. Browser mode returns explicit fallback results.
-  Required request fields are validated before Tauri invoke is called, and
-  required response fields are validated before native data is accepted.
+  not call project/media/GPX/GIS/FFmpeg/CV commands from workflows yet. Browser
+  mode returns explicit fallback results. Required request fields are validated
+  before Tauri invoke is called, and required response fields are validated
+  before native data is accepted. The browser-safe Tauri invoke adapter is wired
+  for runtime readiness and packet export status, but Rust command handlers
+  still need implementation.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
   imported videos, but Tauri still needs real file handles or paths, hashing,
   metadata probing, duration detection, FFmpeg proxy generation, and render jobs.

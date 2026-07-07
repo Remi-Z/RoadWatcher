@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initialClips, initialJobs, incidentDraft, mediaAssets, missingSlots, officialRoadFeatures, projectedFeatures } from "../../data/demoProject";
+import { detectNativeRuntime } from "../native/runtimeEnvironment";
 import { buildEvidencePacket, createProjectSnapshot, restoreProjectSnapshot } from "./projectState";
 
 describe("project state", () => {
@@ -85,5 +86,25 @@ describe("project state", () => {
     expect(packet.summaryMarkdown).toContain("## Component Slots");
     expect(packet.summaryMarkdown).toContain("York/GTA Valhalla data");
     expect(packet.summaryMarkdown).toContain("C:/roadwatcher/valhalla/greater-toronto.json");
+  });
+
+  it("carries supplied native runtime bridge status into evidence packets", () => {
+    const packet = buildEvidencePacket(
+      createProjectSnapshot({
+        clips: initialClips,
+        incident: { ...incidentDraft, plate: "NATIVE7" },
+        jobs: initialJobs,
+        media: mediaAssets,
+        projectedFeatures
+      }),
+      { runtimeStatus: detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true }) }
+    );
+
+    expect(packet.summaryJson.reviewReadiness.runtime).toMatchObject({
+      mode: "tauri_shell",
+      bridgeStatus: "ready"
+    });
+    expect(packet.summaryMarkdown).toContain("Bridge status: ready");
+    expect(packet.summaryMarkdown).toContain("Tauri invoke bridge is available");
   });
 });

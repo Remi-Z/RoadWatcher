@@ -9,6 +9,10 @@ export interface NativeRuntimeHost {
   __TAURI_INTERNALS__?: unknown;
 }
 
+export interface NativeRuntimeOptions {
+  bridgeAvailable?: boolean;
+}
+
 export interface NativeCommandSlot {
   id: string;
   label: string;
@@ -30,19 +34,21 @@ export interface NativeRuntimeStatus {
   commandSlots: NativeCommandSlot[];
 }
 
-export function detectNativeRuntime(host: NativeRuntimeHost = globalThis as NativeRuntimeHost): NativeRuntimeStatus {
+export function detectNativeRuntime(
+  host: NativeRuntimeHost = globalThis as NativeRuntimeHost,
+  options: NativeRuntimeOptions = {}
+): NativeRuntimeStatus {
   const tauriDetected = Boolean(host.__TAURI_INTERNALS__ || host.__TAURI__);
   const mode: NativeRuntimeMode = tauriDetected ? "tauri_shell" : "browser_fallback";
   const state: NativeCommandSlotState = tauriDetected ? "planned_tauri_command" : "browser_fallback";
+  const bridgeStatus: NativeBridgeStatus = tauriDetected ? (options.bridgeAvailable ? "ready" : "bridge_unavailable") : "browser_fallback";
 
   return {
     mode,
     label: tauriDetected ? "Tauri shell" : "Browser fallback",
     tauriDetected,
-    bridgeStatus: tauriDetected ? "bridge_unavailable" : "browser_fallback",
-    bridgeSummary: tauriDetected
-      ? "Tauri runtime is detected, but command invocation is not wired yet."
-      : "Browser fallback is active; native command calls are not attempted.",
+    bridgeStatus,
+    bridgeSummary: bridgeSummary(bridgeStatus),
     summary: tauriDetected
       ? "Tauri runtime detected; Rust command slots remain planned until implemented and verified."
       : "Tauri runtime not detected; browser-local fallbacks are active.",
@@ -57,4 +63,16 @@ export function detectNativeRuntime(host: NativeRuntimeHost = globalThis as Nati
       ownerAction: contract.ownerAction
     }))
   };
+}
+
+function bridgeSummary(status: NativeBridgeStatus): string {
+  if (status === "ready") {
+    return "Tauri invoke bridge is available for planned command calls.";
+  }
+
+  if (status === "bridge_unavailable") {
+    return "Tauri runtime is detected, but command invocation is not wired yet.";
+  }
+
+  return "Browser fallback is active; native command calls are not attempted.";
 }

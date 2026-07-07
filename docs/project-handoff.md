@@ -56,6 +56,9 @@ The runnable app today is the React/Vite evidence workstation:
   bridge-unavailable results until a real Tauri `invoke` function is wired, with
   required request-field validation before native calls and response-field
   validation before accepting native data.
+- Browser-safe Tauri invoke adapter that avoids loading Tauri APIs in browser
+  fallback mode, resolves `@tauri-apps/api/core.invoke` in a detected Tauri
+  shell, and carries ready bridge status into UI readiness and packet exports.
 - Projected road-feature review rows with timing, confidence, and provenance.
 - Editable projected road-feature review status/notes, carried into snapshots
   and exported evidence packets.
@@ -90,6 +93,9 @@ Tests currently cover:
 - Native command bridge coverage for browser fallback, missing invoke bridge,
   invalid requests, malformed native responses, and successful
   dependency-injected invoke calls.
+- Tauri invoke adapter coverage for browser-safe loading, Tauri-shell invoke
+  wrapping, ready bridge status, UI readiness display, and evidence packet
+  runtime export.
 - Export invalidation coverage for incident draft and component slot edits after
   a packet preview has been generated.
 - Review readiness helper coverage for browser fallback and native-ready states,
@@ -116,7 +122,7 @@ Passing on 2026-07-07:
 pnpm test
 ```
 
-Result: 14 files, 60 tests passing.
+Result: 15 files, 65 tests passing.
 
 Passing on 2026-07-07:
 
@@ -214,6 +220,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest review-readiness coverage verified the UI and packet export show
   browser fallback availability, native runtime status, native command-slot
   names, native slot blockers, and blocked jobs from one shared helper.
+- Latest native bridge readiness coverage verified injected ready Tauri bridge
+  status appears in the UI and supplied runtime status appears in packet
+  Markdown/JSON exports.
 - Latest browser readiness smoke verified the rendered panel shows packet
   availability, `5 native slots need attention`, and the Valhalla blocker with
   no browser warnings/errors.
@@ -259,6 +268,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `src/features/native/nativeCommandBridge.ts` - safe dependency-injected
   bridge for planned Tauri command calls, including required request-field
   validation and response-field validation.
+- `src/features/native/tauriInvokeAdapter.ts` - browser-safe resolver for
+  `@tauri-apps/api/core.invoke` once a Tauri shell is detected.
 - `src-tauri/` - Tauri 2 scaffold and first command slot.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.

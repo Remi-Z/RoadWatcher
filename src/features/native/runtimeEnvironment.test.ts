@@ -20,7 +20,16 @@ describe("native runtime environment", () => {
 
     expect(runtime.mode).toBe("tauri_shell");
     expect(runtime.tauriDetected).toBe(true);
+    expect(runtime.bridgeStatus).toBe("bridge_unavailable");
     expect(runtime.summary).toContain("Tauri runtime detected");
     expect(runtime.commandSlots.every((slot) => slot.state === "planned_tauri_command")).toBe(true);
+  });
+
+  it("reports a ready bridge when a Tauri invoke adapter has been resolved", () => {
+    const runtime = detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true });
+
+    expect(runtime.mode).toBe("tauri_shell");
+    expect(runtime.bridgeStatus).toBe("ready");
+    expect(runtime.bridgeSummary).toContain("available");
   });
 });

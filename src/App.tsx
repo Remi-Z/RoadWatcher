@@ -39,7 +39,7 @@ import {
   Upload,
   Video
 } from "lucide-react";
-import { type ChangeEvent, useMemo, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
   type ComponentSlot,
   type ComponentSlotStatus,
@@ -70,6 +70,8 @@ import { createBrowserProjectRepository, type ProjectRepository } from "./featur
 import { createNativeSetupChecklistArtifact, createPacketArtifacts, createProjectSnapshotArtifact } from "./features/project/downloadArtifacts";
 import { buildEvidencePacket, createProjectSnapshot, parseSnapshot, type EvidencePacket, type ProjectSnapshot } from "./features/project/projectState";
 import { summarizeReviewReadiness, type ReviewReadiness } from "./features/project/reviewReadiness";
+import { detectNativeRuntime, type NativeRuntimeHost, type NativeRuntimeStatus } from "./features/native/runtimeEnvironment";
+import { resolveTauriInvoke } from "./features/native/tauriInvokeAdapter";
 import type { TimelineClip } from "./features/timeline/timelineModel";
 import {
   clipDurationSeconds,
@@ -83,8 +85,15 @@ import {
 
 const defaultProjectRepository = createBrowserProjectRepository();
 
-export function App({ projectRepository = defaultProjectRepository }: { projectRepository?: ProjectRepository }) {
+export function App({
+  nativeRuntimeStatus,
+  projectRepository = defaultProjectRepository
+}: {
+  nativeRuntimeStatus?: NativeRuntimeStatus;
+  projectRepository?: ProjectRepository;
+}) {
   const [restoredSnapshot] = useState(() => projectRepository.load());
+  const [detectedNativeRuntimeStatus, setDetectedNativeRuntimeStatus] = useState(() => detectNativeRuntime());
   const [clips, setClips] = useState<TimelineClip[]>(() => restoredSnapshot?.clips ?? initialClips);
   const [draft, setDraft] = useState<IncidentDraft>(() => restoredSnapshot?.incident ?? incidentDraft);
   const [media, setMedia] = useState<MediaAsset[]>(() => restoredSnapshot?.media ?? mediaAssets);
@@ -115,12 +124,14 @@ export function App({ projectRepository = defaultProjectRepository }: { projectR
   const totalDuration = timelineDurationSeconds(clips);
   const latestProjectArtifact = latestProjectSnapshot ? createProjectSnapshotArtifact(latestProjectSnapshot) : null;
   const latestNativeSetupArtifact = latestPacket ? createNativeSetupChecklistArtifact(latestPacket) : null;
+  const activeNativeRuntimeStatus = nativeRuntimeStatus ?? detectedNativeRuntimeStatus;
   const reviewReadiness = summarizeReviewReadiness({
     clips,
     componentSlots,
     jobs,
     media,
-    projectedFeatures: projectedRoadFeatures
+    projectedFeatures: projectedRoadFeatures,
+    runtimeStatus: activeNativeRuntimeStatus
   });
   const currentSnapshotInput = {
     clips,
@@ -132,6 +143,39 @@ export function App({ projectRepository = defaultProjectRepository }: { projectR
     projectedFeatures: projectedRoadFeatures,
     route
   };
+
+  useEffect(() => {
+    if (nativeRuntimeStatus) {
+      return;
+    }
+
+    let active = true;
+    const runtime = detectNativeRuntime();
+
+    if (runtime.mode === "browser_fallback") {
+      return;
+    }
+
+    void resolveTauriInvoke(runtime)
+      .then((invoke) => {
+        if (!active || !invoke) {
+          return;
+        }
+
+        setDetectedNativeRuntimeStatus(detectNativeRuntime(globalThis as NativeRuntimeHost, { bridgeAvailable: true }));
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setDetectedNativeRuntimeStatus(detectNativeRuntime(globalThis as NativeRuntimeHost, { bridgeAvailable: false }));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [nativeRuntimeStatus]);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -258,7 +302,7 @@ export function App({ projectRepository = defaultProjectRepository }: { projectR
 
   function handleExportPacket() {
     const snapshot = createProjectSnapshot(currentSnapshotInput);
-    const packet = buildEvidencePacket(snapshot);
+    const packet = buildEvidencePacket(snapshot, { runtimeStatus: activeNativeRuntimeStatus });
     setLatestProjectSnapshot(snapshot);
     setLatestPacket(packet);
     setAppStatus(`Export packet preview ready: ${packet.fileBaseName}.json`);
