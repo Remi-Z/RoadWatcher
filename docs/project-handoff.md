@@ -50,6 +50,8 @@ The runnable app today is the React/Vite evidence workstation:
 - Native runtime status that detects browser fallback versus Tauri shell
   presence and lists planned Rust command names without claiming they are
   implemented.
+- TypeScript native command contract registry that records request and response
+  fields for each planned Tauri command before Rust DTOs are implemented.
 - Projected road-feature review rows with timing, confidence, and provenance.
 - Editable projected road-feature review status/notes, carried into snapshots
   and exported evidence packets.
@@ -78,7 +80,9 @@ Tests currently cover:
   RoadWatcher project snapshot JSON.
 - Native setup artifact coverage for `*-native-setup.md` files with slot
   references, verification commands, linked blocked jobs, runtime mode, and
-  planned Tauri command slots.
+  planned Tauri command slots plus request/response field manifests.
+- Native command contract coverage that keeps runtime command slots backed by
+  typed registry entries.
 - Export invalidation coverage for incident draft and component slot edits after
   a packet preview has been generated.
 - Review readiness helper coverage for browser fallback and native-ready states,
@@ -105,7 +109,7 @@ Passing on 2026-07-07:
 pnpm test
 ```
 
-Result: 12 files, 52 tests passing.
+Result: 13 files, 54 tests passing.
 
 Passing on 2026-07-07:
 
@@ -243,6 +247,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   and native setup checklist for UI and exported packets.
 - `src/features/native/runtimeEnvironment.ts` - browser/Tauri runtime detector
   and planned native command-slot manifest.
+- `src/features/native/nativeCommandContracts.ts` - TypeScript DTO contract
+  registry for planned Tauri commands.
 - `src-tauri/` - Tauri 2 scaffold and first command slot.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.

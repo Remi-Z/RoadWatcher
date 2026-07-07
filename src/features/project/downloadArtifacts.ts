@@ -49,7 +49,9 @@ function buildNativeSetupChecklistMarkdown(packet: EvidencePacket): string {
   const commandLines = runtime.commandSlots
     .map(
       (slot, index) =>
-        `${index + 1}. ${slot.label}\n   - state: ${slot.state}\n   - command: \`${slot.tauriCommand}\`\n   - fallback: ${slot.fallback}\n   - action: ${slot.ownerAction}`
+        `${index + 1}. ${slot.label}\n   - state: ${slot.state}\n   - command: \`${slot.tauriCommand}\`\n   - request: ${slot.requestFields.join(
+          ", "
+        )}\n   - response: ${slot.responseFields.join(", ")}\n   - fallback: ${slot.fallback}\n   - action: ${slot.ownerAction}`
     )
     .join("\n\n");
   const checklistLines = packet.summaryJson.reviewReadiness.nativeChecklist

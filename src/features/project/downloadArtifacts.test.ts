@@ -65,6 +65,8 @@ describe("download artifacts", () => {
     expect(artifact.content).toContain("# RoadWatcher Native Setup Checklist");
     expect(artifact.content).toContain("Runtime mode: Browser fallback");
     expect(artifact.content).toContain("project_create");
+    expect(artifact.content).toContain("request: projectName, rootDirectory");
+    expect(artifact.content).toContain("response: projectId, projectDirectory, sqlitePath");
     expect(artifact.content).toContain("browser-local project snapshots");
     expect(artifact.content).toContain("Rust/Cargo for Tauri");
     expect(artifact.content).toContain("cargo --version");

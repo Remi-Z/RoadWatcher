@@ -602,7 +602,13 @@ function ReviewReadinessPanel({ readiness }: { readiness: ReviewReadiness }) {
                 <strong>{slot.label}</strong>
               </div>
               <code>{slot.tauriCommand}</code>
-              <span>{slot.fallback}</span>
+              <span>
+                request: {slot.requestFields.join(", ")}
+                <br />
+                response: {slot.responseFields.join(", ")}
+                <br />
+                fallback: {slot.fallback}
+              </span>
             </article>
           ))}
         </div>
