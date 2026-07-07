@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { initialClips, initialJobs, incidentDraft, mediaAssets, projectedFeatures } from "../../data/demoProject";
-import { createPacketArtifacts, createProjectSnapshotArtifact } from "./downloadArtifacts";
+import { initialClips, initialJobs, incidentDraft, mediaAssets, missingSlots, projectedFeatures } from "../../data/demoProject";
+import { createNativeSetupChecklistArtifact, createPacketArtifacts, createProjectSnapshotArtifact } from "./downloadArtifacts";
 import { buildEvidencePacket, createProjectSnapshot, parseSnapshot } from "./projectState";
 
 describe("download artifacts", () => {
@@ -43,5 +43,29 @@ describe("download artifacts", () => {
     expect(restored.incident.plate).toBe("PORTABLE9");
     expect(restored.jobs).toHaveLength(initialJobs.length);
     expect(restored.media).toHaveLength(mediaAssets.length);
+  });
+
+  it("creates a standalone native setup checklist artifact from packet readiness", () => {
+    const packet = buildEvidencePacket(
+      createProjectSnapshot({
+        clips: initialClips,
+        componentSlots: missingSlots,
+        incident: { ...incidentDraft, plate: "SETUP42" },
+        jobs: initialJobs,
+        media: mediaAssets,
+        projectedFeatures
+      })
+    );
+
+    const artifact = createNativeSetupChecklistArtifact(packet);
+
+    expect(artifact.fileName).toBe(`${packet.fileBaseName}-native-setup.md`);
+    expect(artifact.mimeType).toBe("text/markdown");
+    expect(artifact.href).toMatch(/^data:text\/markdown;charset=utf-8,/);
+    expect(artifact.content).toContain("# RoadWatcher Native Setup Checklist");
+    expect(artifact.content).toContain("Rust/Cargo for Tauri");
+    expect(artifact.content).toContain("cargo --version");
+    expect(artifact.content).toContain("York/GTA Valhalla data");
+    expect(artifact.content).toContain("jobs: Valhalla map match");
   });
 });

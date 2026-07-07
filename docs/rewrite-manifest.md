@@ -43,6 +43,9 @@ Build a Windows-first, local-first evidence workstation:
   reflect the edited reel while native FFmpeg render remains a future slot.
 - Added restorable RoadWatcher project snapshot download artifacts beside the
   evidence packet JSON/Markdown exports, closing the browser import/export loop.
+- Added a standalone native setup checklist Markdown download beside packet
+  exports so user-filled install/data slots can be reviewed without opening the
+  evidence summary.
 - Added stale-export invalidation so generated packet/project downloads disappear
   after later review edits, timeline edits, imports, or slot changes.
 - Added a shared review-readiness summary for UI and evidence packets so browser
@@ -69,7 +72,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-07. Current test count is 11 files / 49 tests.
+Both passed on 2026-07-07. Current test count is 11 files / 50 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -87,10 +90,12 @@ timing, and export Markdown updates. The latest browser timeline smoke used the
 action menu to produce a four-clip edited reel and export Markdown with the
 split clip ranges. Project snapshot export tests verify `*-project.json`
 downloads parse through `parseSnapshot` and retain edited clips, media, and jobs.
-The latest browser project snapshot smoke verified three export downloads,
-decoded the `local-...-browser42-project.json` artifact, and confirmed plate
-`BROWSER42`, incident clip range `840-852`, 4 jobs, 2 media references, and no
-browser console warnings/errors.
+Native setup artifact tests verify `*-native-setup.md` downloads include saved
+slot references, verification commands, and linked blocked jobs.
+The latest browser project snapshot smoke before the standalone setup artifact
+verified three export downloads, decoded the `local-...-browser42-project.json`
+artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4
+jobs, 2 media references, and no browser console warnings/errors.
 Media import tests verify browser-selected videos become referenced media
 assets, queued proxy jobs, editable placeholder reel clips, and exported
 Markdown entries. The latest browser load smoke after that change verified the

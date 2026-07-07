@@ -33,6 +33,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Export packet preview that generates browser-downloadable Markdown and JSON
   artifacts from the current incident draft, clips, source media references, and
   projected features.
+- Standalone native setup checklist Markdown download generated beside packet
+  exports, carrying slot references, verification commands, and linked blocked
+  jobs for handoff.
 - Restorable RoadWatcher project snapshot download alongside export packets, so
   portable `*-project.json` files can be re-imported through the browser import
   path.
@@ -70,6 +73,8 @@ Tests currently cover:
   unavailable storage.
 - Download artifact coverage for Markdown/JSON packet files and parseable
   RoadWatcher project snapshot JSON.
+- Native setup artifact coverage for `*-native-setup.md` files with slot
+  references, verification commands, and linked blocked jobs.
 - Export invalidation coverage for incident draft and component slot edits after
   a packet preview has been generated.
 - Review readiness helper coverage for browser fallback and native-ready states,
@@ -96,7 +101,7 @@ Passing on 2026-07-07:
 pnpm test
 ```
 
-Result: 11 files, 49 tests passing.
+Result: 11 files, 50 tests passing.
 
 Passing on 2026-07-07:
 
@@ -174,10 +179,11 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest project snapshot export coverage verified `*-project.json` downloads
   parse with `parseSnapshot`, retain edited clips/media/jobs, and remain distinct
   from evidence packet JSON.
-- Latest browser project snapshot smoke verified three export downloads,
-  including `local-...-browser42-project.json`; the decoded project snapshot
-  retained plate `BROWSER42`, incident clip source range `840-852`, 4 jobs, and
-  2 media references with no browser console warnings/errors.
+- Latest browser project snapshot smoke before the standalone setup artifact
+  verified three export downloads, including
+  `local-...-browser42-project.json`; the decoded project snapshot retained
+  plate `BROWSER42`, incident clip source range `840-852`, 4 jobs, and 2 media
+  references with no browser console warnings/errors.
 - Latest media-import implementation coverage verified a browser-imported video
   becomes a referenced media asset, queues a proxy job, appends an editable
   `Imported ...` reel clip, and appears in exported Markdown.
@@ -227,7 +233,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `src/features/project/browserProjectRepository.ts` - browser-local persistence
   fallback.
 - `src/features/project/downloadArtifacts.ts` - Markdown/JSON download artifact
-  builder for evidence packets and restorable project snapshots.
+  builder for evidence packets, standalone native setup checklists, and
+  restorable project snapshots.
 - `src/features/project/reviewReadiness.ts` - shared review-readiness summary
   and native setup checklist for UI and exported packets.
 - `src-tauri/` - Tauri 2 scaffold and first command slot.

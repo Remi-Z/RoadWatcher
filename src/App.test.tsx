@@ -164,9 +164,14 @@ describe("RoadWatcher workstation", () => {
     const markdownDownload = screen.getByRole("link", {
       name: "roadwatcher-evidence-suggested-possible-bike-lane-obstruction-00-13-56-0-00-14-14-0-abc1234.md"
     });
+    const setupDownload = screen.getByRole("link", {
+      name: "roadwatcher-evidence-suggested-possible-bike-lane-obstruction-00-13-56-0-00-14-14-0-abc1234-native-setup.md"
+    });
     expect(jsonDownload).toHaveAttribute("download", expect.stringMatching(/\.json$/));
     expect(jsonDownload).toHaveAttribute("href", expect.stringMatching(/^data:application\/json/));
     expect(markdownDownload).toHaveAttribute("download", expect.stringMatching(/\.md$/));
+    expect(setupDownload).toHaveAttribute("download", expect.stringMatching(/-native-setup\.md$/));
+    expect(setupDownload).toHaveAttribute("href", expect.stringMatching(/^data:text\/markdown/));
     expect(screen.getByText("Markdown and JSON packet preview generated locally.")).toBeInTheDocument();
   });
 

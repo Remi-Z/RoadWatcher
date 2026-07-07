@@ -67,7 +67,7 @@ import {
 import type { WorkstationJob } from "./features/jobs/jobModel";
 import { createImportedMediaAssets, createProxyJobsForImportedMedia, createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
 import { createBrowserProjectRepository, type ProjectRepository } from "./features/project/browserProjectRepository";
-import { createPacketArtifacts, createProjectSnapshotArtifact } from "./features/project/downloadArtifacts";
+import { createNativeSetupChecklistArtifact, createPacketArtifacts, createProjectSnapshotArtifact } from "./features/project/downloadArtifacts";
 import { buildEvidencePacket, createProjectSnapshot, parseSnapshot, type EvidencePacket, type ProjectSnapshot } from "./features/project/projectState";
 import { summarizeReviewReadiness, type ReviewReadiness } from "./features/project/reviewReadiness";
 import type { TimelineClip } from "./features/timeline/timelineModel";
@@ -114,6 +114,7 @@ export function App({ projectRepository = defaultProjectRepository }: { projectR
   const primaryMedia = media[0];
   const totalDuration = timelineDurationSeconds(clips);
   const latestProjectArtifact = latestProjectSnapshot ? createProjectSnapshotArtifact(latestProjectSnapshot) : null;
+  const latestNativeSetupArtifact = latestPacket ? createNativeSetupChecklistArtifact(latestPacket) : null;
   const reviewReadiness = summarizeReviewReadiness({
     clips,
     componentSlots,
@@ -544,6 +545,12 @@ export function App({ projectRepository = defaultProjectRepository }: { projectR
                 <a href={latestProjectArtifact.href} download={latestProjectArtifact.fileName}>
                   <Download size={14} />
                   {latestProjectArtifact.fileName}
+                </a>
+              )}
+              {latestNativeSetupArtifact && (
+                <a href={latestNativeSetupArtifact.href} download={latestNativeSetupArtifact.fileName}>
+                  <Download size={14} />
+                  {latestNativeSetupArtifact.fileName}
                 </a>
               )}
               {createPacketArtifacts(latestPacket).map((artifact) => (
