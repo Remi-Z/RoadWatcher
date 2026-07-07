@@ -1,0 +1,5 @@
+packages:
+  - "."
+  - "sidecars/*"
+allowBuilds:
+  esbuild: true

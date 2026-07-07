@@ -5,3 +5,9 @@ obj/
 *.user
 *.suo
 TestResults/
+node_modules/
+dist/
+.pnpm-store/
+.uv-cache/
+__pycache__/
+*.tsbuildinfo
