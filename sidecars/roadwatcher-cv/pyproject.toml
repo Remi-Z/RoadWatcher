@@ -1,0 +1,13 @@
+[project]
+name = "roadwatcher-cv"
+version = "0.1.0"
+description = "RoadWatcher local CV sidecar slot"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+roadwatcher-cv = "roadwatcher_cv.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
