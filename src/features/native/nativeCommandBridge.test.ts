@@ -44,4 +44,30 @@ describe("native command bridge", () => {
       response: { projectId: "native-1", sqlitePath: "C:/RoadWatcher/native-1/project.sqlite" }
     });
   });
+
+  it("rejects malformed requests before invoking Tauri", async () => {
+    const invoke = vi.fn();
+    const bridge = createNativeCommandBridge({ runtime: detectNativeRuntime({ __TAURI_INTERNALS__: {} }), invoke });
+
+    const result = await bridge.invoke("project_create", { projectName: "Ride review" });
+
+    expect(invoke).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      ok: false,
+      status: "invalid_request",
+      command: "project_create",
+      missingFields: ["rootDirectory"]
+    });
+  });
+
+  it("passes through complete requests with additional metadata", async () => {
+    const invoke = vi.fn().mockResolvedValue({ mediaId: "media-1", proxyJobId: "job-1" });
+    const bridge = createNativeCommandBridge({ runtime: detectNativeRuntime({ __TAURI_INTERNALS__: {} }), invoke });
+    const request = { projectId: "project-1", sourcePath: "D:/Dashcam/front.mp4", importMode: "reference" };
+
+    const result = await bridge.invoke("media_import", request);
+
+    expect(invoke).toHaveBeenCalledWith("media_import", request);
+    expect(result).toMatchObject({ ok: true, status: "invoked" });
+  });
 });

@@ -18,10 +18,11 @@ export type NativeCommandBridgeResult =
     }
   | {
       ok: false;
-      status: Exclude<NativeBridgeStatus, "ready">;
+      status: Exclude<NativeBridgeStatus, "ready"> | "invalid_request";
       command: NativeCommandName;
       fallback: string;
       message: string;
+      missingFields?: string[];
     };
 
 export interface NativeCommandBridge {
@@ -39,6 +40,18 @@ export function createNativeCommandBridge(options: NativeCommandBridgeOptions): 
     async invoke(command, request) {
       const contract = nativeCommandContracts.find((candidate) => candidate.command === command);
       const fallback = contract?.fallback ?? "browser fallback";
+      const missingFields = contract?.requestFields.filter((field) => !hasRequestField(request, field)) ?? [];
+
+      if (missingFields.length > 0) {
+        return {
+          ok: false,
+          status: "invalid_request",
+          command,
+          fallback,
+          missingFields,
+          message: `Native command request is missing required field${missingFields.length === 1 ? "" : "s"}: ${missingFields.join(", ")}.`
+        };
+      }
 
       if (options.runtime.mode === "browser_fallback") {
         return {
@@ -68,6 +81,10 @@ export function createNativeCommandBridge(options: NativeCommandBridgeOptions): 
       };
     }
   };
+}
+
+function hasRequestField(request: Record<string, unknown>, field: string): boolean {
+  return Object.prototype.hasOwnProperty.call(request, field) && request[field] !== undefined && request[field] !== null;
 }
 
 function bridgeStatus(options: NativeCommandBridgeOptions): NativeBridgeStatus {

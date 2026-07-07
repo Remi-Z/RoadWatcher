@@ -53,7 +53,8 @@ The runnable app today is the React/Vite evidence workstation:
 - TypeScript native command contract registry that records request and response
   fields for each planned Tauri command before Rust DTOs are implemented.
 - Safe native command bridge that returns explicit browser fallback or
-  bridge-unavailable results until a real Tauri `invoke` function is wired.
+  bridge-unavailable results until a real Tauri `invoke` function is wired, with
+  required request-field validation before native calls.
 - Projected road-feature review rows with timing, confidence, and provenance.
 - Editable projected road-feature review status/notes, carried into snapshots
   and exported evidence packets.
@@ -86,7 +87,7 @@ Tests currently cover:
 - Native command contract coverage that keeps runtime command slots backed by
   typed registry entries.
 - Native command bridge coverage for browser fallback, missing invoke bridge,
-  and successful dependency-injected invoke calls.
+  invalid requests, and successful dependency-injected invoke calls.
 - Export invalidation coverage for incident draft and component slot edits after
   a packet preview has been generated.
 - Review readiness helper coverage for browser fallback and native-ready states,
@@ -113,7 +114,7 @@ Passing on 2026-07-07:
 pnpm test
 ```
 
-Result: 14 files, 57 tests passing.
+Result: 14 files, 59 tests passing.
 
 Passing on 2026-07-07:
 
@@ -254,7 +255,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `src/features/native/nativeCommandContracts.ts` - TypeScript DTO contract
   registry for planned Tauri commands.
 - `src/features/native/nativeCommandBridge.ts` - safe dependency-injected
-  bridge for planned Tauri command calls.
+  bridge for planned Tauri command calls, including required request-field
+  validation.
 - `src-tauri/` - Tauri 2 scaffold and first command slot.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.

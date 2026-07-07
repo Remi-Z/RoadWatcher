@@ -62,6 +62,8 @@ Build a Windows-first, local-first evidence workstation:
 - Added a safe native command bridge that never calls native commands in browser
   fallback mode, reports a missing invoke bridge inside Tauri shell mode, and
   can call typed commands once a real Tauri `invoke` function is wired.
+- Added bridge request validation so required DTO fields are checked before any
+  native command invoke is attempted.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -81,7 +83,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-07. Current test count is 14 files / 57 tests.
+Both passed on 2026-07-07. Current test count is 14 files / 59 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -150,6 +152,7 @@ network/DNS access.
   implemented or invoked yet.
 - The native command bridge is dependency-injected and tested, but the app does
   not import Tauri `invoke` yet. Browser mode returns explicit fallback results.
+  Required request fields are validated before Tauri invoke is called.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
   imported videos, but Tauri still needs real file handles or paths, hashing,
   metadata probing, duration detection, FFmpeg proxy generation, and render jobs.

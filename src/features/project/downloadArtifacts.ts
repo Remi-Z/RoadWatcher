@@ -73,6 +73,7 @@ function buildNativeSetupChecklistMarkdown(packet: EvidencePacket): string {
 - Runtime summary: ${runtime.summary}
 - Bridge status: ${runtime.bridgeStatus}
 - Bridge summary: ${runtime.bridgeSummary}
+- Bridge validation: required request fields are checked before invoke
 - Summary: ${packet.summaryJson.reviewReadiness.summary}
 
 ## Native Command Slots
