@@ -812,6 +812,13 @@ h1 {
   font-size: 12px;
 }
 
+.native-probe-button {
+  width: fit-content;
+  min-height: 32px;
+  margin-top: 7px;
+  padding: 0 9px;
+}
+
 .runtime-command-list {
   margin-top: 8px;
 }

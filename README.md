@@ -30,6 +30,9 @@ results until real Tauri `invoke` wiring exists, and validates required request
 fields before any native call and required response fields after invoke. A
 browser-safe Tauri invoke adapter is resolved only inside a detected Tauri shell,
 and that bridge status is carried into the readiness panel and exported packets.
+The readiness panel also includes a tested project-store probe that exercises
+the planned `project_create` bridge path when invoke is available and reports
+the browser fallback otherwise.
 Projected road features are reviewer-markable as
 `needs_review`, `included`, or `excluded`, with notes carried into packet
 exports.

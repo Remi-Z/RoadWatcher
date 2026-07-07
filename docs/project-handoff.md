@@ -59,6 +59,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Browser-safe Tauri invoke adapter that avoids loading Tauri APIs in browser
   fallback mode, resolves `@tauri-apps/api/core.invoke` in a detected Tauri
   shell, and carries ready bridge status into UI readiness and packet exports.
+- Readiness-panel project-store probe that exercises the existing
+  `project_create` bridge path when invoke is available and reports browser
+  fallback without calling native code otherwise.
 - Projected road-feature review rows with timing, confidence, and provenance.
 - Editable projected road-feature review status/notes, carried into snapshots
   and exported evidence packets.
@@ -96,6 +99,8 @@ Tests currently cover:
 - Tauri invoke adapter coverage for browser-safe loading, Tauri-shell invoke
   wrapping, ready bridge status, UI readiness display, and evidence packet
   runtime export.
+- Project-store probe UI coverage for browser fallback no-invoke behavior and
+  successful ready-bridge `project_create` calls.
 - Export invalidation coverage for incident draft and component slot edits after
   a packet preview has been generated.
 - Review readiness helper coverage for browser fallback and native-ready states,
@@ -122,7 +127,7 @@ Passing on 2026-07-07:
 pnpm test
 ```
 
-Result: 15 files, 65 tests passing.
+Result: 15 files, 67 tests passing.
 
 Passing on 2026-07-07:
 
@@ -223,6 +228,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest native bridge readiness coverage verified injected ready Tauri bridge
   status appears in the UI and supplied runtime status appears in packet
   Markdown/JSON exports.
+- Latest project-store probe coverage verified browser fallback status without
+  native invocation and ready-bridge `project_create` invocation with the
+  placeholder native project root.
 - Latest browser readiness smoke verified the rendered panel shows packet
   availability, `5 native slots need attention`, and the Valhalla blocker with
   no browser warnings/errors.
@@ -270,6 +278,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   validation and response-field validation.
 - `src/features/native/tauriInvokeAdapter.ts` - browser-safe resolver for
   `@tauri-apps/api/core.invoke` once a Tauri shell is detected.
+- The current UI project-store probe sends `rootDirectory:
+  "slot: native project root"`; replace this with the native project picker/root
+  setting when SQLite project creation is implemented.
 - `src-tauri/` - Tauri 2 scaffold and first command slot.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.

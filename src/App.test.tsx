@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
   incidentDraft,
@@ -13,6 +13,7 @@ import {
 import type { ProjectRepository } from "./features/project/browserProjectRepository";
 import { createProjectSnapshot, parseSnapshot, serializeSnapshot, type ProjectSnapshot } from "./features/project/projectState";
 import { detectNativeRuntime } from "./features/native/runtimeEnvironment";
+import type { NativeInvoke } from "./features/native/nativeCommandBridge";
 
 describe("RoadWatcher workstation", () => {
   it("renders the core evidence review regions", () => {
@@ -273,6 +274,35 @@ describe("RoadWatcher workstation", () => {
     expect(readinessPanel).not.toBeNull();
     expect(readinessPanel as HTMLElement).toHaveTextContent("ready");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Tauri invoke bridge is available");
+  });
+
+  it("reports browser fallback when probing the native project store without invoking commands", async () => {
+    const nativeInvoke = vi.fn<NativeInvoke>();
+    render(<App nativeInvoke={nativeInvoke} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe native project store" }));
+
+    expect(nativeInvoke).not.toHaveBeenCalled();
+    expect(await screen.findByText(/browser fallback remains active/)).toBeInTheDocument();
+  });
+
+  it("probes the native project store through the command bridge when invoke is available", async () => {
+    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
+      projectId: "native-roadwatcher",
+      projectDirectory: "C:/RoadWatcher/native-roadwatcher",
+      sqlitePath: "C:/RoadWatcher/native-roadwatcher/project.sqlite"
+    });
+
+    render(<App nativeInvoke={nativeInvoke} nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe native project store" }));
+
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native project store ready");
+    expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("C:/RoadWatcher/native-roadwatcher");
+    expect(nativeInvoke).toHaveBeenCalledWith("project_create", {
+      projectName: "RoadWatcher local review",
+      rootDirectory: "slot: native project root"
+    });
   });
 
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {

@@ -70,6 +70,10 @@ Build a Windows-first, local-first evidence workstation:
   `@tauri-apps/api/core` after detecting a Tauri shell, marks the bridge ready
   when resolved, and carries that runtime bridge status into UI readiness and
   evidence packet exports.
+- Added a readiness-panel project-store probe that calls the existing
+  `project_create` bridge path with a placeholder native project root when
+  invoke is available, and reports browser fallback without calling native code
+  otherwise.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -89,7 +93,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-07. Current test count is 15 files / 65 tests.
+Both passed on 2026-07-07. Current test count is 15 files / 67 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -116,6 +120,9 @@ dependency-injected invoke calls.
 Tauri invoke adapter tests verify browser fallback does not load Tauri APIs,
 detected shell mode wraps `@tauri-apps/api/core.invoke`, and exported packet
 readiness can carry a supplied ready bridge status.
+App tests verify the project-store probe does not call native commands in
+browser fallback and calls `project_create` with a complete request when a ready
+invoke bridge is injected.
 The latest browser project snapshot smoke before the standalone setup artifact
 verified three export downloads, decoded the `local-...-browser42-project.json`
 artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4
@@ -168,7 +175,9 @@ network/DNS access.
   before Tauri invoke is called, and required response fields are validated
   before native data is accepted. The browser-safe Tauri invoke adapter is wired
   for runtime readiness and packet export status, but Rust command handlers
-  still need implementation.
+  still need implementation. The UI project-store probe uses a placeholder root
+  (`slot: native project root`) until the native project-folder picker/storage
+  flow exists.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
   imported videos, but Tauri still needs real file handles or paths, hashing,
   metadata probing, duration detection, FFmpeg proxy generation, and render jobs.

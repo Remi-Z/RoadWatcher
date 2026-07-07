@@ -70,6 +70,7 @@ import { createBrowserProjectRepository, type ProjectRepository } from "./featur
 import { createNativeSetupChecklistArtifact, createPacketArtifacts, createProjectSnapshotArtifact } from "./features/project/downloadArtifacts";
 import { buildEvidencePacket, createProjectSnapshot, parseSnapshot, type EvidencePacket, type ProjectSnapshot } from "./features/project/projectState";
 import { summarizeReviewReadiness, type ReviewReadiness } from "./features/project/reviewReadiness";
+import { createNativeCommandBridge, type NativeInvoke } from "./features/native/nativeCommandBridge";
 import { detectNativeRuntime, type NativeRuntimeHost, type NativeRuntimeStatus } from "./features/native/runtimeEnvironment";
 import { resolveTauriInvoke } from "./features/native/tauriInvokeAdapter";
 import type { TimelineClip } from "./features/timeline/timelineModel";
@@ -86,14 +87,17 @@ import {
 const defaultProjectRepository = createBrowserProjectRepository();
 
 export function App({
+  nativeInvoke,
   nativeRuntimeStatus,
   projectRepository = defaultProjectRepository
 }: {
+  nativeInvoke?: NativeInvoke;
   nativeRuntimeStatus?: NativeRuntimeStatus;
   projectRepository?: ProjectRepository;
 }) {
   const [restoredSnapshot] = useState(() => projectRepository.load());
   const [detectedNativeRuntimeStatus, setDetectedNativeRuntimeStatus] = useState(() => detectNativeRuntime());
+  const [detectedNativeInvoke, setDetectedNativeInvoke] = useState<NativeInvoke | undefined>();
   const [clips, setClips] = useState<TimelineClip[]>(() => restoredSnapshot?.clips ?? initialClips);
   const [draft, setDraft] = useState<IncidentDraft>(() => restoredSnapshot?.incident ?? incidentDraft);
   const [media, setMedia] = useState<MediaAsset[]>(() => restoredSnapshot?.media ?? mediaAssets);
@@ -125,6 +129,11 @@ export function App({
   const latestProjectArtifact = latestProjectSnapshot ? createProjectSnapshotArtifact(latestProjectSnapshot) : null;
   const latestNativeSetupArtifact = latestPacket ? createNativeSetupChecklistArtifact(latestPacket) : null;
   const activeNativeRuntimeStatus = nativeRuntimeStatus ?? detectedNativeRuntimeStatus;
+  const activeNativeInvoke = nativeInvoke ?? detectedNativeInvoke;
+  const nativeCommandBridge = useMemo(
+    () => createNativeCommandBridge({ runtime: activeNativeRuntimeStatus, invoke: activeNativeInvoke }),
+    [activeNativeInvoke, activeNativeRuntimeStatus]
+  );
   const reviewReadiness = summarizeReviewReadiness({
     clips,
     componentSlots,
@@ -162,6 +171,7 @@ export function App({
           return;
         }
 
+        setDetectedNativeInvoke(() => invoke);
         setDetectedNativeRuntimeStatus(detectNativeRuntime(globalThis as NativeRuntimeHost, { bridgeAvailable: true }));
       })
       .catch(() => {
@@ -306,6 +316,20 @@ export function App({
     setLatestProjectSnapshot(snapshot);
     setLatestPacket(packet);
     setAppStatus(`Export packet preview ready: ${packet.fileBaseName}.json`);
+  }
+
+  async function handleProbeNativeProjectStore() {
+    const result = await nativeCommandBridge.invoke("project_create", {
+      projectName: "RoadWatcher local review",
+      rootDirectory: "slot: native project root"
+    });
+
+    if (result.ok) {
+      setAppStatus(`Native project store ready: ${nativeProjectDirectory(result.response)}`);
+      return;
+    }
+
+    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
   }
 
   async function handleMediaImport(event: ChangeEvent<HTMLInputElement>) {
@@ -552,7 +576,7 @@ export function App({
       <section className="lower-grid">
         <section className="panel">
           <PanelHeader icon={<ShieldCheck size={18} />} title="Review readiness" meta={reviewReadiness.mode === "native_ready" ? "Native path clear" : "Browser fallback active"} />
-          <ReviewReadinessPanel readiness={reviewReadiness} />
+          <ReviewReadinessPanel readiness={reviewReadiness} onProbeNativeProjectStore={handleProbeNativeProjectStore} />
         </section>
 
         <section className="panel">
@@ -612,7 +636,13 @@ export function App({
   );
 }
 
-function ReviewReadinessPanel({ readiness }: { readiness: ReviewReadiness }) {
+function ReviewReadinessPanel({
+  onProbeNativeProjectStore,
+  readiness
+}: {
+  onProbeNativeProjectStore: () => void;
+  readiness: ReviewReadiness;
+}) {
   return (
     <div className="readiness-panel">
       <p>{readiness.summary}</p>
@@ -645,6 +675,10 @@ function ReviewReadinessPanel({ readiness }: { readiness: ReviewReadiness }) {
           />{" "}
           {readiness.runtime.bridgeSummary}
         </p>
+        <button type="button" className="button secondary native-probe-button" onClick={onProbeNativeProjectStore}>
+          <Settings size={15} />
+          Probe native project store
+        </button>
         <div className="runtime-command-list">
           {readiness.runtime.commandSlots.map((slot) => (
             <article className="runtime-command-row" key={slot.id}>
@@ -1138,6 +1172,14 @@ function readBrowserFileText(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}.`));
     reader.readAsText(file);
   });
+}
+
+function nativeProjectDirectory(response: unknown): string {
+  if (response && typeof response === "object" && "projectDirectory" in response) {
+    return String((response as { projectDirectory: unknown }).projectDirectory);
+  }
+
+  return "(native project directory unavailable)";
 }
 
 function formatSeconds(seconds: number): string {
