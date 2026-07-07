@@ -591,6 +591,22 @@ function ReviewReadinessPanel({ readiness }: { readiness: ReviewReadiness }) {
           {readiness.openComponentSlots.length === 0 && readiness.blockedJobs.length === 0 && <li>None recorded.</li>}
         </ul>
       </div>
+      <div className="runtime-status">
+        <strong>Runtime mode</strong>
+        <p>{readiness.runtime.summary}</p>
+        <div className="runtime-command-list">
+          {readiness.runtime.commandSlots.map((slot) => (
+            <article className="runtime-command-row" key={slot.id}>
+              <div>
+                <StatusPill status={slot.state === "planned_tauri_command" ? "queued" : "optional"} label={slot.state} />
+                <strong>{slot.label}</strong>
+              </div>
+              <code>{slot.tauriCommand}</code>
+              <span>{slot.fallback}</span>
+            </article>
+          ))}
+        </div>
+      </div>
       <div className="native-checklist">
         <strong>Native setup checklist</strong>
         <div className="native-checklist-list">

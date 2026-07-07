@@ -53,6 +53,9 @@ Build a Windows-first, local-first evidence workstation:
 - Added a native setup checklist generated from component slots and blocked jobs
   so UI and evidence packets show each missing install/data slot, its saved
   reference, a verification command, and related blocked jobs.
+- Added a native runtime boundary that detects browser fallback versus Tauri
+  shell presence, manifests planned Tauri command names, and keeps Rust command
+  implementation explicitly pending.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -72,7 +75,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-07. Current test count is 11 files / 50 tests.
+Both passed on 2026-07-07. Current test count is 12 files / 52 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -91,7 +94,8 @@ action menu to produce a four-clip edited reel and export Markdown with the
 split clip ranges. Project snapshot export tests verify `*-project.json`
 downloads parse through `parseSnapshot` and retain edited clips, media, and jobs.
 Native setup artifact tests verify `*-native-setup.md` downloads include saved
-slot references, verification commands, and linked blocked jobs.
+slot references, verification commands, linked blocked jobs, runtime mode, and
+planned Tauri command slots.
 The latest browser project snapshot smoke before the standalone setup artifact
 verified three export downloads, decoded the `local-...-browser42-project.json`
 artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4
@@ -135,6 +139,9 @@ network/DNS access.
 - The native setup checklist is informational and slot-backed. It records saved
   references and verification commands, but it does not execute toolchain or data
   checks until Tauri commands are available.
+- The native runtime boundary detects Tauri shell globals and lists planned
+  command names, but the Rust commands themselves are not implemented or
+  invoked yet.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
   imported videos, but Tauri still needs real file handles or paths, hashing,
   metadata probing, duration detection, FFmpeg proxy generation, and render jobs.

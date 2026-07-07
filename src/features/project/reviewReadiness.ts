@@ -1,6 +1,7 @@
 import type { ComponentSlot, ComponentSlotStatus, MediaAsset } from "../../data/demoProject";
 import type { ProjectedRoadFeature } from "../geo/projection";
 import type { WorkstationJob } from "../jobs/jobModel";
+import { detectNativeRuntime, type NativeRuntimeStatus } from "../native/runtimeEnvironment";
 import type { TimelineClip } from "../timeline/timelineModel";
 
 export type ReviewReadinessMode = "browser_fallback" | "native_ready";
@@ -12,6 +13,7 @@ export interface ReviewReadinessInput {
   jobs: WorkstationJob[];
   media: MediaAsset[];
   projectedFeatures: ProjectedRoadFeature[];
+  runtimeStatus?: NativeRuntimeStatus;
 }
 
 export interface ReviewReadiness {
@@ -20,6 +22,7 @@ export interface ReviewReadiness {
   openComponentSlots: string[];
   blockedJobs: string[];
   nativeChecklist: NativeReadinessChecklistItem[];
+  runtime: NativeRuntimeStatus;
   summary: string;
   counts: {
     clips: number;
@@ -44,6 +47,7 @@ export function summarizeReviewReadiness(input: ReviewReadinessInput): ReviewRea
   const openComponentSlots = input.componentSlots.filter((slot) => slot.status === "needed").map((slot) => slot.label);
   const blockedJobs = input.jobs.filter((job) => job.status === "blocked" || job.status === "failed").map((job) => job.label);
   const nativeChecklist = input.componentSlots.map((slot) => buildNativeChecklistItem(slot, input.jobs));
+  const runtime = input.runtimeStatus ?? detectNativeRuntime();
   const canExportPacket = input.clips.length > 0 && input.media.length > 0;
   const mode: ReviewReadinessMode = openComponentSlots.length === 0 && blockedJobs.length === 0 ? "native_ready" : "browser_fallback";
 
@@ -53,6 +57,7 @@ export function summarizeReviewReadiness(input: ReviewReadinessInput): ReviewRea
     openComponentSlots,
     blockedJobs,
     nativeChecklist,
+    runtime,
     summary: buildSummary(mode, canExportPacket, openComponentSlots.length, blockedJobs.length),
     counts: {
       clips: input.clips.length,

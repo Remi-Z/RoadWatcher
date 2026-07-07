@@ -47,6 +47,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Native setup checklist rows generated from component slots and blocked jobs,
   including saved references, verification commands, and linked blocked jobs in
   both the UI and exported evidence packet.
+- Native runtime status that detects browser fallback versus Tauri shell
+  presence and lists planned Rust command names without claiming they are
+  implemented.
 - Projected road-feature review rows with timing, confidence, and provenance.
 - Editable projected road-feature review status/notes, carried into snapshots
   and exported evidence packets.
@@ -74,7 +77,8 @@ Tests currently cover:
 - Download artifact coverage for Markdown/JSON packet files and parseable
   RoadWatcher project snapshot JSON.
 - Native setup artifact coverage for `*-native-setup.md` files with slot
-  references, verification commands, and linked blocked jobs.
+  references, verification commands, linked blocked jobs, runtime mode, and
+  planned Tauri command slots.
 - Export invalidation coverage for incident draft and component slot edits after
   a packet preview has been generated.
 - Review readiness helper coverage for browser fallback and native-ready states,
@@ -101,7 +105,7 @@ Passing on 2026-07-07:
 pnpm test
 ```
 
-Result: 11 files, 50 tests passing.
+Result: 12 files, 52 tests passing.
 
 Passing on 2026-07-07:
 
@@ -197,8 +201,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   disappears after changing the Valhalla slot status, with no browser
   warnings/errors.
 - Latest review-readiness coverage verified the UI and packet export show
-  browser fallback availability, native slot blockers, and blocked jobs from one
-  shared helper.
+  browser fallback availability, native runtime status, native command-slot
+  names, native slot blockers, and blocked jobs from one shared helper.
 - Latest browser readiness smoke verified the rendered panel shows packet
   availability, `5 native slots need attention`, and the Valhalla blocker with
   no browser warnings/errors.
@@ -237,6 +241,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   restorable project snapshots.
 - `src/features/project/reviewReadiness.ts` - shared review-readiness summary
   and native setup checklist for UI and exported packets.
+- `src/features/native/runtimeEnvironment.ts` - browser/Tauri runtime detector
+  and planned native command-slot manifest.
 - `src-tauri/` - Tauri 2 scaffold and first command slot.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.

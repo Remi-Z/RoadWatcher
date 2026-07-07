@@ -260,6 +260,9 @@ describe("RoadWatcher workstation", () => {
     expect(readinessPanel as HTMLElement).toHaveTextContent("Native setup checklist");
     expect(readinessPanel as HTMLElement).toHaveTextContent("cargo --version");
     expect(readinessPanel as HTMLElement).toHaveTextContent("valhalla_service <path-to-valhalla.json>");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("Runtime mode");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("Browser fallback");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("project_create");
   });
 
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {

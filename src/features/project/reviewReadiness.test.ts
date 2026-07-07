@@ -13,6 +13,11 @@ describe("review readiness", () => {
     });
 
     expect(readiness.mode).toBe("browser_fallback");
+    expect(readiness.runtime.mode).toBe("browser_fallback");
+    expect(readiness.runtime.commandSlots.find((slot) => slot.id === "media-import")).toMatchObject({
+      state: "browser_fallback",
+      tauriCommand: "media_import"
+    });
     expect(readiness.canExportPacket).toBe(true);
     expect(readiness.openComponentSlots).toEqual(["Rust/Cargo for Tauri", "Vendored GPStitch fork", "York/GTA Valhalla data", "Official GIS layers", "FFmpeg and ffprobe"]);
     expect(readiness.blockedJobs).toEqual(["Valhalla map match", "Local CV scan"]);
@@ -46,6 +51,7 @@ describe("review readiness", () => {
     });
 
     expect(readiness.mode).toBe("native_ready");
+    expect(readiness.runtime.mode).toBe("browser_fallback");
     expect(readiness.openComponentSlots).toEqual([]);
     expect(readiness.blockedJobs).toEqual([]);
     expect(readiness.summary).toBe("Native workflow slots are clear; packet export is available.");

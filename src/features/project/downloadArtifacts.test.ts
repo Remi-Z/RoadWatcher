@@ -63,6 +63,9 @@ describe("download artifacts", () => {
     expect(artifact.mimeType).toBe("text/markdown");
     expect(artifact.href).toMatch(/^data:text\/markdown;charset=utf-8,/);
     expect(artifact.content).toContain("# RoadWatcher Native Setup Checklist");
+    expect(artifact.content).toContain("Runtime mode: Browser fallback");
+    expect(artifact.content).toContain("project_create");
+    expect(artifact.content).toContain("browser-local project snapshots");
     expect(artifact.content).toContain("Rust/Cargo for Tauri");
     expect(artifact.content).toContain("cargo --version");
     expect(artifact.content).toContain("York/GTA Valhalla data");

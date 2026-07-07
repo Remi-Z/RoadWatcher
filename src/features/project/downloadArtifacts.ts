@@ -45,6 +45,13 @@ export function createProjectSnapshotArtifact(snapshot: ProjectSnapshot): Downlo
 }
 
 function buildNativeSetupChecklistMarkdown(packet: EvidencePacket): string {
+  const runtime = packet.summaryJson.reviewReadiness.runtime;
+  const commandLines = runtime.commandSlots
+    .map(
+      (slot, index) =>
+        `${index + 1}. ${slot.label}\n   - state: ${slot.state}\n   - command: \`${slot.tauriCommand}\`\n   - fallback: ${slot.fallback}\n   - action: ${slot.ownerAction}`
+    )
+    .join("\n\n");
   const checklistLines = packet.summaryJson.reviewReadiness.nativeChecklist
     .map((item, index) => {
       const blockedJobs = item.blockingJobs.length > 0 ? `\n   - jobs: ${item.blockingJobs.join(", ")}` : "";
@@ -60,8 +67,14 @@ function buildNativeSetupChecklistMarkdown(packet: EvidencePacket): string {
 - Project: ${packet.summaryJson.projectId}
 - Saved: ${packet.summaryJson.savedAtIso}
 - Review mode: ${packet.summaryJson.reviewReadiness.mode === "native_ready" ? "Native ready" : "Browser fallback"}
+- Runtime mode: ${runtime.label}
+- Runtime summary: ${runtime.summary}
 - Summary: ${packet.summaryJson.reviewReadiness.summary}
 
+## Native Command Slots
+${commandLines || "No native command slots saved."}
+
+## Install And Data Slots
 ${checklistLines || "No native setup slots saved."}
 `;
 }

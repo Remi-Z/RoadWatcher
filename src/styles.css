@@ -599,6 +599,8 @@ h1 {
 .slot-list,
 .media-list,
 .readiness-blockers,
+.runtime-status,
+.runtime-command-list,
 .native-checklist,
 .native-checklist-list,
 .feature-review-list {
@@ -790,6 +792,70 @@ h1 {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.runtime-status {
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+}
+
+.runtime-status > strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.runtime-status p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.runtime-command-list {
+  margin-top: 8px;
+}
+
+.runtime-command-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.9fr) minmax(130px, 0.6fr) minmax(160px, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.runtime-command-row > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.runtime-command-row strong,
+.runtime-command-row span,
+.runtime-command-row code {
+  overflow-wrap: anywhere;
+}
+
+.runtime-command-row strong {
+  font-size: 12px;
+}
+
+.runtime-command-row span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.runtime-command-row code {
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: #eef3f7;
+  color: #233143;
+  font-size: 11px;
 }
 
 .native-checklist {

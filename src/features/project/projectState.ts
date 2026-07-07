@@ -156,6 +156,8 @@ ${clipLines || "- No clips saved."}
 
 ## Review Readiness
 - Mode: ${packet.reviewReadiness.mode === "native_ready" ? "Native ready" : "Browser fallback"}
+- Runtime mode: ${packet.reviewReadiness.runtime.label}
+- Runtime summary: ${packet.reviewReadiness.runtime.summary}
 - Packet export: ${packet.reviewReadiness.canExportPacket ? "available" : "needs media and clips"}
 - Summary: ${packet.reviewReadiness.summary}
 - Open component slots: ${packet.reviewReadiness.openComponentSlots.join(", ") || "none"}
