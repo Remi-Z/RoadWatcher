@@ -594,6 +594,13 @@ function ReviewReadinessPanel({ readiness }: { readiness: ReviewReadiness }) {
       <div className="runtime-status">
         <strong>Runtime mode</strong>
         <p>{readiness.runtime.summary}</p>
+        <p>
+          <StatusPill
+            status={readiness.runtime.bridgeStatus === "ready" ? "ready" : readiness.runtime.bridgeStatus === "bridge_unavailable" ? "blocked" : "queued"}
+            label={readiness.runtime.bridgeStatus}
+          />{" "}
+          {readiness.runtime.bridgeSummary}
+        </p>
         <div className="runtime-command-list">
           {readiness.runtime.commandSlots.map((slot) => (
             <article className="runtime-command-row" key={slot.id}>

@@ -24,9 +24,11 @@ A review-readiness panel and exported packet section summarize whether the
 browser fallback can export and which native slots/jobs still block the full
 workflow, including a native setup checklist with per-slot references,
 verification commands, linked blocked jobs, runtime command-slot status, and
-typed request/response field manifests for the future Tauri path. Projected road
-features are reviewer-markable as `needs_review`, `included`, or `excluded`,
-with notes carried into packet exports.
+typed request/response field manifests for the future Tauri path. A safe native
+command bridge now returns explicit browser fallback or bridge-unavailable
+results until real Tauri `invoke` wiring exists. Projected road features are
+reviewer-markable as `needs_review`, `included`, or `excluded`, with notes
+carried into packet exports.
 Missing components and data sources are
 tracked as editable slot records with status, reference, and notes so the
 handoff remains durable. The Tauri and Python sidecar slots are scaffolded, but

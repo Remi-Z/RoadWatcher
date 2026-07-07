@@ -1,4 +1,5 @@
 import { nativeCommandContracts, type NativeCommandName } from "./nativeCommandContracts";
+import type { NativeBridgeStatus } from "./nativeCommandBridge";
 
 export type NativeRuntimeMode = "browser_fallback" | "tauri_shell";
 export type NativeCommandSlotState = "browser_fallback" | "planned_tauri_command";
@@ -23,6 +24,8 @@ export interface NativeRuntimeStatus {
   mode: NativeRuntimeMode;
   label: string;
   tauriDetected: boolean;
+  bridgeStatus: NativeBridgeStatus;
+  bridgeSummary: string;
   summary: string;
   commandSlots: NativeCommandSlot[];
 }
@@ -36,6 +39,10 @@ export function detectNativeRuntime(host: NativeRuntimeHost = globalThis as Nati
     mode,
     label: tauriDetected ? "Tauri shell" : "Browser fallback",
     tauriDetected,
+    bridgeStatus: tauriDetected ? "bridge_unavailable" : "browser_fallback",
+    bridgeSummary: tauriDetected
+      ? "Tauri runtime is detected, but command invocation is not wired yet."
+      : "Browser fallback is active; native command calls are not attempted.",
     summary: tauriDetected
       ? "Tauri runtime detected; Rust command slots remain planned until implemented and verified."
       : "Tauri runtime not detected; browser-local fallbacks are active.",

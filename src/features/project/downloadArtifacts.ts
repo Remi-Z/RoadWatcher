@@ -71,6 +71,8 @@ function buildNativeSetupChecklistMarkdown(packet: EvidencePacket): string {
 - Review mode: ${packet.summaryJson.reviewReadiness.mode === "native_ready" ? "Native ready" : "Browser fallback"}
 - Runtime mode: ${runtime.label}
 - Runtime summary: ${runtime.summary}
+- Bridge status: ${runtime.bridgeStatus}
+- Bridge summary: ${runtime.bridgeSummary}
 - Summary: ${packet.summaryJson.reviewReadiness.summary}
 
 ## Native Command Slots

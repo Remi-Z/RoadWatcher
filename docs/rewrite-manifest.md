@@ -59,6 +59,9 @@ Build a Windows-first, local-first evidence workstation:
 - Added a TypeScript native command contract registry for planned Tauri DTOs,
   including request and response fields for project creation, media import, GPX
   matching, GIS projection, FFmpeg proxy work, and CV scanning.
+- Added a safe native command bridge that never calls native commands in browser
+  fallback mode, reports a missing invoke bridge inside Tauri shell mode, and
+  can call typed commands once a real Tauri `invoke` function is wired.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -78,7 +81,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-07. Current test count is 13 files / 54 tests.
+Both passed on 2026-07-07. Current test count is 14 files / 57 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -145,6 +148,8 @@ network/DNS access.
 - The native runtime boundary detects Tauri shell globals and lists planned
   command names and DTO fields, but the Rust commands themselves are not
   implemented or invoked yet.
+- The native command bridge is dependency-injected and tested, but the app does
+  not import Tauri `invoke` yet. Browser mode returns explicit fallback results.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
   imported videos, but Tauri still needs real file handles or paths, hashing,
   metadata probing, duration detection, FFmpeg proxy generation, and render jobs.

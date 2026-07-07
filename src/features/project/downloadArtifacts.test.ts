@@ -64,6 +64,7 @@ describe("download artifacts", () => {
     expect(artifact.href).toMatch(/^data:text\/markdown;charset=utf-8,/);
     expect(artifact.content).toContain("# RoadWatcher Native Setup Checklist");
     expect(artifact.content).toContain("Runtime mode: Browser fallback");
+    expect(artifact.content).toContain("Bridge status: browser_fallback");
     expect(artifact.content).toContain("project_create");
     expect(artifact.content).toContain("request: projectName, rootDirectory");
     expect(artifact.content).toContain("response: projectId, projectDirectory, sqlitePath");
