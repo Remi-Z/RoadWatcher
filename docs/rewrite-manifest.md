@@ -50,6 +50,9 @@ Build a Windows-first, local-first evidence workstation:
 - Added editable component slot registry for Rust/Cargo, GPStitch, Valhalla,
   OSRM Match fallback, official GIS layers, FFmpeg/ffprobe, and CV model data;
   status/reference/notes persist in snapshots and evidence packet exports.
+- Added a tested top-level Slots action that focuses the first install/data slot
+  reference and updates the status banner so user-filled slots are easy to find
+  before export.
 - Added browser-local timeline editing controls for selected clip trim, split,
   duplicate, and remove, with a selected-clip action menu fallback; exports
   reflect the edited reel while native FFmpeg render remains a future slot.
@@ -117,15 +120,15 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 76 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 77 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
 check. The latest slice added automated UI coverage for restored drafts,
 download links, projected feature review rows, and RoadWatcher project JSON
-restore. Component slot tests cover editable references/status/notes, snapshot
-persistence, evidence packet export, and fallback to seeded slots for older
-snapshots. The latest browser smoke verified the import control, route/GIS
+restore. Component slot tests cover editable references/status/notes, top-level
+Slots focus behavior, snapshot persistence, evidence packet export, and fallback
+to seeded slots for older snapshots. The latest browser smoke verified the import control, route/GIS
 sections, generated JSON/Markdown download links, and only Vite/React dev info
 in the browser console. The latest slot smoke verified seven component slots,
 editable Valhalla `configured` state, and exported Markdown containing the

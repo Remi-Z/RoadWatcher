@@ -153,6 +153,15 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByLabelText("York/GTA Valhalla data reference")).toHaveValue("slot: local Valhalla tiles/config path");
   });
 
+  it("focuses the install and data slots from the top action", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Slots" }));
+
+    expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Install and data slots ready for editing");
+    expect(screen.getByLabelText("Rust/Cargo for Tauri reference")).toHaveFocus();
+  });
+
   it("generates an export packet preview from the current draft", () => {
     render(<App />);
 

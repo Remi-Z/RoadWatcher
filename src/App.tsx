@@ -39,7 +39,7 @@ import {
   Upload,
   Video
 } from "lucide-react";
-import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import {
   type ComponentSlot,
   type ComponentSlotStatus,
@@ -128,6 +128,7 @@ export function App({
   const [latestPacket, setLatestPacket] = useState<EvidencePacket | null>(null);
   const [latestProjectSnapshot, setLatestProjectSnapshot] = useState<ProjectSnapshot | null>(null);
   const [selectedClipId, setSelectedClipId] = useState(() => (restoredSnapshot?.clips ?? initialClips)[1]?.id ?? "");
+  const firstSlotReferenceInputRef = useRef<HTMLInputElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -299,6 +300,11 @@ export function App({
   function handleNativeProjectRootChange(value: string) {
     setNativeProjectRoot(value);
     invalidateLatestExport();
+  }
+
+  function focusInstallAndDataSlots() {
+    firstSlotReferenceInputRef.current?.focus();
+    setAppStatus("Install and data slots ready for editing; fill references, statuses, and notes before export.");
   }
 
   function handleProjectedFeatureReviewChange(
@@ -552,7 +558,7 @@ export function App({
               onChange={handleMediaImport}
             />
           </label>
-          <button type="button" className="button secondary">
+          <button type="button" className="button secondary" onClick={focusInstallAndDataSlots}>
             <Settings size={16} />
             Slots
           </button>
@@ -689,7 +695,7 @@ export function App({
 
         <section className="panel">
           <PanelHeader icon={<AlertTriangle size={18} />} title="Install and data slots" meta="No hidden placeholders" />
-          <ComponentSlotList slots={componentSlots} onSlotChange={handleComponentSlotChange} />
+          <ComponentSlotList slots={componentSlots} firstReferenceInputRef={firstSlotReferenceInputRef} onSlotChange={handleComponentSlotChange} />
         </section>
 
         <section className="panel">
@@ -1198,15 +1204,17 @@ function formatFeatureKind(kind: string): string {
 }
 
 function ComponentSlotList({
+  firstReferenceInputRef,
   slots,
   onSlotChange
 }: {
+  firstReferenceInputRef?: RefObject<HTMLInputElement | null>;
   slots: ComponentSlot[];
   onSlotChange: (id: string, field: keyof Pick<ComponentSlot, "status" | "reference" | "notes">, value: string) => void;
 }) {
   return (
     <div className="slot-list">
-      {slots.map((slot) => (
+      {slots.map((slot, index) => (
         <article className="slot-row component-slot-row" key={slot.id}>
           <div className="slot-summary">
             <StatusPill status={componentSlotPillStatus(slot.status)} label={slot.status} />
@@ -1220,6 +1228,7 @@ function ComponentSlotList({
               <span>Reference</span>
               <input
                 aria-label={`${slot.label} reference`}
+                ref={index === 0 ? firstReferenceInputRef : undefined}
                 value={slot.reference}
                 onChange={(event) => onSlotChange(slot.id, "reference", event.target.value)}
               />
