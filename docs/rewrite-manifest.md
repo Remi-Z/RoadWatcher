@@ -113,6 +113,11 @@ Build a Windows-first, local-first evidence workstation:
   GIS source path slot through the planned `gis_project` bridge path, recording
   browser fallback attempts in readiness, saved drafts, and evidence packet
   exports until Turf/PostGIS/native projection is wired.
+- Added a readiness-panel FFmpeg proxy probe that routes the selected media
+  through the planned `ffmpeg_proxy` bridge path with the explicit
+  `review-proxy` profile, recording browser fallback attempts in readiness,
+  saved drafts, and evidence packet exports until native proxy/thumbnail jobs
+  are wired.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -132,7 +137,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 82 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 84 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -182,8 +187,12 @@ not call native code in browser fallback mode, records a `gis_project`
 browser-fallback audit row with an explicit official GIS source path slot,
 carries that row into saved drafts and packet exports, and calls `gis_project`
 with `projectId`, `sourcePath`, and `layerKind` when a ready invoke bridge is
-injected. App tests verify the local CV scan probe does not call native code in
-browser fallback mode, records a `cv_scan`
+injected. App tests verify the FFmpeg proxy probe does not call native code in
+browser fallback mode, records a `ffmpeg_proxy` browser-fallback audit row with
+the selected media id and `review-proxy` profile, carries that row into saved
+drafts and packet exports, and calls `ffmpeg_proxy` with `projectId`, `mediaId`,
+and `profile` when a ready invoke bridge is injected. App tests verify the local
+CV scan probe does not call native code in browser fallback mode, records a `cv_scan`
 browser-fallback audit row with the current media and CV model slot reference,
 and carries that row into saved drafts and packet exports.
 The latest browser project snapshot smoke before the standalone setup artifact

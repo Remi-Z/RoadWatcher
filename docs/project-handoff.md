@@ -94,6 +94,10 @@ The runnable app today is the React/Vite evidence workstation:
   source path slot through the planned `gis_project` bridge path, recording
   browser fallback attempts in readiness, saved drafts, and packet exports until
   Turf/PostGIS/native projection is wired.
+- Readiness-panel FFmpeg proxy probe that routes the selected media through the
+  planned `ffmpeg_proxy` bridge path with the explicit `review-proxy` profile,
+  recording browser fallback attempts in readiness, saved drafts, and packet
+  exports until native proxy/thumbnail jobs are wired.
 - Readiness-panel local CV scan probe that routes the selected media and
   editable CV model slot through the planned `cv_scan` bridge path, recording
   browser fallback attempts in readiness, saved drafts, and packet exports until
@@ -152,6 +156,10 @@ Tests currently cover:
   invocation, records an explicit official GIS source path slot,
   persists/exports a `gis_project: browser_fallback` attempt row, and calls
   ready-bridge `gis_project` with `projectId`, `sourcePath`, and `layerKind`.
+- FFmpeg proxy probe coverage proving browser fallback avoids native
+  invocation, records the selected media id and `review-proxy` profile,
+  persists/exports a `ffmpeg_proxy: browser_fallback` attempt row, and calls
+  ready-bridge `ffmpeg_proxy` with `projectId`, `mediaId`, and `profile`.
 - CV scan probe coverage proving browser fallback avoids native invocation,
   records the current media and CV model slot reference, and persists/exports a
   `cv_scan: browser_fallback` attempt row.
@@ -189,7 +197,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 82 tests passing.
+Result: 15 files, 84 tests passing.
 
 Passing on 2026-07-08:
 
@@ -323,6 +331,10 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   invoke native code, add `gis_project: browser_fallback` rows with the official
   GIS source path slot, persist/export those rows, and call `gis_project` when a
   ready invoke bridge is injected.
+- Latest FFmpeg proxy probe coverage verified browser-mode probes do not invoke
+  native code, add `ffmpeg_proxy: browser_fallback` rows with the selected media
+  id and `review-proxy` profile, persist/export those rows, and call
+  `ffmpeg_proxy` when a ready invoke bridge is injected.
 - Latest CV scan fallback audit coverage verified browser-mode CV probes do not
   invoke native code, add `cv_scan: browser_fallback` rows with the selected
   media and CV model slot reference, and persist those rows into saved drafts

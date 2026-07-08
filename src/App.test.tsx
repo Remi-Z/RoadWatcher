@@ -543,6 +543,58 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByText(/importedFeatureCount: 7/)).toBeInTheDocument();
   });
 
+  it("records browser FFmpeg proxy probe fallbacks in drafts and export packets", async () => {
+    const repository = createMemoryProjectRepository();
+    const nativeInvoke = vi.fn<NativeInvoke>();
+    render(<App nativeInvoke={nativeInvoke} projectRepository={repository} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe FFmpeg proxy" }));
+
+    expect(nativeInvoke).not.toHaveBeenCalled();
+    expect(await screen.findByText(/ffmpeg_proxy: browser_fallback/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
+      command: "ffmpeg_proxy",
+      status: "browser_fallback",
+      requestSummary: "mediaId: media-front-001; profile: review-proxy"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("ffmpeg_proxy: browser_fallback");
+    expect(exportPanel as HTMLElement).toHaveTextContent("browser preview and packet metadata export");
+  });
+
+  it("probes the native FFmpeg proxy through the command bridge when invoke is available", async () => {
+    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
+      jobId: "ffmpeg-proxy-1",
+      proxyPath: "D:/RoadWatcherProjects/review/proxies/front.mp4",
+      thumbnailDirectory: "D:/RoadWatcherProjects/review/proxies/front-thumbs"
+    });
+
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe FFmpeg proxy" }));
+
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native FFmpeg proxy ready");
+    expect(nativeInvoke).toHaveBeenCalledWith("ffmpeg_proxy", {
+      projectId: expect.stringMatching(/^local-/),
+      mediaId: "media-front-001",
+      profile: "review-proxy"
+    });
+    expect(screen.getByText(/ffmpeg_proxy: invoked/)).toBeInTheDocument();
+    expect(screen.getByText(/proxyPath: D:\/RoadWatcherProjects\/review\/proxies\/front\.mp4/)).toBeInTheDocument();
+  });
+
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {
     render(<App />);
 

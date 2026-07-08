@@ -95,6 +95,7 @@ import {
 const defaultProjectRepository = createBrowserProjectRepository();
 const NATIVE_GPX_PATH_SLOT = "slot: persisted GPX path from native import";
 const NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT = "slot: official GIS source path from native import";
+const REVIEW_PROXY_PROFILE = "review-proxy";
 
 export function App({
   nativeInvoke,
@@ -496,6 +497,39 @@ export function App({
     setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
   }
 
+  async function handleProbeFfmpegProxy() {
+    const requestedAtIso = new Date().toISOString();
+    const mediaId = selectedClip?.mediaId ?? primaryMedia?.id ?? "slot: media id";
+    const result = await nativeCommandBridge.invoke("ffmpeg_proxy", {
+      projectId: createProjectSnapshot(currentSnapshotInput).projectId,
+      mediaId,
+      profile: REVIEW_PROXY_PROFILE
+    });
+    const resultSummary = result.ok
+      ? `jobId: ${ffmpegJobId(result.response)}; proxyPath: ${ffmpegProxyPath(
+          result.response
+        )}; thumbnailDirectory: ${ffmpegThumbnailDirectory(result.response)}`
+      : `${result.status}; fallback: ${result.fallback}; selected media: ${mediaId}`;
+    const attempt: NativeCommandAttempt = {
+      id: `ffmpeg-proxy-probe-${Date.now().toString(36)}`,
+      command: result.command,
+      status: result.status,
+      requestedAtIso,
+      requestSummary: `mediaId: ${mediaId}; profile: ${REVIEW_PROXY_PROFILE}`,
+      resultSummary
+    };
+
+    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    invalidateLatestExport();
+
+    if (result.ok) {
+      setAppStatus(`Native FFmpeg proxy ready: ${ffmpegJobId(result.response)}`);
+      return;
+    }
+
+    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
+  }
+
   async function handleMediaImport(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) {
@@ -767,6 +801,7 @@ export function App({
             nativeProjectRoot={nativeProjectRoot}
             readiness={reviewReadiness}
             onNativeProjectRootChange={handleNativeProjectRootChange}
+            onProbeFfmpegProxy={handleProbeFfmpegProxy}
             onProbeGisProjection={handleProbeGisProjection}
             onProbeGpxMatch={handleProbeGpxMatch}
             onProbeNativeProjectStore={handleProbeNativeProjectStore}
@@ -836,6 +871,7 @@ function ReviewReadinessPanel({
   nativeProjectRoot,
   onNativeProjectRootChange,
   onProbeCvScan,
+  onProbeFfmpegProxy,
   onProbeGisProjection,
   onProbeGpxMatch,
   onProbeNativeProjectStore,
@@ -845,6 +881,7 @@ function ReviewReadinessPanel({
   nativeProjectRoot: string;
   onNativeProjectRootChange: (value: string) => void;
   onProbeCvScan: () => void;
+  onProbeFfmpegProxy: () => void;
   onProbeGisProjection: () => void;
   onProbeGpxMatch: () => void;
   onProbeNativeProjectStore: () => void;
@@ -901,6 +938,10 @@ function ReviewReadinessPanel({
         <button type="button" className="button secondary native-probe-button" onClick={onProbeGisProjection}>
           <MapPinned size={15} />
           Probe GIS projection
+        </button>
+        <button type="button" className="button secondary native-probe-button" onClick={onProbeFfmpegProxy}>
+          <FileVideo size={15} />
+          Probe FFmpeg proxy
         </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeCvScan}>
           <Gauge size={15} />
@@ -1472,6 +1513,30 @@ function gisProjectedFeatureCount(response: unknown): string {
   }
 
   return "(projected feature count unavailable)";
+}
+
+function ffmpegJobId(response: unknown): string {
+  if (response && typeof response === "object" && "jobId" in response) {
+    return String((response as { jobId: unknown }).jobId);
+  }
+
+  return "(ffmpeg job id unavailable)";
+}
+
+function ffmpegProxyPath(response: unknown): string {
+  if (response && typeof response === "object" && "proxyPath" in response) {
+    return String((response as { proxyPath: unknown }).proxyPath);
+  }
+
+  return "(proxy path unavailable)";
+}
+
+function ffmpegThumbnailDirectory(response: unknown): string {
+  if (response && typeof response === "object" && "thumbnailDirectory" in response) {
+    return String((response as { thumbnailDirectory: unknown }).thumbnailDirectory);
+  }
+
+  return "(thumbnail directory unavailable)";
 }
 
 function cvJobId(response: unknown): string {
