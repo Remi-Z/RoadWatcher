@@ -31,6 +31,9 @@ The runnable app today is the React/Vite evidence workstation:
   traffic signal, bike lane, and crosswalk features, projects them onto the
   active route, persists official source features in snapshots, and queues GIS
   projection jobs.
+- Browser GIS-projection fallback audit entries that record
+  `gis_project: browser_fallback` in readiness, saved drafts, and packet exports
+  until Turf/PostGIS/native projection is wired.
 - Browser-native RoadWatcher project JSON import that restores portable review
   snapshots first, then falls back to GeoJSON parsing for non-project JSON.
 - Editable component slot registry for Rust/Cargo, GPStitch, Valhalla, OSRM,
@@ -136,8 +139,8 @@ Tests currently cover:
   persistence, and packet export when browser GPX parsing stands in for native
   Valhalla/OSRM matching.
 - GeoJSON import coverage for point/line normalization, unsupported-layer
-  rejection, GIS job creation, UI projection, and snapshot official-feature
-  persistence.
+  rejection, GIS job creation, UI projection, GIS-projection fallback audit
+  entries, and snapshot official-feature persistence.
 - RoadWatcher project JSON import coverage for restoring incident, media, route,
   and projected feature state without treating project snapshots as GeoJSON.
 - Component slot coverage for editable references/status/notes, project snapshot
@@ -151,7 +154,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 73 tests passing.
+Result: 15 files, 74 tests passing.
 
 Passing on 2026-07-08:
 
@@ -215,6 +218,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   and packet exports.
 - Latest GIS/import smoke check verified the import control, projected feature
   rows, GIS slot visibility, export links, and a clean browser console.
+- Latest GIS-projection fallback audit coverage verified browser GeoJSON imports
+  add `gis_project: browser_fallback` rows and persist those rows into saved
+  drafts and packet exports.
 - Latest JSON/export smoke check verified the import control, route/GIS sections,
   generated JSON/Markdown download links, and only Vite/React dev info in the
   browser console.

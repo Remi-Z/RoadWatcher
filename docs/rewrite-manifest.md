@@ -39,6 +39,9 @@ Build a Windows-first, local-first evidence workstation:
 - Added browser-native GeoJSON import fallback that normalizes supported official
   road features, projects them onto the active route, persists official feature
   sources in snapshots, and queues GIS projection jobs.
+- Added browser GIS-projection fallback audit entries so imported official GIS
+  files leave `gis_project: browser_fallback` records in readiness, saved
+  drafts, and packet exports until Turf/PostGIS/native projection is wired.
 - Added browser-native RoadWatcher project JSON import that restores portable
   review snapshots before falling back to GeoJSON parsing.
 - Added editable component slot registry for Rust/Cargo, GPStitch, Valhalla,
@@ -107,7 +110,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 73 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 74 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -154,8 +157,11 @@ assets, queued proxy jobs, editable placeholder reel clips, exported Markdown
 entries, and `media_import` browser-fallback audit entries in drafts and packet
 exports. GPX import tests verify browser-parsed routes queue Valhalla jobs and
 record `gpx_match` browser-fallback audit entries in drafts and packet exports.
-The latest browser load smoke after that change verified the RoadWatcher screen,
-timeline, and import control render with no browser warnings/errors.
+GeoJSON import tests verify browser-projected official GIS features queue GIS
+jobs and record `gis_project` browser-fallback audit entries in drafts and
+packet exports. The latest browser load smoke after that change verified the
+RoadWatcher screen, timeline, and import control render with no browser
+warnings/errors.
 Stale-export tests verify incident draft and component slot edits hide
 previously generated packet links and ask the reviewer to regenerate the packet.
 Browser stale-export smoke verified a generated 3-link export preview
@@ -214,7 +220,8 @@ network/DNS access.
   Valhalla map matching, OSRM fallback, and official-feature reprojection
   against the matched route.
 - Browser GeoJSON import is a fallback only. It supports WGS84 Point and
-  LineString features for MVP review. Turf.js should own richer browser geometry
+  LineString features for MVP review and now records `gis_project`
+  browser-fallback audit entries. Turf.js should own richer browser geometry
   operations, and PostGIS should own production import, CRS normalization, and
   spatial indexing.
 - React Konva is installed but the current timeline is HTML/dnd-kit with tested

@@ -18,8 +18,9 @@ native source paths/file handles, imported GPX tracks update the route preview
 and queue Valhalla matching with `gpx_match` fallback audit entries until
 native Valhalla/OSRM matching is wired,
 imported GeoJSON layers project supported official road features onto the active
-route, RoadWatcher `.json` snapshots restore portable review state before
-falling back to GeoJSON parsing, and export packet previews produce downloadable
+route with `gis_project` fallback audit entries until Turf/PostGIS/native
+projection is wired, RoadWatcher `.json` snapshots restore portable review state
+before falling back to GeoJSON parsing, and export packet previews produce downloadable
 Markdown/JSON artifacts, a standalone native setup checklist Markdown artifact,
 plus a restorable RoadWatcher project snapshot JSON from the current draft, then
 invalidate when later edits make those downloads stale.

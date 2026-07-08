@@ -454,12 +454,17 @@ export function App({
 
   function importGeoJsonText(text: string, fileName: string) {
     const importedFeatures = parseOfficialFeaturesFromGeoJson(text, fileName);
+    const requestedAtIso = new Date().toISOString();
     setOfficialFeatures((currentFeatures) => {
       const nextFeatures = [...currentFeatures, ...importedFeatures];
       setProjectedRoadFeatures(projectFeaturesOntoRoute(route, nextFeatures, 90).map(normalizeProjectedFeatureReview));
       return nextFeatures;
     });
     setJobs((currentJobs) => [...currentJobs, createGisProjectionJob(fileName, importedFeatures.length, currentJobs.length)]);
+    setNativeCommandAttempts((currentAttempts) => [
+      createBrowserGisProjectionAttempt(fileName, importedFeatures.length, requestedAtIso),
+      ...currentAttempts
+    ].slice(0, 8));
     invalidateLatestExport(undefined);
     setAppStatus(`Imported ${importedFeatures.length} official GIS features from ${fileName}`);
   }
@@ -1283,6 +1288,17 @@ function createBrowserGpxMatchAttempt(fileName: string, routePointCount: number,
     requestedAtIso,
     requestSummary: `gpxPath: browser import: ${fileName}; matcher: Valhalla`,
     resultSummary: `Valhalla/OSRM native matching pending; browser parsed ${routePointCount} route points.`
+  };
+}
+
+function createBrowserGisProjectionAttempt(fileName: string, importedFeatureCount: number, requestedAtIso: string): NativeCommandAttempt {
+  return {
+    id: `gis-project-${Date.now().toString(36)}`,
+    command: "gis_project",
+    status: "browser_fallback",
+    requestedAtIso,
+    requestSummary: `sourcePath: browser import: ${fileName}; layerKind: official road features`,
+    resultSummary: `Turf/PostGIS native projection pending; browser imported ${importedFeatureCount} official GIS features.`
   };
 }
 

@@ -539,6 +539,48 @@ describe("RoadWatcher workstation", () => {
     expect(within(featurePanel as HTMLElement).getByText("Imported cycling network")).toBeInTheDocument();
   });
 
+  it("records browser GIS projection fallbacks in drafts and export packets", async () => {
+    const repository = createMemoryProjectRepository();
+    render(<App projectRepository={repository} />);
+
+    const geoJsonFile = new File(
+      [
+        JSON.stringify({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: { id: "signal-imported", kind: "traffic_light", sourceLayer: "Imported traffic signals" },
+              geometry: { type: "Point", coordinates: [-79.33747, 43.8565] }
+            }
+          ]
+        })
+      ],
+      "official-road-features.geojson",
+      { type: "application/geo+json", lastModified: Date.parse("2026-07-06T18:00:00.000Z") }
+    );
+
+    fireEvent.change(screen.getByLabelText("Import media files"), { target: { files: [geoJsonFile] } });
+
+    expect(await screen.findByText("Official GIS projection: official-road-features.geojson")).toBeInTheDocument();
+    expect(screen.getByText(/gis_project: browser_fallback/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
+      command: "gis_project",
+      status: "browser_fallback",
+      requestSummary: "sourcePath: browser import: official-road-features.geojson; layerKind: official road features"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("gis_project: browser_fallback");
+    expect(exportPanel as HTMLElement).toHaveTextContent("Turf/PostGIS native projection pending");
+  });
+
   it("imports RoadWatcher project JSON snapshots without treating them as GeoJSON layers", async () => {
     const repository = createMemoryProjectRepository();
     render(<App projectRepository={repository} />);
