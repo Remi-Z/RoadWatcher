@@ -93,6 +93,7 @@ import {
 } from "./features/timeline/timelineModel";
 
 const defaultProjectRepository = createBrowserProjectRepository();
+const NATIVE_MEDIA_SOURCE_PATH_SLOT = "slot: native media source path from file picker";
 const NATIVE_GPX_PATH_SLOT = "slot: persisted GPX path from native import";
 const NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT = "slot: official GIS source path from native import";
 const REVIEW_PROXY_PROFILE = "review-proxy";
@@ -393,6 +394,39 @@ export function App({
 
     if (result.ok) {
       setAppStatus(`Native project store ready: ${nativeProjectDirectory(result.response)}`);
+      return;
+    }
+
+    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
+  }
+
+  async function handleProbeMediaImport() {
+    const requestedAtIso = new Date().toISOString();
+    const result = await nativeCommandBridge.invoke("media_import", {
+      projectId: createProjectSnapshot(currentSnapshotInput).projectId,
+      sourcePath: NATIVE_MEDIA_SOURCE_PATH_SLOT
+    });
+    const resultSummary = result.ok
+      ? `mediaId: ${mediaImportMediaId(result.response)}; hash: ${mediaImportHash(
+          result.response
+        )}; durationSeconds: ${mediaImportDurationSeconds(result.response)}; proxyJobId: ${mediaImportProxyJobId(
+          result.response
+        )}`
+      : `${result.status}; fallback: ${result.fallback}; browser media references: ${media.length}`;
+    const attempt: NativeCommandAttempt = {
+      id: `media-import-probe-${Date.now().toString(36)}`,
+      command: result.command,
+      status: result.status,
+      requestedAtIso,
+      requestSummary: `sourcePath: ${NATIVE_MEDIA_SOURCE_PATH_SLOT}`,
+      resultSummary
+    };
+
+    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    invalidateLatestExport();
+
+    if (result.ok) {
+      setAppStatus(`Native media import ready: ${mediaImportMediaId(result.response)}`);
       return;
     }
 
@@ -804,6 +838,7 @@ export function App({
             onProbeFfmpegProxy={handleProbeFfmpegProxy}
             onProbeGisProjection={handleProbeGisProjection}
             onProbeGpxMatch={handleProbeGpxMatch}
+            onProbeMediaImport={handleProbeMediaImport}
             onProbeNativeProjectStore={handleProbeNativeProjectStore}
             onProbeCvScan={handleProbeCvScan}
           />
@@ -874,6 +909,7 @@ function ReviewReadinessPanel({
   onProbeFfmpegProxy,
   onProbeGisProjection,
   onProbeGpxMatch,
+  onProbeMediaImport,
   onProbeNativeProjectStore,
   readiness
 }: {
@@ -884,6 +920,7 @@ function ReviewReadinessPanel({
   onProbeFfmpegProxy: () => void;
   onProbeGisProjection: () => void;
   onProbeGpxMatch: () => void;
+  onProbeMediaImport: () => void;
   onProbeNativeProjectStore: () => void;
   readiness: ReviewReadiness;
 }) {
@@ -930,6 +967,10 @@ function ReviewReadinessPanel({
         <button type="button" className="button secondary native-probe-button" onClick={onProbeNativeProjectStore}>
           <Settings size={15} />
           Probe native project store
+        </button>
+        <button type="button" className="button secondary native-probe-button" onClick={onProbeMediaImport}>
+          <Upload size={15} />
+          Probe media import
         </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeGpxMatch}>
           <Route size={15} />
@@ -1465,6 +1506,38 @@ function nativeProjectDirectory(response: unknown): string {
   }
 
   return "(native project directory unavailable)";
+}
+
+function mediaImportMediaId(response: unknown): string {
+  if (response && typeof response === "object" && "mediaId" in response) {
+    return String((response as { mediaId: unknown }).mediaId);
+  }
+
+  return "(media id unavailable)";
+}
+
+function mediaImportHash(response: unknown): string {
+  if (response && typeof response === "object" && "hash" in response) {
+    return String((response as { hash: unknown }).hash);
+  }
+
+  return "(hash unavailable)";
+}
+
+function mediaImportDurationSeconds(response: unknown): string {
+  if (response && typeof response === "object" && "durationSeconds" in response) {
+    return String((response as { durationSeconds: unknown }).durationSeconds);
+  }
+
+  return "(duration unavailable)";
+}
+
+function mediaImportProxyJobId(response: unknown): string {
+  if (response && typeof response === "object" && "proxyJobId" in response) {
+    return String((response as { proxyJobId: unknown }).proxyJobId);
+  }
+
+  return "(proxy job id unavailable)";
 }
 
 function gpxRouteId(response: unknown): string {

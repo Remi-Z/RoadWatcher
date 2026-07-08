@@ -595,6 +595,58 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByText(/proxyPath: D:\/RoadWatcherProjects\/review\/proxies\/front\.mp4/)).toBeInTheDocument();
   });
 
+  it("records browser media import probe fallbacks in drafts and export packets", async () => {
+    const repository = createMemoryProjectRepository();
+    const nativeInvoke = vi.fn<NativeInvoke>();
+    render(<App nativeInvoke={nativeInvoke} projectRepository={repository} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe media import" }));
+
+    expect(nativeInvoke).not.toHaveBeenCalled();
+    expect(await screen.findByText(/media_import: browser_fallback/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
+      command: "media_import",
+      status: "browser_fallback",
+      requestSummary: "sourcePath: slot: native media source path from file picker"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("media_import: browser_fallback");
+    expect(exportPanel as HTMLElement).toHaveTextContent("browser file references and placeholder clips");
+  });
+
+  it("probes the native media import through the command bridge when invoke is available", async () => {
+    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
+      mediaId: "native-media-front",
+      hash: "sha256:abc123",
+      durationSeconds: 91,
+      proxyJobId: "proxy-job-front"
+    });
+
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe media import" }));
+
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native media import ready");
+    expect(nativeInvoke).toHaveBeenCalledWith("media_import", {
+      projectId: expect.stringMatching(/^local-/),
+      sourcePath: "slot: native media source path from file picker"
+    });
+    expect(screen.getByText(/media_import: invoked/)).toBeInTheDocument();
+    expect(screen.getByText(/hash: sha256:abc123/)).toBeInTheDocument();
+  });
+
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {
     render(<App />);
 

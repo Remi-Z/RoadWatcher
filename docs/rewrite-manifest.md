@@ -101,6 +101,11 @@ Build a Windows-first, local-first evidence workstation:
   browser fallback and ready-bridge `project_create` attempts are visible in the
   readiness panel, saved in portable snapshots, and included in evidence packet
   Markdown/JSON exports.
+- Added a readiness-panel media import probe that routes an explicit native
+  media source path slot through the planned `media_import` bridge path,
+  recording browser fallback attempts in readiness, saved drafts, and evidence
+  packet exports until Tauri file handles/native path import, hashing, metadata
+  probing, and proxy queuing are wired.
 - Added a readiness-panel local CV scan probe that routes the selected media and
   editable CV model slot through the planned `cv_scan` bridge path, recording
   browser fallback attempts in readiness, saved drafts, and evidence packet
@@ -137,7 +142,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 84 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 86 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -178,6 +183,11 @@ project-store probes, saved in drafts, rendered in the readiness panel, and
 exported in evidence packet Markdown/JSON.
 App tests verify failed project-store probe invokes keep the app alive, update
 the status banner, and render a `project_create: failed` audit row.
+App tests verify the media import probe does not call native code in browser
+fallback mode, records a `media_import: browser_fallback` audit row with an
+explicit native media source path slot, carries that row into saved drafts and
+packet exports, and calls `media_import` with `projectId` and `sourcePath` when
+a ready invoke bridge is injected.
 App tests verify the GPX matcher probe does not call native code in browser
 fallback mode, records a `gpx_match: browser_fallback` audit row with an
 explicit persisted GPX path slot, carries that row into saved drafts and packet

@@ -86,6 +86,11 @@ The runnable app today is the React/Vite evidence workstation:
 - Native command attempt audit trail for the project-store probe; browser
   fallback and ready-bridge `project_create` attempts are visible in readiness,
   saved in portable snapshots, and exported with evidence packet Markdown/JSON.
+- Readiness-panel media import probe that routes an explicit native media
+  source path slot through the planned `media_import` bridge path, recording
+  browser fallback attempts in readiness, saved drafts, and packet exports until
+  Tauri file handles/native path import, hashing, metadata probing, and proxy
+  queuing are wired.
 - Readiness-panel GPX matcher probe that routes an explicit persisted GPX path
   slot through the planned `gpx_match` bridge path, recording browser fallback
   attempts in readiness, saved drafts, and packet exports until Valhalla/OSRM
@@ -148,6 +153,10 @@ Tests currently cover:
   and evidence packet Markdown/JSON export after project-store probes.
 - Failed project-store probe coverage proving rejected native invokes update the
   status banner and render a `project_create: failed` attempt row.
+- Media import probe coverage proving browser fallback avoids native invocation,
+  records an explicit native media source path slot, persists/exports a
+  `media_import: browser_fallback` attempt row, and calls ready-bridge
+  `media_import` with `projectId` and `sourcePath`.
 - GPX matcher probe coverage proving browser fallback avoids native invocation,
   records an explicit persisted GPX path slot, persists/exports a
   `gpx_match: browser_fallback` attempt row, and calls ready-bridge `gpx_match`
@@ -197,7 +206,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 84 tests passing.
+Result: 15 files, 86 tests passing.
 
 Passing on 2026-07-08:
 
@@ -323,6 +332,10 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest native invoke failure coverage verified rejected project-store probes
   are converted to explicit failed results and visible audit rows instead of
   unhandled UI errors.
+- Latest media import probe coverage verified browser-mode probes do not invoke
+  native code, add `media_import: browser_fallback` rows with the native media
+  source path slot, persist/export those rows, and call `media_import` when a
+  ready invoke bridge is injected.
 - Latest GPX matcher probe coverage verified browser-mode probes do not invoke
   native code, add `gpx_match: browser_fallback` rows with the persisted GPX
   path slot, persist/export those rows, and call `gpx_match` when a ready invoke
