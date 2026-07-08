@@ -109,6 +109,10 @@ Build a Windows-first, local-first evidence workstation:
   GPX path slot through the planned `gpx_match` bridge path, recording browser
   fallback attempts in readiness, saved drafts, and evidence packet exports
   until Valhalla/OSRM matching is wired.
+- Added a readiness-panel GIS projection probe that routes an explicit official
+  GIS source path slot through the planned `gis_project` bridge path, recording
+  browser fallback attempts in readiness, saved drafts, and evidence packet
+  exports until Turf/PostGIS/native projection is wired.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -128,7 +132,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 80 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 82 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -173,8 +177,13 @@ App tests verify the GPX matcher probe does not call native code in browser
 fallback mode, records a `gpx_match: browser_fallback` audit row with an
 explicit persisted GPX path slot, carries that row into saved drafts and packet
 exports, and calls `gpx_match` with `projectId`, `gpxPath`, and `matcher` when a
-ready invoke bridge is injected. App tests verify the local CV scan probe does
-not call native code in browser fallback mode, records a `cv_scan`
+ready invoke bridge is injected. App tests verify the GIS projection probe does
+not call native code in browser fallback mode, records a `gis_project`
+browser-fallback audit row with an explicit official GIS source path slot,
+carries that row into saved drafts and packet exports, and calls `gis_project`
+with `projectId`, `sourcePath`, and `layerKind` when a ready invoke bridge is
+injected. App tests verify the local CV scan probe does not call native code in
+browser fallback mode, records a `cv_scan`
 browser-fallback audit row with the current media and CV model slot reference,
 and carries that row into saved drafts and packet exports.
 The latest browser project snapshot smoke before the standalone setup artifact

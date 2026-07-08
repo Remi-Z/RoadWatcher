@@ -39,11 +39,12 @@ browser-safe Tauri invoke adapter is resolved only inside a detected Tauri shell
 and that bridge status is carried into the readiness panel and exported packets.
 Rejected native invokes are converted into explicit failed command results so
 the app can keep running and record the failed attempt.
-The readiness panel also includes tested project-store, GPX matcher, and local
-CV scan probes that exercise the planned `project_create`, `gpx_match`, and
-`cv_scan` bridge paths when invoke is available and report the browser fallback
-otherwise; the native project root and CV model slot remain editable, saved in
-portable project snapshots, and included in exports/setup checklists. Probe
+The readiness panel also includes tested project-store, GPX matcher, GIS
+projection, and local CV scan probes that exercise the planned
+`project_create`, `gpx_match`, `gis_project`, and `cv_scan` bridge paths when
+invoke is available and report the browser fallback otherwise; the native
+project root and CV model slot remain editable, saved in portable project
+snapshots, and included in exports/setup checklists. Probe
 attempts are also recorded in the readiness panel and carried into saved drafts
 and packet exports so native bridge trials leave an audit trail.
 Projected road features are reviewer-markable as

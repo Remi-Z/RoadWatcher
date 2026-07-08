@@ -491,6 +491,58 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByText(/matchedPointCount: 42/)).toBeInTheDocument();
   });
 
+  it("records browser GIS projection fallbacks in drafts and export packets", async () => {
+    const repository = createMemoryProjectRepository();
+    const nativeInvoke = vi.fn<NativeInvoke>();
+    render(<App nativeInvoke={nativeInvoke} projectRepository={repository} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe GIS projection" }));
+
+    expect(nativeInvoke).not.toHaveBeenCalled();
+    expect(await screen.findByText(/gis_project: browser_fallback/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
+      command: "gis_project",
+      status: "browser_fallback",
+      requestSummary: "sourcePath: slot: official GIS source path from native import; layerKind: official road features"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("gis_project: browser_fallback");
+    expect(exportPanel as HTMLElement).toHaveTextContent("browser GeoJSON projection");
+  });
+
+  it("probes the native GIS projection through the command bridge when invoke is available", async () => {
+    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
+      featureSourceId: "official-york-traffic-1",
+      importedFeatureCount: 7,
+      projectedFeatureCount: 3
+    });
+
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe GIS projection" }));
+
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native GIS projection ready");
+    expect(nativeInvoke).toHaveBeenCalledWith("gis_project", {
+      projectId: expect.stringMatching(/^local-/),
+      sourcePath: "slot: official GIS source path from native import",
+      layerKind: "official road features"
+    });
+    expect(screen.getByText(/gis_project: invoked/)).toBeInTheDocument();
+    expect(screen.getByText(/importedFeatureCount: 7/)).toBeInTheDocument();
+  });
+
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {
     render(<App />);
 

@@ -90,6 +90,10 @@ The runnable app today is the React/Vite evidence workstation:
   slot through the planned `gpx_match` bridge path, recording browser fallback
   attempts in readiness, saved drafts, and packet exports until Valhalla/OSRM
   matching is wired.
+- Readiness-panel GIS projection probe that routes an explicit official GIS
+  source path slot through the planned `gis_project` bridge path, recording
+  browser fallback attempts in readiness, saved drafts, and packet exports until
+  Turf/PostGIS/native projection is wired.
 - Readiness-panel local CV scan probe that routes the selected media and
   editable CV model slot through the planned `cv_scan` bridge path, recording
   browser fallback attempts in readiness, saved drafts, and packet exports until
@@ -144,6 +148,10 @@ Tests currently cover:
   records an explicit persisted GPX path slot, persists/exports a
   `gpx_match: browser_fallback` attempt row, and calls ready-bridge `gpx_match`
   with `projectId`, `gpxPath`, and `matcher`.
+- GIS projection probe coverage proving browser fallback avoids native
+  invocation, records an explicit official GIS source path slot,
+  persists/exports a `gis_project: browser_fallback` attempt row, and calls
+  ready-bridge `gis_project` with `projectId`, `sourcePath`, and `layerKind`.
 - CV scan probe coverage proving browser fallback avoids native invocation,
   records the current media and CV model slot reference, and persists/exports a
   `cv_scan: browser_fallback` attempt row.
@@ -181,7 +189,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 80 tests passing.
+Result: 15 files, 82 tests passing.
 
 Passing on 2026-07-08:
 
@@ -311,6 +319,10 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   native code, add `gpx_match: browser_fallback` rows with the persisted GPX
   path slot, persist/export those rows, and call `gpx_match` when a ready invoke
   bridge is injected.
+- Latest GIS projection probe coverage verified browser-mode probes do not
+  invoke native code, add `gis_project: browser_fallback` rows with the official
+  GIS source path slot, persist/export those rows, and call `gis_project` when a
+  ready invoke bridge is injected.
 - Latest CV scan fallback audit coverage verified browser-mode CV probes do not
   invoke native code, add `cv_scan: browser_fallback` rows with the selected
   media and CV model slot reference, and persist those rows into saved drafts

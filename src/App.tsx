@@ -94,6 +94,7 @@ import {
 
 const defaultProjectRepository = createBrowserProjectRepository();
 const NATIVE_GPX_PATH_SLOT = "slot: persisted GPX path from native import";
+const NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT = "slot: official GIS source path from native import";
 
 export function App({
   nativeInvoke,
@@ -462,6 +463,39 @@ export function App({
     setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
   }
 
+  async function handleProbeGisProjection() {
+    const requestedAtIso = new Date().toISOString();
+    const layerKind = "official road features";
+    const result = await nativeCommandBridge.invoke("gis_project", {
+      projectId: createProjectSnapshot(currentSnapshotInput).projectId,
+      sourcePath: NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT,
+      layerKind
+    });
+    const resultSummary = result.ok
+      ? `featureSourceId: ${gisFeatureSourceId(result.response)}; importedFeatureCount: ${gisImportedFeatureCount(
+          result.response
+        )}; projectedFeatureCount: ${gisProjectedFeatureCount(result.response)}`
+      : `${result.status}; fallback: ${result.fallback}; browser official features: ${officialFeatures.length}`;
+    const attempt: NativeCommandAttempt = {
+      id: `gis-project-probe-${Date.now().toString(36)}`,
+      command: result.command,
+      status: result.status,
+      requestedAtIso,
+      requestSummary: `sourcePath: ${NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT}; layerKind: ${layerKind}`,
+      resultSummary
+    };
+
+    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    invalidateLatestExport();
+
+    if (result.ok) {
+      setAppStatus(`Native GIS projection ready: ${gisFeatureSourceId(result.response)}`);
+      return;
+    }
+
+    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
+  }
+
   async function handleMediaImport(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) {
@@ -733,6 +767,7 @@ export function App({
             nativeProjectRoot={nativeProjectRoot}
             readiness={reviewReadiness}
             onNativeProjectRootChange={handleNativeProjectRootChange}
+            onProbeGisProjection={handleProbeGisProjection}
             onProbeGpxMatch={handleProbeGpxMatch}
             onProbeNativeProjectStore={handleProbeNativeProjectStore}
             onProbeCvScan={handleProbeCvScan}
@@ -801,6 +836,7 @@ function ReviewReadinessPanel({
   nativeProjectRoot,
   onNativeProjectRootChange,
   onProbeCvScan,
+  onProbeGisProjection,
   onProbeGpxMatch,
   onProbeNativeProjectStore,
   readiness
@@ -809,6 +845,7 @@ function ReviewReadinessPanel({
   nativeProjectRoot: string;
   onNativeProjectRootChange: (value: string) => void;
   onProbeCvScan: () => void;
+  onProbeGisProjection: () => void;
   onProbeGpxMatch: () => void;
   onProbeNativeProjectStore: () => void;
   readiness: ReviewReadiness;
@@ -860,6 +897,10 @@ function ReviewReadinessPanel({
         <button type="button" className="button secondary native-probe-button" onClick={onProbeGpxMatch}>
           <Route size={15} />
           Probe GPX matcher
+        </button>
+        <button type="button" className="button secondary native-probe-button" onClick={onProbeGisProjection}>
+          <MapPinned size={15} />
+          Probe GIS projection
         </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeCvScan}>
           <Gauge size={15} />
@@ -1402,6 +1443,30 @@ function gpxMatchedPointCount(response: unknown): string {
 }
 
 function gpxProjectedFeatureCount(response: unknown): string {
+  if (response && typeof response === "object" && "projectedFeatureCount" in response) {
+    return String((response as { projectedFeatureCount: unknown }).projectedFeatureCount);
+  }
+
+  return "(projected feature count unavailable)";
+}
+
+function gisFeatureSourceId(response: unknown): string {
+  if (response && typeof response === "object" && "featureSourceId" in response) {
+    return String((response as { featureSourceId: unknown }).featureSourceId);
+  }
+
+  return "(feature source id unavailable)";
+}
+
+function gisImportedFeatureCount(response: unknown): string {
+  if (response && typeof response === "object" && "importedFeatureCount" in response) {
+    return String((response as { importedFeatureCount: unknown }).importedFeatureCount);
+  }
+
+  return "(imported feature count unavailable)";
+}
+
+function gisProjectedFeatureCount(response: unknown): string {
   if (response && typeof response === "object" && "projectedFeatureCount" in response) {
     return String((response as { projectedFeatureCount: unknown }).projectedFeatureCount);
   }
