@@ -25,9 +25,10 @@ imported GeoJSON layers project supported official road features onto the active
 route with `gis_project` fallback audit entries until Turf/PostGIS/native
 projection is wired, RoadWatcher `.json` snapshots restore portable review state
 before falling back to GeoJSON parsing, and export packet previews produce downloadable
-Markdown/JSON artifacts, a standalone native setup checklist Markdown artifact,
-plus a restorable RoadWatcher project snapshot JSON from the current draft, then
-invalidate when later edits make those downloads stale.
+Markdown/JSON artifacts with source media metadata, a standalone native setup
+checklist Markdown artifact, plus a restorable RoadWatcher project snapshot JSON
+from the current draft, then invalidate when later edits make those downloads
+stale.
 A review-readiness panel and exported packet section summarize whether the
 browser fallback can export and which native slots/jobs still block the full
 workflow, including a native setup checklist with per-slot references,

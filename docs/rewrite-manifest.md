@@ -23,6 +23,9 @@ Build a Windows-first, local-first evidence workstation:
   behavior, and export packet preview generation.
 - Added project snapshot and packet builder helpers that can become Tauri DTOs.
 - Added browser-downloadable Markdown/JSON evidence packet artifacts.
+- Added source media duration, detected-start, file-size, and hash metadata to
+  evidence packet Markdown so browser-visible media provenance travels with
+  exports.
 - Added projected road-feature review rows with provenance.
 - Added browser-native media import fallback that records selected files as
   referenced assets, queues proxy jobs for imported videos, and appends
@@ -175,6 +178,8 @@ timing, and export Markdown updates. The latest browser timeline smoke used the
 action menu to produce a four-clip edited reel and export Markdown with the
 split clip ranges. Project snapshot export tests verify `*-project.json`
 downloads parse through `parseSnapshot` and retain edited clips, media, and jobs.
+Evidence packet tests verify source media metadata is carried into Markdown
+exports alongside the JSON source media records.
 Native setup artifact tests verify `*-native-setup.md` downloads include saved
 slot references, verification commands, linked blocked jobs, runtime mode, and
 planned Tauri command slots with request/response field manifests.

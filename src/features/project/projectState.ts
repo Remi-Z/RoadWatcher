@@ -160,7 +160,14 @@ function buildMarkdown(packet: EvidencePacket["summaryJson"]): string {
     .map((clip) => `- ${clip.label}: ${Math.round(clip.sourceInSeconds)}s-${Math.round(clip.sourceOutSeconds)}s`)
     .join("\n");
 
-  const mediaLines = packet.sourceMedia.map((asset) => `- ${asset.fileName}: ${asset.originalPath}`).join("\n");
+  const mediaLines = packet.sourceMedia
+    .map(
+      (asset) =>
+        `- ${asset.fileName}: ${asset.originalPath}; duration: ${asset.durationSeconds}s; detected start: ${blank(
+          asset.detectedStart
+        )}; size: ${asset.fileSizeBytes} bytes; hash: ${blank(asset.hash)}`
+    )
+    .join("\n");
   const componentSlotLines = packet.componentSlots
     .map((slot) => {
       const reference = slot.reference.trim() || "(blank)";

@@ -75,6 +75,10 @@ describe("project state", () => {
     });
     expect(packet.summaryJson.nativeProjectRoot).toBe("C:/RoadWatcher/native-projects");
     expect(packet.summaryJson.sourceMedia).toHaveLength(2);
+    expect(packet.summaryMarkdown).toContain("duration: 4260s");
+    expect(packet.summaryMarkdown).toContain("detected start: 2026-07-06 14:00:00 -04:00");
+    expect(packet.summaryMarkdown).toContain("size: 8120000000 bytes");
+    expect(packet.summaryMarkdown).toContain("hash: sha256 pending after import");
     expect(packet.summaryJson.projectedFeatures[0].sourceLayer).toContain("slot:");
     expect(packet.summaryJson.projectedFeatures[0].reviewStatus).toBe("needs_review");
     expect(packet.summaryMarkdown).toContain("review needs_review");
