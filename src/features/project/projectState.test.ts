@@ -67,6 +67,7 @@ describe("project state", () => {
     expect(packet.fileBaseName).toMatch(/^roadwatcher-evidence-/);
     expect(packet.summaryMarkdown).toContain("ABC1234");
     expect(packet.summaryMarkdown).toContain("Reviewer confirmed details.");
+    expect(packet.summaryMarkdown).toContain("- Approach: 812s-836s; media: front-cam-2026-07-06-ride-01.mp4");
     expect(packet.summaryJson.incident.plate).toBe("ABC1234");
     expect(packet.summaryJson.nativeCommandAttempts[0]).toMatchObject({
       command: "project_create",

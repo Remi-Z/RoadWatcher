@@ -147,6 +147,7 @@ export function parseSnapshot(text: string): ProjectSnapshot {
 }
 
 function buildMarkdown(packet: EvidencePacket["summaryJson"]): string {
+  const mediaFileNameById = new Map(packet.sourceMedia.map((asset) => [asset.id, asset.fileName]));
   const featureLines = packet.projectedFeatures
     .map(
       (feature) =>
@@ -157,7 +158,10 @@ function buildMarkdown(packet: EvidencePacket["summaryJson"]): string {
     .join("\n");
 
   const clipLines = packet.clips
-    .map((clip) => `- ${clip.label}: ${Math.round(clip.sourceInSeconds)}s-${Math.round(clip.sourceOutSeconds)}s`)
+    .map((clip) => {
+      const mediaLabel = mediaFileNameById.get(clip.mediaId) ?? clip.mediaId;
+      return `- ${clip.label}: ${Math.round(clip.sourceInSeconds)}s-${Math.round(clip.sourceOutSeconds)}s; media: ${mediaLabel}`;
+    })
     .join("\n");
 
   const mediaLines = packet.sourceMedia
