@@ -12,8 +12,10 @@ remove controls with a command-menu fallback, and evidence packet generation. Th
 inspector is editable, including manual incident Start/End timing after clip
 selection, drafts can be saved to and restored from browser-local storage when
 available, imported media is referenced by filename with queued proxy jobs and
-video imports add conservative placeholder clips to the editable reel, imported
-GPX tracks update the route preview and queue Valhalla matching,
+video imports add conservative placeholder clips to the editable reel, browser
+media imports add `media_import` fallback audit entries until Tauri can provide
+native source paths/file handles, imported GPX tracks update the route preview
+and queue Valhalla matching,
 imported GeoJSON layers project supported official road features onto the active
 route, RoadWatcher `.json` snapshots restore portable review state before
 falling back to GeoJSON parsing, and export packet previews produce downloadable

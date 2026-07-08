@@ -19,6 +19,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Browser-native media import fallback that records selected files by reference,
   queues proxy jobs for imported videos, and appends conservative placeholder
   clips to the editable evidence reel.
+- Browser media-import fallback audit entries that record
+  `media_import: browser_fallback` in readiness, saved drafts, and packet
+  exports until Tauri can supply native source paths/file handles.
 - Browser-native GPX import fallback that parses timed track points, updates the
   route preview, persists the route in snapshots, and queues Valhalla matching.
 - Browser-native GeoJSON import fallback that normalizes supported stop sign,
@@ -122,6 +125,8 @@ Tests currently cover:
   rows.
 - Media import coverage for browser-selected files, queued proxy jobs, and
   placeholder reel clips for imported videos.
+- Media-import fallback audit coverage for readiness rendering, saved draft
+  persistence, and packet export when browser file inputs lack native paths.
 - GPX import coverage for timed track parsing, invalid GPX rejection, Valhalla
   job creation, and UI route import.
 - GeoJSON import coverage for point/line normalization, unsupported-layer
@@ -140,7 +145,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 71 tests passing.
+Result: 15 files, 72 tests passing.
 
 Passing on 2026-07-08:
 
@@ -226,6 +231,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest media-import implementation coverage verified a browser-imported video
   becomes a referenced media asset, queues a proxy job, appends an editable
   `Imported ...` reel clip, and appears in exported Markdown.
+- Latest media-import fallback audit coverage verified browser media imports add
+  `media_import: browser_fallback` rows and persist those rows into saved drafts
+  and packet exports.
 - Latest browser load smoke after the media-import timeline change verified the
   RoadWatcher screen, timeline, and import control render with no browser
   warnings/errors.

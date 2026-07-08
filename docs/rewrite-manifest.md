@@ -27,6 +27,9 @@ Build a Windows-first, local-first evidence workstation:
 - Added browser-native media import fallback that records selected files as
   referenced assets, queues proxy jobs for imported videos, and appends
   conservative placeholder clips to the editable evidence reel.
+- Added browser media-import fallback audit entries so selected media files
+  leave `media_import: browser_fallback` records in readiness, saved drafts, and
+  packet exports until Tauri supplies native source paths/file handles.
 - Added browser-native GPX import fallback that parses timed track points,
   updates the route preview, persists route points in snapshots, and queues
   Valhalla matching.
@@ -101,7 +104,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 71 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 72 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -144,8 +147,9 @@ verified three export downloads, decoded the `local-...-browser42-project.json`
 artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4
 jobs, 2 media references, and no browser console warnings/errors.
 Media import tests verify browser-selected videos become referenced media
-assets, queued proxy jobs, editable placeholder reel clips, and exported
-Markdown entries. The latest browser load smoke after that change verified the
+assets, queued proxy jobs, editable placeholder reel clips, exported Markdown
+entries, and `media_import` browser-fallback audit entries in drafts and packet
+exports. The latest browser load smoke after that change verified the
 RoadWatcher screen, timeline, and import control render with no browser
 warnings/errors. Stale-export tests verify incident draft and component slot
 edits hide previously generated packet links and ask the reviewer to regenerate
@@ -197,8 +201,9 @@ network/DNS access.
   logged in browser state and portable snapshots, but no native command log file
   exists until the Rust project store is implemented.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
-  imported videos, but Tauri still needs real file handles or paths, hashing,
-  metadata probing, duration detection, FFmpeg proxy generation, and render jobs.
+  imported videos and `media_import` browser-fallback audit entries, but Tauri
+  still needs real file handles or paths, hashing, metadata probing, duration
+  detection, FFmpeg proxy generation, and render jobs.
 - Browser GPX import is a fallback only. Tauri still needs persisted GPX assets,
   Valhalla map matching, OSRM fallback, and official-feature reprojection
   against the matched route.

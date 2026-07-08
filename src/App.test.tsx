@@ -399,6 +399,36 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByText(/Imported commute review: 0s-30s/)).toBeInTheDocument();
   });
 
+  it("records browser media-import fallbacks in drafts and export packets", () => {
+    const repository = createMemoryProjectRepository();
+    render(<App projectRepository={repository} />);
+
+    const importedVideo = new File(["fake video"], "helmet-cam.mp4", {
+      type: "video/mp4",
+      lastModified: Date.parse("2026-07-06T18:00:00.000Z")
+    });
+
+    fireEvent.change(screen.getByLabelText("Import media files"), { target: { files: [importedVideo] } });
+
+    expect(screen.getByText("Native command attempts")).toBeInTheDocument();
+    expect(screen.getByText(/media_import: browser_fallback/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
+      command: "media_import",
+      status: "browser_fallback",
+      requestSummary: "sourcePath: browser import: helmet-cam.mp4"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("media_import: browser_fallback");
+    expect(exportPanel as HTMLElement).toHaveTextContent("Tauri media file picker and native path import pending");
+  });
+
   it("imports GPX tracks into the route preview and queues Valhalla matching", async () => {
     render(<App />);
 

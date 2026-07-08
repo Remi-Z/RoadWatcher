@@ -390,8 +390,13 @@ export function App({
       setMedia((current) => {
         const importedAssets = createImportedMediaAssets(mediaFiles, current.length);
         const importedClips = createTimelineClipsForImportedMedia(importedAssets, clips);
+        const requestedAtIso = new Date().toISOString();
         setJobs((currentJobs) => [...currentJobs, ...createProxyJobsForImportedMedia(importedAssets)]);
         setClips((currentClips) => [...currentClips, ...createTimelineClipsForImportedMedia(importedAssets, currentClips)]);
+        setNativeCommandAttempts((currentAttempts) => [
+          ...importedAssets.map((asset, index) => createBrowserMediaImportAttempt(asset, requestedAtIso, index)),
+          ...currentAttempts
+        ].slice(0, 8));
         if (importedClips[0]) {
           setSelectedClipId(importedClips[0].id);
         }
@@ -1252,6 +1257,17 @@ function nativeProjectDirectory(response: unknown): string {
   }
 
   return "(native project directory unavailable)";
+}
+
+function createBrowserMediaImportAttempt(asset: MediaAsset, requestedAtIso: string, index: number): NativeCommandAttempt {
+  return {
+    id: `media-import-${asset.id}-${Date.now().toString(36)}-${index}`,
+    command: "media_import",
+    status: "browser_fallback",
+    requestedAtIso,
+    requestSummary: `sourcePath: ${asset.originalPath}`,
+    resultSummary: "Tauri media file picker and native path import pending; browser reference retained."
+  };
 }
 
 function formatSeconds(seconds: number): string {
