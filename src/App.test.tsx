@@ -310,6 +310,20 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByText(/project_create: invoked/)).toBeInTheDocument();
   });
 
+  it("records failed native project-store probes without crashing the app", async () => {
+    const nativeInvoke = vi.fn<NativeInvoke>().mockRejectedValue(new Error("project root is read-only"));
+
+    render(<App nativeInvoke={nativeInvoke} nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })} />);
+
+    fireEvent.change(screen.getByLabelText("Native project root"), { target: { value: "C:/RoadWatcher/native-projects" } });
+    fireEvent.click(screen.getByRole("button", { name: "Probe native project store" }));
+
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("project_create failed");
+    expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("project root is read-only");
+    expect(screen.getByText("Native command attempts")).toBeInTheDocument();
+    expect(screen.getByText(/project_create: failed/)).toBeInTheDocument();
+  });
+
   it("persists editable native project root in drafts and export packets", () => {
     const repository = createMemoryProjectRepository();
     render(<App projectRepository={repository} />);

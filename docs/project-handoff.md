@@ -1,6 +1,6 @@
 # RoadWatcher Rewrite Handoff
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 
 ## Current State
 
@@ -55,7 +55,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Safe native command bridge that returns explicit browser fallback or
   bridge-unavailable results until a real Tauri `invoke` function is wired, with
   required request-field validation before native calls and response-field
-  validation before accepting native data.
+  validation before accepting native data. Rejected native invokes return
+  explicit `failed` command results so the app can keep running and audit the
+  failed attempt.
 - Browser-safe Tauri invoke adapter that avoids loading Tauri APIs in browser
   fallback mode, resolves `@tauri-apps/api/core.invoke` in a detected Tauri
   shell, and carries ready bridge status into UI readiness and packet exports.
@@ -99,7 +101,7 @@ Tests currently cover:
 - Native command contract coverage that keeps runtime command slots backed by
   typed registry entries.
 - Native command bridge coverage for browser fallback, missing invoke bridge,
-  invalid requests, malformed native responses, and successful
+  invalid requests, failed invokes, malformed native responses, and successful
   dependency-injected invoke calls.
 - Tauri invoke adapter coverage for browser-safe loading, Tauri-shell invoke
   wrapping, ready bridge status, UI readiness display, and evidence packet
@@ -110,6 +112,8 @@ Tests currently cover:
   artifact export, UI editing, and probe request usage.
 - Native command attempt coverage for readiness-panel rendering, saved drafts,
   and evidence packet Markdown/JSON export after project-store probes.
+- Failed project-store probe coverage proving rejected native invokes update the
+  status banner and render a `project_create: failed` attempt row.
 - Export invalidation coverage for incident draft and component slot edits after
   a packet preview has been generated.
 - Review readiness helper coverage for browser fallback and native-ready states,
@@ -130,15 +134,15 @@ Tests currently cover:
 
 ## Verified Commands
 
-Passing on 2026-07-07:
+Passing on 2026-07-08:
 
 ```powershell
 pnpm test
 ```
 
-Result: 15 files, 69 tests passing.
+Result: 15 files, 71 tests passing.
 
-Passing on 2026-07-07:
+Passing on 2026-07-08:
 
 ```powershell
 pnpm build
@@ -243,6 +247,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest native command attempt coverage verified project-store probe attempts
   render in readiness and persist into browser-local draft snapshots and packet
   exports.
+- Latest native invoke failure coverage verified rejected project-store probes
+  are converted to explicit failed results and visible audit rows instead of
+  unhandled UI errors.
 - Latest browser readiness smoke verified the rendered panel shows packet
   availability, `5 native slots need attention`, and the Valhalla blocker with
   no browser warnings/errors.

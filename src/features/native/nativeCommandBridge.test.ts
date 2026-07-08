@@ -68,6 +68,22 @@ describe("native command bridge", () => {
     });
   });
 
+  it("returns a failed result when Tauri invoke rejects", async () => {
+    const invoke = vi.fn().mockRejectedValue(new Error("disk is read-only"));
+    const bridge = createNativeCommandBridge({ runtime: detectNativeRuntime({ __TAURI_INTERNALS__: {} }), invoke });
+
+    const result = await bridge.invoke("project_create", { projectName: "Ride review", rootDirectory: "C:/RoadWatcher" });
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      ok: false,
+      status: "failed",
+      command: "project_create",
+      fallback: "browser-local project snapshots",
+      message: "Native command failed: disk is read-only"
+    });
+  });
+
   it("rejects malformed requests before invoking Tauri", async () => {
     const invoke = vi.fn();
     const bridge = createNativeCommandBridge({ runtime: detectNativeRuntime({ __TAURI_INTERNALS__: {} }), invoke });

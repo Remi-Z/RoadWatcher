@@ -30,6 +30,8 @@ results until real Tauri `invoke` wiring exists, and validates required request
 fields before any native call and required response fields after invoke. A
 browser-safe Tauri invoke adapter is resolved only inside a detected Tauri shell,
 and that bridge status is carried into the readiness panel and exported packets.
+Rejected native invokes are converted into explicit failed command results so
+the app can keep running and record the failed attempt.
 The readiness panel also includes a tested project-store probe that exercises
 the planned `project_create` bridge path when invoke is available and reports
 the browser fallback otherwise; its native project root is editable, saved in

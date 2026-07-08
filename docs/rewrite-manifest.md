@@ -66,6 +66,9 @@ Build a Windows-first, local-first evidence workstation:
   native command invoke is attempted.
 - Added bridge response validation so malformed native DTOs are rejected after
   invoke before the app accepts native data.
+- Added bridge failure handling so rejected Tauri invokes return explicit
+  `failed` command results instead of escaping as unhandled UI errors; failed
+  project-store probes are recorded in the native command attempt audit trail.
 - Added a browser-safe Tauri invoke adapter that only imports
   `@tauri-apps/api/core` after detecting a Tauri shell, marks the bridge ready
   when resolved, and carries that runtime bridge status into UI readiness and
@@ -98,7 +101,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-07. Current test count is 15 files / 69 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 71 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -120,7 +123,7 @@ Native setup artifact tests verify `*-native-setup.md` downloads include saved
 slot references, verification commands, linked blocked jobs, runtime mode, and
 planned Tauri command slots with request/response field manifests.
 Native command bridge tests verify browser fallback, missing invoke bridge,
-invalid requests, malformed native responses, and successful
+invalid requests, failed invokes, malformed native responses, and successful
 dependency-injected invoke calls.
 Tauri invoke adapter tests verify browser fallback does not load Tauri APIs,
 detected shell mode wraps `@tauri-apps/api/core.invoke`, and exported packet
@@ -134,6 +137,8 @@ the project-store probe.
 Project state and App tests verify native command attempts are recorded after
 project-store probes, saved in drafts, rendered in the readiness panel, and
 exported in evidence packet Markdown/JSON.
+App tests verify failed project-store probe invokes keep the app alive, update
+the status banner, and render a `project_create: failed` audit row.
 The latest browser project snapshot smoke before the standalone setup artifact
 verified three export downloads, decoded the `local-...-browser42-project.json`
 artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4

@@ -18,7 +18,7 @@ export type NativeCommandBridgeResult =
     }
   | {
       ok: false;
-      status: Exclude<NativeBridgeStatus, "ready"> | "invalid_request" | "invalid_response";
+      status: Exclude<NativeBridgeStatus, "ready"> | "invalid_request" | "invalid_response" | "failed";
       command: NativeCommandName;
       fallback: string;
       message: string;
@@ -73,7 +73,20 @@ export function createNativeCommandBridge(options: NativeCommandBridgeOptions): 
         };
       }
 
-      const response = await options.invoke(command, request);
+      let response: unknown;
+
+      try {
+        response = await options.invoke(command, request);
+      } catch (error) {
+        return {
+          ok: false,
+          status: "failed",
+          command,
+          fallback,
+          message: `Native command failed: ${errorMessage(error)}`
+        };
+      }
+
       const responseMissingFields = contract?.responseFields.filter((field) => !hasField(response, field)) ?? [];
 
       if (responseMissingFields.length > 0) {
@@ -97,6 +110,18 @@ export function createNativeCommandBridge(options: NativeCommandBridgeOptions): 
       };
     }
   };
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  return "Unknown native command error.";
 }
 
 function hasRequestField(request: Record<string, unknown>, field: string): boolean {
