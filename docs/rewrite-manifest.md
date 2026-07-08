@@ -19,8 +19,8 @@ Build a Windows-first, local-first evidence workstation:
 - Replaced the old `.NET/WinUI` project files with a React/Vite app.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
 - Added a dense evidence workstation UI that renders and builds.
-- Added editable inspector state, browser-local draft save/restore behavior, and
-  export packet preview generation.
+- Added editable inspector state, browser-local draft save/restore/clear
+  behavior, and export packet preview generation.
 - Added project snapshot and packet builder helpers that can become Tauri DTOs.
 - Added browser-downloadable Markdown/JSON evidence packet artifacts.
 - Added projected road-feature review rows with provenance.
@@ -65,6 +65,8 @@ Build a Windows-first, local-first evidence workstation:
   evidence summary.
 - Added stale-export invalidation so generated packet/project downloads disappear
   after later review edits, timeline edits, imports, or slot changes.
+- Added a top-level clear local draft action that clears the browser repository
+  and restores the seeded review state.
 - Added a shared review-readiness summary for UI and evidence packets so browser
   fallback exportability and native blockers stay visible.
 - Added a native setup checklist generated from component slots and blocked jobs
@@ -122,17 +124,19 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 77 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 78 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
 check. The latest slice added automated UI coverage for restored drafts,
 download links, projected feature review rows, and RoadWatcher project JSON
-restore. Component slot tests cover editable references/status/notes, top-level
-Slots focus behavior, snapshot persistence, evidence packet export, and fallback
-to seeded slots for older snapshots. The latest browser smoke verified the import control, route/GIS
-sections, generated JSON/Markdown download links, and only Vite/React dev info
-in the browser console. The latest slot smoke verified seven component slots,
+restore. Browser-local draft tests now cover restoring a saved draft and clearing
+it back to the seeded review state. Component slot tests cover editable
+references/status/notes, top-level Slots focus behavior, snapshot persistence,
+evidence packet export, and fallback to seeded slots for older snapshots. The
+latest browser smoke verified the import control, route/GIS sections, generated
+JSON/Markdown download links, and only Vite/React dev info in the browser
+console. The latest slot smoke verified seven component slots,
 editable Valhalla `configured` state, and exported Markdown containing the
 edited Valhalla reference and notes. Timeline editing tests cover trim, split,
 duplicate, remove, the selected-clip action menu fallback, contiguous reel

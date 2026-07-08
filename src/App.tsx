@@ -343,6 +343,28 @@ export function App({
     setAppStatus(`Export packet preview ready: ${packet.fileBaseName}.json`);
   }
 
+  function handleClearLocalDraft() {
+    const cleared = projectRepository.clear();
+    setClips(initialClips);
+    setDraft(incidentDraft);
+    setMedia(mediaAssets);
+    setJobs(initialJobs);
+    setNativeCommandAttempts([]);
+    setNativeProjectRoot(DEFAULT_NATIVE_PROJECT_ROOT);
+    setComponentSlots(missingSlots);
+    setRoute(routePoints);
+    setOfficialFeatures(officialRoadFeatures);
+    setProjectedRoadFeatures(projectedFeatures.map(normalizeProjectedFeatureReview));
+    setSelectedClipId(initialClips[1]?.id ?? initialClips[0]?.id ?? "");
+    setLatestProjectSnapshot(null);
+    setLatestPacket(null);
+    setAppStatus(
+      cleared
+        ? "Local draft cleared; seeded review state restored."
+        : "Session draft cleared; browser storage was unavailable."
+    );
+  }
+
   async function handleProbeNativeProjectStore() {
     const requestedAtIso = new Date().toISOString();
     const requestSummary = `rootDirectory: ${nativeProjectRoot}`;
@@ -561,6 +583,10 @@ export function App({
           <button type="button" className="button secondary" onClick={focusInstallAndDataSlots}>
             <Settings size={16} />
             Slots
+          </button>
+          <button type="button" className="button secondary" onClick={handleClearLocalDraft}>
+            <Trash2 size={16} />
+            Clear local draft
           </button>
           <button type="button" className="button primary" onClick={handleExportPacket}>
             <Download size={16} />

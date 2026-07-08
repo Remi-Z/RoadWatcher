@@ -10,9 +10,10 @@ project snapshots, browser-native media/GPX/GeoJSON import, RoadWatcher project
 JSON restore, editable component slots, browser-local clip trim/split/duplicate/
 remove controls with a command-menu fallback, and evidence packet generation. The
 inspector is editable, including manual incident Start/End timing after clip
-selection, drafts can be saved to and restored from browser-local storage when
-available, imported media is referenced by filename with queued proxy jobs and
-video imports add conservative placeholder clips to the editable reel, browser
+selection, drafts can be saved to, restored from, and cleared from
+browser-local storage when available, imported media is referenced by filename
+with queued proxy jobs and video imports add conservative placeholder clips to
+the editable reel, browser
 media imports add `media_import` fallback audit entries until Tauri can provide
 native source paths/file handles, imported videos also add `ffmpeg_proxy`
 fallback audit entries until native proxy and thumbnail generation is wired,

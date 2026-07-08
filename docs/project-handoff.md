@@ -15,7 +15,7 @@ The runnable app today is the React/Vite evidence workstation:
 - Incident inspector with conservative, editable evidence language.
 - Manual incident Start/End timing edits persist after clip selection and are
   used in export packet JSON/file naming.
-- Browser-local draft save and restore path with visible app status.
+- Browser-local draft save, restore, and clear path with visible app status.
 - Browser-native media import fallback that records selected files by reference,
   queues proxy jobs for imported videos, and appends conservative placeholder
   clips to the editable evidence reel.
@@ -112,6 +112,7 @@ Tests currently cover:
 - Browser-local project snapshot and evidence packet builder coverage.
 - UI coverage for editing/saving incident drafts and generating export packet
   previews.
+- UI coverage for clearing a browser-local draft back to seeded review state.
 - Browser project repository coverage for restore, malformed storage, and
   unavailable storage.
 - Download artifact coverage for Markdown/JSON packet files and parseable
@@ -172,7 +173,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 77 tests passing.
+Result: 15 files, 78 tests passing.
 
 Passing on 2026-07-08:
 
@@ -313,6 +314,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest inspector timing coverage verified selecting a clip fills incident
   timing once, manual Start/End edits remain visible, and exported JSON carries
   the reviewer-entered timing.
+- Latest clear-draft coverage verified a restored browser-local draft can be
+  cleared, removed from the repository, and returned to seeded review state.
 - Mobile-width smoke check rendered meaningful content and had no console
   warnings/errors.
 

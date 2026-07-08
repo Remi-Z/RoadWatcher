@@ -141,6 +141,32 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByLabelText("Narrative")).toHaveValue("Loaded from a previous review session.");
   });
 
+  it("clears a browser-local draft and returns to the seeded review state", () => {
+    const snapshot = createProjectSnapshot({
+      clips: initialClips,
+      incident: {
+        ...incidentDraft,
+        plate: "CLEARME",
+        narrative: "This stale draft should be removed."
+      },
+      jobs: initialJobs,
+      media: mediaAssets,
+      projectedFeatures
+    });
+    const repository = createMemoryProjectRepository(snapshot);
+
+    render(<App projectRepository={repository} />);
+
+    expect(screen.getByLabelText("Plate")).toHaveValue("CLEARME");
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear local draft" }));
+
+    expect(repository.snapshot).toBeNull();
+    expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Local draft cleared");
+    expect(screen.getByLabelText("Plate")).toHaveValue("manual entry needed");
+    expect(screen.getByLabelText("Narrative")).toHaveValue("Evidence note draft stays neutral until manual review.");
+  });
+
   it("keeps component slots visible when restoring an older snapshot without slot records", () => {
     const snapshot = createProjectSnapshot({
       clips: initialClips,
