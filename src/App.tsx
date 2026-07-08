@@ -391,12 +391,13 @@ export function App({
         const importedAssets = createImportedMediaAssets(mediaFiles, current.length);
         const importedClips = createTimelineClipsForImportedMedia(importedAssets, clips);
         const requestedAtIso = new Date().toISOString();
+        const nativeAttempts = importedAssets.flatMap((asset, index) => [
+          createBrowserMediaImportAttempt(asset, requestedAtIso, index),
+          ...(isVideoMediaAsset(asset) ? [createBrowserFfmpegProxyAttempt(asset, requestedAtIso, index)] : [])
+        ]);
         setJobs((currentJobs) => [...currentJobs, ...createProxyJobsForImportedMedia(importedAssets)]);
         setClips((currentClips) => [...currentClips, ...createTimelineClipsForImportedMedia(importedAssets, currentClips)]);
-        setNativeCommandAttempts((currentAttempts) => [
-          ...importedAssets.map((asset, index) => createBrowserMediaImportAttempt(asset, requestedAtIso, index)),
-          ...currentAttempts
-        ].slice(0, 8));
+        setNativeCommandAttempts((currentAttempts) => [...nativeAttempts, ...currentAttempts].slice(0, 8));
         if (importedClips[0]) {
           setSelectedClipId(importedClips[0].id);
         }
@@ -1277,6 +1278,21 @@ function createBrowserMediaImportAttempt(asset: MediaAsset, requestedAtIso: stri
     requestedAtIso,
     requestSummary: `sourcePath: ${asset.originalPath}`,
     resultSummary: "Tauri media file picker and native path import pending; browser reference retained."
+  };
+}
+
+function isVideoMediaAsset(asset: MediaAsset): boolean {
+  return asset.proxyStatus === "queued" || /\.(mp4|mov|m4v|mkv|avi|webm)$/i.test(asset.fileName);
+}
+
+function createBrowserFfmpegProxyAttempt(asset: MediaAsset, requestedAtIso: string, index: number): NativeCommandAttempt {
+  return {
+    id: `ffmpeg-proxy-${asset.id}-${Date.now().toString(36)}-${index}`,
+    command: "ffmpeg_proxy",
+    status: "browser_fallback",
+    requestedAtIso,
+    requestSummary: `mediaId: ${asset.id}; profile: review-proxy`,
+    resultSummary: "native FFmpeg proxy and thumbnail generation pending; browser preview uses referenced media metadata."
   };
 }
 

@@ -22,6 +22,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Browser media-import fallback audit entries that record
   `media_import: browser_fallback` in readiness, saved drafts, and packet
   exports until Tauri can supply native source paths/file handles.
+- Browser FFmpeg-proxy fallback audit entries that record
+  `ffmpeg_proxy: browser_fallback` in readiness, saved drafts, and packet
+  exports until native proxy and thumbnail generation is wired.
 - Browser-native GPX import fallback that parses timed track points, updates the
   route preview, persists the route in snapshots, and queues Valhalla matching.
 - Browser GPX-match fallback audit entries that record
@@ -133,6 +136,8 @@ Tests currently cover:
   placeholder reel clips for imported videos.
 - Media-import fallback audit coverage for readiness rendering, saved draft
   persistence, and packet export when browser file inputs lack native paths.
+- FFmpeg-proxy fallback audit coverage for imported videos, saved draft
+  persistence, and packet export while native proxy generation remains pending.
 - GPX import coverage for timed track parsing, invalid GPX rejection, Valhalla
   job creation, and UI route import.
 - GPX-match fallback audit coverage for readiness rendering, saved draft
@@ -154,7 +159,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 74 tests passing.
+Result: 15 files, 75 tests passing.
 
 Passing on 2026-07-08:
 
@@ -249,6 +254,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest media-import fallback audit coverage verified browser media imports add
   `media_import: browser_fallback` rows and persist those rows into saved drafts
   and packet exports.
+- Latest FFmpeg-proxy fallback audit coverage verified browser video imports add
+  `ffmpeg_proxy: browser_fallback` rows and persist those rows into saved drafts
+  and packet exports while native proxy/thumbnail generation remains pending.
 - Latest browser load smoke after the media-import timeline change verified the
   RoadWatcher screen, timeline, and import control render with no browser
   warnings/errors.

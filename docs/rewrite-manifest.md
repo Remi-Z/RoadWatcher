@@ -30,6 +30,9 @@ Build a Windows-first, local-first evidence workstation:
 - Added browser media-import fallback audit entries so selected media files
   leave `media_import: browser_fallback` records in readiness, saved drafts, and
   packet exports until Tauri supplies native source paths/file handles.
+- Added browser FFmpeg-proxy fallback audit entries so imported videos leave
+  `ffmpeg_proxy: browser_fallback` records in readiness, saved drafts, and
+  packet exports until native FFmpeg proxy and thumbnail generation is wired.
 - Added browser-native GPX import fallback that parses timed track points,
   updates the route preview, persists route points in snapshots, and queues
   Valhalla matching.
@@ -110,7 +113,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 74 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 75 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -154,14 +157,14 @@ artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4
 jobs, 2 media references, and no browser console warnings/errors.
 Media import tests verify browser-selected videos become referenced media
 assets, queued proxy jobs, editable placeholder reel clips, exported Markdown
-entries, and `media_import` browser-fallback audit entries in drafts and packet
-exports. GPX import tests verify browser-parsed routes queue Valhalla jobs and
-record `gpx_match` browser-fallback audit entries in drafts and packet exports.
-GeoJSON import tests verify browser-projected official GIS features queue GIS
-jobs and record `gis_project` browser-fallback audit entries in drafts and
-packet exports. The latest browser load smoke after that change verified the
-RoadWatcher screen, timeline, and import control render with no browser
-warnings/errors.
+entries, and `media_import` plus `ffmpeg_proxy` browser-fallback audit entries
+in drafts and packet exports. GPX import tests verify browser-parsed routes
+queue Valhalla jobs and record `gpx_match` browser-fallback audit entries in
+drafts and packet exports. GeoJSON import tests verify browser-projected
+official GIS features queue GIS jobs and record `gis_project` browser-fallback
+audit entries in drafts and packet exports. The latest browser load smoke after
+that change verified the RoadWatcher screen, timeline, and import control render
+with no browser warnings/errors.
 Stale-export tests verify incident draft and component slot edits hide
 previously generated packet links and ask the reviewer to regenerate the packet.
 Browser stale-export smoke verified a generated 3-link export preview
@@ -212,9 +215,10 @@ network/DNS access.
   logged in browser state and portable snapshots, but no native command log file
   exists until the Rust project store is implemented.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
-  imported videos and `media_import` browser-fallback audit entries, but Tauri
-  still needs real file handles or paths, hashing, metadata probing, duration
-  detection, FFmpeg proxy generation, and render jobs.
+  imported videos plus `media_import` and `ffmpeg_proxy` browser-fallback audit
+  entries, but Tauri still needs real file handles or paths, hashing, metadata
+  probing, duration detection, FFmpeg proxy/thumbnail generation, and render
+  jobs.
 - Browser GPX import is a fallback only. It now records `gpx_match`
   browser-fallback audit entries, but Tauri still needs persisted GPX assets,
   Valhalla map matching, OSRM fallback, and official-feature reprojection

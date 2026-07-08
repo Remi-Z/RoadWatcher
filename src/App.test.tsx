@@ -429,6 +429,39 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("Tauri media file picker and native path import pending");
   });
 
+  it("records browser FFmpeg proxy fallbacks for imported videos in drafts and export packets", () => {
+    const repository = createMemoryProjectRepository();
+    render(<App projectRepository={repository} />);
+
+    const importedVideo = new File(["fake video"], "helmet-cam.mp4", {
+      type: "video/mp4",
+      lastModified: Date.parse("2026-07-06T18:00:00.000Z")
+    });
+
+    fireEvent.change(screen.getByLabelText("Import media files"), { target: { files: [importedVideo] } });
+
+    expect(screen.getByText(/ffmpeg_proxy: browser_fallback/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeCommandAttempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          command: "ffmpeg_proxy",
+          status: "browser_fallback",
+          requestSummary: "mediaId: media-imported-helmet-cam-mp4-2; profile: review-proxy"
+        })
+      ])
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("ffmpeg_proxy: browser_fallback");
+    expect(exportPanel as HTMLElement).toHaveTextContent("native FFmpeg proxy and thumbnail generation pending");
+  });
+
   it("imports GPX tracks into the route preview and queues Valhalla matching", async () => {
     render(<App />);
 
