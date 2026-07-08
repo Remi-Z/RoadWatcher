@@ -22,6 +22,8 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByRole("heading", { name: "RoadWatcher" })).toBeInTheDocument();
     expect(screen.getByLabelText("Dashcam preview")).toBeInTheDocument();
     expect(screen.getByLabelText("Matched route map")).toBeInTheDocument();
+    expect(screen.getByLabelText("Matched route map")).toHaveTextContent("Valhalla/OSRM pending");
+    expect(screen.getByLabelText("Matched route map")).not.toHaveTextContent("Valhalla matched");
     expect(screen.getByLabelText("Evidence reel timeline")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Incident inspector" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Processing jobs" })).toBeInTheDocument();

@@ -27,6 +27,8 @@ The runnable app today is the React/Vite evidence workstation:
   exports until native proxy and thumbnail generation is wired.
 - Browser-native GPX import fallback that parses timed track points, updates the
   route preview, persists the route in snapshots, and queues Valhalla matching.
+- Route map legend labels Valhalla/OSRM matching as pending so the browser
+  preview does not claim native map-match output before adapters are wired.
 - Browser GPX-match fallback audit entries that record
   `gpx_match: browser_fallback` in readiness, saved drafts, and packet exports
   until Tauri persists GPX assets and calls Valhalla/OSRM.
@@ -149,7 +151,7 @@ Tests currently cover:
 - FFmpeg-proxy fallback audit coverage for imported videos, saved draft
   persistence, and packet export while native proxy generation remains pending.
 - GPX import coverage for timed track parsing, invalid GPX rejection, Valhalla
-  job creation, and UI route import.
+  job creation, UI route import, and conservative route-match legend copy.
 - GPX-match fallback audit coverage for readiness rendering, saved draft
   persistence, and packet export when browser GPX parsing stands in for native
   Valhalla/OSRM matching.
@@ -229,6 +231,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest GPX/import smoke check verified the import control, visible timed-route
   point count, Valhalla slot visibility, export links, and a clean browser
   console.
+- Latest route-map coverage verifies the UI shows `Valhalla/OSRM pending`
+  instead of claiming `Valhalla matched` before native matching exists.
 - Latest GPX-match fallback audit coverage verified browser GPX imports add
   `gpx_match: browser_fallback` rows and persist those rows into saved drafts
   and packet exports.

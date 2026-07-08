@@ -36,6 +36,8 @@ Build a Windows-first, local-first evidence workstation:
 - Added browser-native GPX import fallback that parses timed track points,
   updates the route preview, persists route points in snapshots, and queues
   Valhalla matching.
+- Kept the route map legend conservative by labeling Valhalla/OSRM matching as
+  pending while the runnable browser path is still a GPX preview plus queued job.
 - Added browser GPX-match fallback audit entries so imported GPX files leave
   `gpx_match: browser_fallback` records in readiness, saved drafts, and packet
   exports until Tauri persists GPX assets and calls Valhalla/OSRM.
@@ -147,9 +149,10 @@ dependency-injected invoke calls.
 Tauri invoke adapter tests verify browser fallback does not load Tauri APIs,
 detected shell mode wraps `@tauri-apps/api/core.invoke`, and exported packet
 readiness can carry a supplied ready bridge status.
-App tests verify the project-store probe does not call native commands in
-browser fallback and calls `project_create` with a complete request when a ready
-invoke bridge is injected.
+App tests verify the route map does not claim Valhalla matched output before
+native matching is implemented. App tests verify the project-store probe does
+not call native commands in browser fallback and calls `project_create` with a
+complete request when a ready invoke bridge is injected.
 Project snapshot, packet, setup artifact, and App tests verify the editable
 native project root is saved, restored through snapshots, exported, and used by
 the project-store probe.

@@ -944,7 +944,7 @@ function RouteMap({ route, projectedFeatures }: { route: TimedRoutePoint[]; proj
         </span>
         <span>
           <Route size={14} />
-          Valhalla matched
+          Valhalla/OSRM pending
         </span>
         <span>
           <CircleDot size={14} />
