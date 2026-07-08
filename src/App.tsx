@@ -417,9 +417,14 @@ export function App({
     for (const file of files) {
       try {
         const importedRoute = parseGpxTrack(await readBrowserFileText(file));
+        const requestedAtIso = new Date().toISOString();
         setRoute(importedRoute);
         setProjectedRoadFeatures(projectFeaturesOntoRoute(importedRoute, officialFeatures, 90).map(normalizeProjectedFeatureReview));
         setJobs((currentJobs) => [...currentJobs, createValhallaMatchJob(file.name, currentJobs.length)]);
+        setNativeCommandAttempts((currentAttempts) => [
+          createBrowserGpxMatchAttempt(file.name, importedRoute.length, requestedAtIso),
+          ...currentAttempts
+        ].slice(0, 8));
         invalidateLatestExport(undefined);
         setAppStatus(`Imported GPX route with ${importedRoute.length} timed points from ${file.name}`);
       } catch (error) {
@@ -1267,6 +1272,17 @@ function createBrowserMediaImportAttempt(asset: MediaAsset, requestedAtIso: stri
     requestedAtIso,
     requestSummary: `sourcePath: ${asset.originalPath}`,
     resultSummary: "Tauri media file picker and native path import pending; browser reference retained."
+  };
+}
+
+function createBrowserGpxMatchAttempt(fileName: string, routePointCount: number, requestedAtIso: string): NativeCommandAttempt {
+  return {
+    id: `gpx-match-${Date.now().toString(36)}`,
+    command: "gpx_match",
+    status: "browser_fallback",
+    requestedAtIso,
+    requestSummary: `gpxPath: browser import: ${fileName}; matcher: Valhalla`,
+    resultSummary: `Valhalla/OSRM native matching pending; browser parsed ${routePointCount} route points.`
   };
 }
 

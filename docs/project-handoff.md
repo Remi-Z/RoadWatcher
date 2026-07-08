@@ -24,6 +24,9 @@ The runnable app today is the React/Vite evidence workstation:
   exports until Tauri can supply native source paths/file handles.
 - Browser-native GPX import fallback that parses timed track points, updates the
   route preview, persists the route in snapshots, and queues Valhalla matching.
+- Browser GPX-match fallback audit entries that record
+  `gpx_match: browser_fallback` in readiness, saved drafts, and packet exports
+  until Tauri persists GPX assets and calls Valhalla/OSRM.
 - Browser-native GeoJSON import fallback that normalizes supported stop sign,
   traffic signal, bike lane, and crosswalk features, projects them onto the
   active route, persists official source features in snapshots, and queues GIS
@@ -129,6 +132,9 @@ Tests currently cover:
   persistence, and packet export when browser file inputs lack native paths.
 - GPX import coverage for timed track parsing, invalid GPX rejection, Valhalla
   job creation, and UI route import.
+- GPX-match fallback audit coverage for readiness rendering, saved draft
+  persistence, and packet export when browser GPX parsing stands in for native
+  Valhalla/OSRM matching.
 - GeoJSON import coverage for point/line normalization, unsupported-layer
   rejection, GIS job creation, UI projection, and snapshot official-feature
   persistence.
@@ -145,7 +151,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 72 tests passing.
+Result: 15 files, 73 tests passing.
 
 Passing on 2026-07-08:
 
@@ -204,6 +210,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest GPX/import smoke check verified the import control, visible timed-route
   point count, Valhalla slot visibility, export links, and a clean browser
   console.
+- Latest GPX-match fallback audit coverage verified browser GPX imports add
+  `gpx_match: browser_fallback` rows and persist those rows into saved drafts
+  and packet exports.
 - Latest GIS/import smoke check verified the import control, projected feature
   rows, GIS slot visibility, export links, and a clean browser console.
 - Latest JSON/export smoke check verified the import control, route/GIS sections,

@@ -457,6 +457,46 @@ describe("RoadWatcher workstation", () => {
     expect(within(mediaPanel as HTMLElement).queryByText("ride-home.gpx")).not.toBeInTheDocument();
   });
 
+  it("records browser GPX match fallbacks in drafts and export packets", async () => {
+    const repository = createMemoryProjectRepository();
+    render(<App projectRepository={repository} />);
+
+    const gpxFile = new File(
+      [
+        `<?xml version="1.0"?>
+        <gpx version="1.1">
+          <trk><trkseg>
+            <trkpt lat="43.856000" lon="-79.337000"><time>2026-07-06T18:00:00Z</time></trkpt>
+            <trkpt lat="43.856400" lon="-79.337350"><time>2026-07-06T18:00:24Z</time></trkpt>
+            <trkpt lat="43.856800" lon="-79.337720"><time>2026-07-06T18:00:48Z</time></trkpt>
+          </trkseg></trk>
+        </gpx>`
+      ],
+      "ride-home.gpx",
+      { type: "application/gpx+xml", lastModified: Date.parse("2026-07-06T18:00:00.000Z") }
+    );
+
+    fireEvent.change(screen.getByLabelText("Import media files"), { target: { files: [gpxFile] } });
+
+    expect(await screen.findByText("Valhalla match: ride-home.gpx")).toBeInTheDocument();
+    expect(screen.getByText(/gpx_match: browser_fallback/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
+      command: "gpx_match",
+      status: "browser_fallback",
+      requestSummary: "gpxPath: browser import: ride-home.gpx; matcher: Valhalla"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("gpx_match: browser_fallback");
+    expect(exportPanel as HTMLElement).toHaveTextContent("Valhalla/OSRM native matching pending");
+  });
+
   it("imports official GeoJSON layers and projects supported features onto the route", async () => {
     render(<App />);
 

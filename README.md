@@ -15,7 +15,8 @@ available, imported media is referenced by filename with queued proxy jobs and
 video imports add conservative placeholder clips to the editable reel, browser
 media imports add `media_import` fallback audit entries until Tauri can provide
 native source paths/file handles, imported GPX tracks update the route preview
-and queue Valhalla matching,
+and queue Valhalla matching with `gpx_match` fallback audit entries until
+native Valhalla/OSRM matching is wired,
 imported GeoJSON layers project supported official road features onto the active
 route, RoadWatcher `.json` snapshots restore portable review state before
 falling back to GeoJSON parsing, and export packet previews produce downloadable

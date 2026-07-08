@@ -33,6 +33,9 @@ Build a Windows-first, local-first evidence workstation:
 - Added browser-native GPX import fallback that parses timed track points,
   updates the route preview, persists route points in snapshots, and queues
   Valhalla matching.
+- Added browser GPX-match fallback audit entries so imported GPX files leave
+  `gpx_match: browser_fallback` records in readiness, saved drafts, and packet
+  exports until Tauri persists GPX assets and calls Valhalla/OSRM.
 - Added browser-native GeoJSON import fallback that normalizes supported official
   road features, projects them onto the active route, persists official feature
   sources in snapshots, and queues GIS projection jobs.
@@ -104,7 +107,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 72 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 73 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -149,12 +152,14 @@ jobs, 2 media references, and no browser console warnings/errors.
 Media import tests verify browser-selected videos become referenced media
 assets, queued proxy jobs, editable placeholder reel clips, exported Markdown
 entries, and `media_import` browser-fallback audit entries in drafts and packet
-exports. The latest browser load smoke after that change verified the
-RoadWatcher screen, timeline, and import control render with no browser
-warnings/errors. Stale-export tests verify incident draft and component slot
-edits hide previously generated packet links and ask the reviewer to regenerate
-the packet. Browser stale-export smoke verified a generated 3-link export
-preview disappears after changing the Valhalla slot status, with no browser
+exports. GPX import tests verify browser-parsed routes queue Valhalla jobs and
+record `gpx_match` browser-fallback audit entries in drafts and packet exports.
+The latest browser load smoke after that change verified the RoadWatcher screen,
+timeline, and import control render with no browser warnings/errors.
+Stale-export tests verify incident draft and component slot edits hide
+previously generated packet links and ask the reviewer to regenerate the packet.
+Browser stale-export smoke verified a generated 3-link export preview
+disappears after changing the Valhalla slot status, with no browser
 warnings/errors. Review-readiness tests cover browser fallback, native-ready
 state, native setup checklist rows, UI rendering, and exported packet content
 from one shared helper. Browser
@@ -204,7 +209,8 @@ network/DNS access.
   imported videos and `media_import` browser-fallback audit entries, but Tauri
   still needs real file handles or paths, hashing, metadata probing, duration
   detection, FFmpeg proxy generation, and render jobs.
-- Browser GPX import is a fallback only. Tauri still needs persisted GPX assets,
+- Browser GPX import is a fallback only. It now records `gpx_match`
+  browser-fallback audit entries, but Tauri still needs persisted GPX assets,
   Valhalla map matching, OSRM fallback, and official-feature reprojection
   against the matched route.
 - Browser GeoJSON import is a fallback only. It supports WGS84 Point and
