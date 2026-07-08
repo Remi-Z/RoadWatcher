@@ -27,6 +27,9 @@ Build a Windows-first, local-first evidence workstation:
 - Added browser-native media import fallback that records selected files as
   referenced assets, queues proxy jobs for imported videos, and appends
   conservative placeholder clips to the editable evidence reel.
+- Added Session media audit metadata rows that surface duration, detected start,
+  file size, and hash/provenance slots for referenced originals without
+  claiming native metadata probing is complete.
 - Added browser media-import fallback audit entries so selected media files
   leave `media_import: browser_fallback` records in readiness, saved drafts, and
   packet exports until Tauri supplies native source paths/file handles.
@@ -145,14 +148,16 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 87 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 88 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
 check. The latest slice added automated UI coverage for restored drafts,
 download links, projected feature review rows, and RoadWatcher project JSON
 restore. Browser-local draft tests now cover restoring a saved draft and clearing
-it back to the seeded review state. Component slot tests cover editable
+it back to the seeded review state. Session media tests cover visible duration,
+detected start, file size, and hash/provenance metadata for referenced originals.
+Component slot tests cover editable
 references/status/notes, top-level Slots focus behavior, snapshot persistence,
 evidence packet export, per-slot verification command visibility, and fallback
 to seeded slots for older snapshots. The

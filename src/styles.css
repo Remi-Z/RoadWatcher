@@ -1003,6 +1003,23 @@ h1 {
   min-width: 0;
 }
 
+.media-metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 8px;
+  padding-top: 4px;
+}
+
+.media-metadata span {
+  overflow-wrap: anywhere;
+  border-radius: 5px;
+  background: #eef3f7;
+  padding: 4px 6px;
+  color: #3b4a5e;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .feature-review-row {
   display: flex;
   align-items: flex-start;

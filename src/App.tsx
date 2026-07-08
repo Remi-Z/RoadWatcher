@@ -856,6 +856,12 @@ export function App({
                 <div>
                   <strong>{asset.fileName}</strong>
                   <span>{asset.originalPath}</span>
+                  <div className="media-metadata" aria-label={`${asset.fileName} audit metadata`}>
+                    <span>Duration {formatMediaDuration(asset.durationSeconds)}</span>
+                    <span>Detected start {asset.detectedStart || "pending native metadata"}</span>
+                    <span>Size {formatFileSize(asset.fileSizeBytes)}</span>
+                    <span>Hash {asset.hash || "pending native import"}</span>
+                  </div>
                 </div>
                 <StatusPill status={asset.proxyStatus} label={asset.proxyStatus} />
               </article>
@@ -1703,6 +1709,42 @@ function createBrowserGisProjectionAttempt(fileName: string, importedFeatureCoun
     requestSummary: `sourcePath: browser import: ${fileName}; layerKind: official road features`,
     resultSummary: `Turf/PostGIS native projection pending; browser imported ${importedFeatureCount} official GIS features.`
   };
+}
+
+function formatMediaDuration(seconds: number): string {
+  if (seconds <= 0) {
+    return "pending native metadata";
+  }
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.round((seconds % 3600) / 60);
+
+  if (hours > 0 && minutes > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+
+  return `${Math.max(1, minutes)}m`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes <= 0) {
+    return "unknown";
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1000 && unitIndex < units.length - 1) {
+    value /= 1000;
+    unitIndex += 1;
+  }
+
+  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(2)} ${units[unitIndex]}`;
 }
 
 function formatSeconds(seconds: number): string {

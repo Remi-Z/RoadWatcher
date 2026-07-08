@@ -19,6 +19,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Browser-native media import fallback that records selected files by reference,
   queues proxy jobs for imported videos, and appends conservative placeholder
   clips to the editable evidence reel.
+- Session media rows surface duration, detected start, file size, and
+  hash/provenance slots for referenced originals without claiming native
+  metadata probing is complete.
 - Browser media-import fallback audit entries that record
   `media_import: browser_fallback` in readiness, saved drafts, and packet
   exports until Tauri can supply native source paths/file handles.
@@ -133,6 +136,8 @@ Tests currently cover:
 - UI coverage for editing/saving incident drafts and generating export packet
   previews.
 - UI coverage for clearing a browser-local draft back to seeded review state.
+- Session media coverage for visible duration, detected start, file size, and
+  hash/provenance metadata beside referenced originals.
 - Browser project repository coverage for restore, malformed storage, and
   unavailable storage.
 - Download artifact coverage for Markdown/JSON packet files and parseable
@@ -209,7 +214,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 87 tests passing.
+Result: 15 files, 88 tests passing.
 
 Passing on 2026-07-08:
 
@@ -305,6 +310,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   `local-...-browser42-project.json`; the decoded project snapshot retained
   plate `BROWSER42`, incident clip source range `840-852`, 4 jobs, and 2 media
   references with no browser console warnings/errors.
+- Latest Session media coverage verified referenced originals show duration,
+  detected start, file size, and hash/provenance metadata in the panel.
 - Latest media-import implementation coverage verified a browser-imported video
   becomes a referenced media asset, queues a proxy job, appends an editable
   `Imported ...` reel clip, and appears in exported Markdown.

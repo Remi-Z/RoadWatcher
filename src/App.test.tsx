@@ -29,6 +29,17 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByRole("heading", { name: "Processing jobs" })).toBeInTheDocument();
   });
 
+  it("shows source media audit metadata beside referenced originals", () => {
+    render(<App />);
+
+    const mediaPanel = screen.getByRole("heading", { name: "Session media" }).closest("section");
+    expect(mediaPanel).not.toBeNull();
+    expect(mediaPanel as HTMLElement).toHaveTextContent("Duration 1h 11m");
+    expect(mediaPanel as HTMLElement).toHaveTextContent("Detected start 2026-07-06 14:00:00 -04:00");
+    expect(mediaPanel as HTMLElement).toHaveTextContent("Size 8.12 GB");
+    expect(mediaPanel as HTMLElement).toHaveTextContent("Hash sha256 pending after import");
+  });
+
   it("updates inspector timing when a different reel clip is selected", () => {
     render(<App />);
 
