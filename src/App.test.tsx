@@ -295,14 +295,31 @@ describe("RoadWatcher workstation", () => {
 
     render(<App nativeInvoke={nativeInvoke} nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })} />);
 
+    fireEvent.change(screen.getByLabelText("Native project root"), { target: { value: "C:/RoadWatcher/native-projects" } });
     fireEvent.click(screen.getByRole("button", { name: "Probe native project store" }));
 
     expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native project store ready");
     expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("C:/RoadWatcher/native-roadwatcher");
     expect(nativeInvoke).toHaveBeenCalledWith("project_create", {
       projectName: "RoadWatcher local review",
-      rootDirectory: "slot: native project root"
+      rootDirectory: "C:/RoadWatcher/native-projects"
     });
+  });
+
+  it("persists editable native project root in drafts and export packets", () => {
+    const repository = createMemoryProjectRepository();
+    render(<App projectRepository={repository} />);
+
+    fireEvent.change(screen.getByLabelText("Native project root"), { target: { value: "D:/RoadWatcherProjects" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeProjectRoot).toBe("D:/RoadWatcherProjects");
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("Native project root: D:/RoadWatcherProjects");
   });
 
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {

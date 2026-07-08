@@ -6,6 +6,7 @@ import type { TimelineClip } from "../timeline/timelineModel";
 import { summarizeReviewReadiness, type ReviewReadiness } from "./reviewReadiness";
 
 export const PROJECT_SCHEMA_VERSION = 1;
+export const DEFAULT_NATIVE_PROJECT_ROOT = "slot: native project root";
 
 export interface ProjectSnapshotInput {
   clips: TimelineClip[];
@@ -13,6 +14,7 @@ export interface ProjectSnapshotInput {
   incident: IncidentDraft;
   jobs: WorkstationJob[];
   media: MediaAsset[];
+  nativeProjectRoot?: string;
   officialFeatures?: OfficialRoadFeature[];
   projectedFeatures: ProjectedRoadFeature[];
   route?: TimedRoutePoint[];
@@ -22,6 +24,7 @@ export interface ProjectSnapshot extends ProjectSnapshotInput {
   schemaVersion: number;
   projectId: string;
   componentSlots: ComponentSlot[];
+  nativeProjectRoot: string;
   route: TimedRoutePoint[];
   officialFeatures: OfficialRoadFeature[];
   savedAtIso: string;
@@ -37,6 +40,7 @@ export interface EvidencePacket {
     incident: IncidentDraft;
     clips: TimelineClip[];
     componentSlots: ComponentSlot[];
+    nativeProjectRoot: string;
     route: TimedRoutePoint[];
     sourceMedia: MediaAsset[];
     projectedFeatures: ProjectedRoadFeature[];
@@ -58,6 +62,7 @@ export function createProjectSnapshot(input: ProjectSnapshotInput): ProjectSnaps
     incident: structuredClone(input.incident),
     jobs: structuredClone(input.jobs),
     media: structuredClone(input.media),
+    nativeProjectRoot: input.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT,
     officialFeatures: structuredClone(input.officialFeatures ?? []),
     projectedFeatures: structuredClone(input.projectedFeatures),
     route: structuredClone(input.route ?? [])
@@ -72,6 +77,7 @@ export function restoreProjectSnapshot(snapshot: ProjectSnapshot): ProjectSnapsh
   return {
     ...structuredClone(snapshot),
     componentSlots: structuredClone(snapshot.componentSlots ?? []),
+    nativeProjectRoot: snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT,
     projectedFeatures: structuredClone(snapshot.projectedFeatures ?? []).map(normalizeProjectedFeatureReview)
   };
 }
@@ -93,6 +99,7 @@ export function buildEvidencePacket(snapshot: ProjectSnapshot, options: Evidence
     incident: structuredClone(snapshot.incident),
     clips: structuredClone(snapshot.clips),
     componentSlots: structuredClone(snapshot.componentSlots ?? []),
+    nativeProjectRoot: snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT,
     route: structuredClone(snapshot.route ?? []),
     sourceMedia: structuredClone(snapshot.media),
     projectedFeatures: structuredClone(snapshot.projectedFeatures).map(normalizeProjectedFeatureReview),
@@ -166,6 +173,7 @@ ${clipLines || "- No clips saved."}
 - Runtime summary: ${packet.reviewReadiness.runtime.summary}
 - Bridge status: ${packet.reviewReadiness.runtime.bridgeStatus}
 - Bridge summary: ${packet.reviewReadiness.runtime.bridgeSummary}
+- Native project root: ${blank(packet.nativeProjectRoot)}
 - Packet export: ${packet.reviewReadiness.canExportPacket ? "available" : "needs media and clips"}
 - Summary: ${packet.reviewReadiness.summary}
 - Open component slots: ${packet.reviewReadiness.openComponentSlots.join(", ") || "none"}

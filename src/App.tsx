@@ -68,7 +68,14 @@ import type { WorkstationJob } from "./features/jobs/jobModel";
 import { createImportedMediaAssets, createProxyJobsForImportedMedia, createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
 import { createBrowserProjectRepository, type ProjectRepository } from "./features/project/browserProjectRepository";
 import { createNativeSetupChecklistArtifact, createPacketArtifacts, createProjectSnapshotArtifact } from "./features/project/downloadArtifacts";
-import { buildEvidencePacket, createProjectSnapshot, parseSnapshot, type EvidencePacket, type ProjectSnapshot } from "./features/project/projectState";
+import {
+  buildEvidencePacket,
+  createProjectSnapshot,
+  DEFAULT_NATIVE_PROJECT_ROOT,
+  parseSnapshot,
+  type EvidencePacket,
+  type ProjectSnapshot
+} from "./features/project/projectState";
 import { summarizeReviewReadiness, type ReviewReadiness } from "./features/project/reviewReadiness";
 import { createNativeCommandBridge, type NativeInvoke } from "./features/native/nativeCommandBridge";
 import { detectNativeRuntime, type NativeRuntimeHost, type NativeRuntimeStatus } from "./features/native/runtimeEnvironment";
@@ -102,6 +109,7 @@ export function App({
   const [draft, setDraft] = useState<IncidentDraft>(() => restoredSnapshot?.incident ?? incidentDraft);
   const [media, setMedia] = useState<MediaAsset[]>(() => restoredSnapshot?.media ?? mediaAssets);
   const [jobs, setJobs] = useState<WorkstationJob[]>(() => restoredSnapshot?.jobs ?? initialJobs);
+  const [nativeProjectRoot, setNativeProjectRoot] = useState(() => restoredSnapshot?.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT);
   const [componentSlots, setComponentSlots] = useState<ComponentSlot[]>(() => componentSlotsOrDefaults(restoredSnapshot?.componentSlots));
   const [route, setRoute] = useState<TimedRoutePoint[]>(() => restoredSnapshot?.route ?? routePoints);
   const [officialFeatures, setOfficialFeatures] = useState<OfficialRoadFeature[]>(
@@ -148,6 +156,7 @@ export function App({
     incident: draft,
     jobs,
     media,
+    nativeProjectRoot,
     officialFeatures,
     projectedFeatures: projectedRoadFeatures,
     route
@@ -282,6 +291,11 @@ export function App({
     invalidateLatestExport();
   }
 
+  function handleNativeProjectRootChange(value: string) {
+    setNativeProjectRoot(value);
+    invalidateLatestExport();
+  }
+
   function handleProjectedFeatureReviewChange(
     featureId: string,
     field: keyof Pick<ProjectedRoadFeature, "reviewStatus" | "reviewNote">,
@@ -321,7 +335,7 @@ export function App({
   async function handleProbeNativeProjectStore() {
     const result = await nativeCommandBridge.invoke("project_create", {
       projectName: "RoadWatcher local review",
-      rootDirectory: "slot: native project root"
+      rootDirectory: nativeProjectRoot
     });
 
     if (result.ok) {
@@ -423,6 +437,7 @@ export function App({
     setDraft(snapshot.incident);
     setMedia(snapshot.media);
     setJobs(snapshot.jobs);
+    setNativeProjectRoot(snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT);
     setComponentSlots(componentSlotsOrDefaults(snapshot.componentSlots));
     setRoute(snapshot.route);
     setOfficialFeatures(snapshot.officialFeatures);
@@ -576,7 +591,12 @@ export function App({
       <section className="lower-grid">
         <section className="panel">
           <PanelHeader icon={<ShieldCheck size={18} />} title="Review readiness" meta={reviewReadiness.mode === "native_ready" ? "Native path clear" : "Browser fallback active"} />
-          <ReviewReadinessPanel readiness={reviewReadiness} onProbeNativeProjectStore={handleProbeNativeProjectStore} />
+          <ReviewReadinessPanel
+            nativeProjectRoot={nativeProjectRoot}
+            readiness={reviewReadiness}
+            onNativeProjectRootChange={handleNativeProjectRootChange}
+            onProbeNativeProjectStore={handleProbeNativeProjectStore}
+          />
         </section>
 
         <section className="panel">
@@ -637,9 +657,13 @@ export function App({
 }
 
 function ReviewReadinessPanel({
+  nativeProjectRoot,
+  onNativeProjectRootChange,
   onProbeNativeProjectStore,
   readiness
 }: {
+  nativeProjectRoot: string;
+  onNativeProjectRootChange: (value: string) => void;
   onProbeNativeProjectStore: () => void;
   readiness: ReviewReadiness;
 }) {
@@ -675,6 +699,14 @@ function ReviewReadinessPanel({
           />{" "}
           {readiness.runtime.bridgeSummary}
         </p>
+        <label className="native-root-field">
+          <span>Native project root</span>
+          <input
+            aria-label="Native project root"
+            value={nativeProjectRoot}
+            onChange={(event) => onNativeProjectRootChange(event.target.value)}
+          />
+        </label>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeNativeProjectStore}>
           <Settings size={15} />
           Probe native project store

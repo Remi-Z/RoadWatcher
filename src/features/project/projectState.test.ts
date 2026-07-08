@@ -10,6 +10,7 @@ describe("project state", () => {
       incident: { ...incidentDraft, plate: "ABC1234" },
       jobs: initialJobs,
       media: mediaAssets,
+      nativeProjectRoot: "C:/RoadWatcher/projects",
       officialFeatures: officialRoadFeatures,
       projectedFeatures
     });
@@ -18,6 +19,7 @@ describe("project state", () => {
     expect(snapshot.projectId).toMatch(/^local-/);
     expect(snapshot.incident.plate).toBe("ABC1234");
     expect(snapshot.officialFeatures).toHaveLength(3);
+    expect(snapshot.nativeProjectRoot).toBe("C:/RoadWatcher/projects");
     expect(snapshot.clips).toHaveLength(3);
     expect(snapshot.media[0].originalPath).toContain("front-cam");
   });
@@ -44,6 +46,7 @@ describe("project state", () => {
         incident: { ...incidentDraft, plate: "ABC1234", narrative: "Reviewer confirmed details." },
         jobs: initialJobs,
         media: mediaAssets,
+        nativeProjectRoot: "C:/RoadWatcher/native-projects",
         componentSlots: [
           { ...missingSlots[2], reference: "C:/roadwatcher/valhalla/greater-toronto.json", notes: "York/GTA extract staged." }
         ],
@@ -55,6 +58,7 @@ describe("project state", () => {
     expect(packet.summaryMarkdown).toContain("ABC1234");
     expect(packet.summaryMarkdown).toContain("Reviewer confirmed details.");
     expect(packet.summaryJson.incident.plate).toBe("ABC1234");
+    expect(packet.summaryJson.nativeProjectRoot).toBe("C:/RoadWatcher/native-projects");
     expect(packet.summaryJson.sourceMedia).toHaveLength(2);
     expect(packet.summaryJson.projectedFeatures[0].sourceLayer).toContain("slot:");
     expect(packet.summaryJson.projectedFeatures[0].reviewStatus).toBe("needs_review");
@@ -78,6 +82,7 @@ describe("project state", () => {
       reference: "C:/roadwatcher/valhalla/greater-toronto.json"
     });
     expect(packet.summaryMarkdown).toContain("## Review Readiness");
+    expect(packet.summaryMarkdown).toContain("Native project root: C:/RoadWatcher/native-projects");
     expect(packet.summaryMarkdown).toContain("Browser fallback can export packets");
     expect(packet.summaryMarkdown).toContain("## Native Setup Checklist");
     expect(packet.summaryMarkdown).toContain("York/GTA Valhalla data: blocked");
