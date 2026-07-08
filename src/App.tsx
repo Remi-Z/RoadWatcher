@@ -1178,6 +1178,7 @@ function RouteMap({ route, projectedFeatures }: { route: TimedRoutePoint[]; proj
         .join(" "),
     [route]
   );
+  const routeEndpoints = useMemo(() => summarizeRouteEndpoints(route), [route]);
 
   return (
     <div className="map-canvas">
@@ -1212,8 +1213,37 @@ function RouteMap({ route, projectedFeatures }: { route: TimedRoutePoint[]; proj
           Official GIS projection
         </span>
       </div>
+      <div className="route-endpoint-summary" aria-label="Route endpoint summary">
+        {routeEndpoints.map((endpoint) => (
+          <span key={endpoint.label}>
+            <strong>{endpoint.label}</strong> {endpoint.value}
+          </span>
+        ))}
+      </div>
     </div>
   );
+}
+
+function summarizeRouteEndpoints(route: TimedRoutePoint[]): { label: string; value: string }[] {
+  if (route.length === 0) {
+    return [{ label: "Route", value: "No timed points imported" }];
+  }
+
+  const firstPoint = route[0];
+  const lastPoint = route[route.length - 1];
+
+  return [
+    { label: "First point", value: formatRoutePoint(firstPoint) },
+    { label: "Last point", value: formatRoutePoint(lastPoint) }
+  ];
+}
+
+function formatRoutePoint(point: TimedRoutePoint): string {
+  return `${formatCoordinate(point.latitude)}, ${formatCoordinate(point.longitude)} at ${Math.round(point.timeSeconds)}s`;
+}
+
+function formatCoordinate(value: number): string {
+  return value.toFixed(6);
 }
 
 function TimelineEditor({

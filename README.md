@@ -19,8 +19,9 @@ media imports add `media_import` fallback audit entries until Tauri can provide
 native source paths/file handles, imported videos also add `ffmpeg_proxy`
 fallback audit entries until native proxy and thumbnail generation is wired,
 imported GPX tracks update the route preview, keep the map legend marked as
-Valhalla/OSRM pending, and queue Valhalla matching with `gpx_match` fallback
-audit entries until native Valhalla/OSRM matching is wired,
+Valhalla/OSRM pending, surface first/last timed route-point provenance, and
+queue Valhalla matching with `gpx_match` fallback audit entries until native
+Valhalla/OSRM matching is wired,
 imported GeoJSON layers project supported official road features onto the active
 route with `gis_project` fallback audit entries until Turf/PostGIS/native
 projection is wired, RoadWatcher `.json` snapshots restore portable review state

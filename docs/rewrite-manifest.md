@@ -52,6 +52,8 @@ Build a Windows-first, local-first evidence workstation:
   Valhalla matching.
 - Kept the route map legend conservative by labeling Valhalla/OSRM matching as
   pending while the runnable browser path is still a GPX preview plus queued job.
+- Added first/last timed route-point provenance to the route map panel so GPX
+  endpoint context is visible before packet export.
 - Added browser GPX-match fallback audit entries so imported GPX files leave
   `gpx_match: browser_fallback` records in readiness, saved drafts, and packet
   exports until Tauri persists GPX assets and calls Valhalla/OSRM.
@@ -200,7 +202,8 @@ Tauri invoke adapter tests verify browser fallback does not load Tauri APIs,
 detected shell mode wraps `@tauri-apps/api/core.invoke`, and exported packet
 readiness can carry a supplied ready bridge status.
 App tests verify the route map does not claim Valhalla matched output before
-native matching is implemented. App tests verify the project-store probe does
+native matching is implemented and shows first/last timed route-point
+provenance in the map panel. App tests verify the project-store probe does
 not call native commands in browser fallback and calls `project_create` with a
 complete request when a ready invoke bridge is injected.
 Project snapshot, packet, setup artifact, and App tests verify the editable

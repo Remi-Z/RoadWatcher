@@ -359,7 +359,7 @@ h1 {
 
 .map-canvas {
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr auto auto;
   height: calc(100% - 38px);
   min-height: 360px;
   overflow: hidden;
@@ -432,6 +432,28 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.route-endpoint-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--line);
+  background: rgb(255 255 255 / 90%);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.route-endpoint-summary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.route-endpoint-summary strong {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
 }
 
 .inspector-form {

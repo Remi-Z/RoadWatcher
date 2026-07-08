@@ -24,6 +24,8 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByLabelText("Matched route map")).toBeInTheDocument();
     expect(screen.getByLabelText("Matched route map")).toHaveTextContent("Valhalla/OSRM pending");
     expect(screen.getByLabelText("Matched route map")).not.toHaveTextContent("Valhalla matched");
+    expect(screen.getByLabelText("Matched route map")).toHaveTextContent("First point 43.856000, -79.337000 at 0s");
+    expect(screen.getByLabelText("Matched route map")).toHaveTextContent("Last point 43.857700, -79.338420 at 98s");
     expect(screen.getByLabelText("Evidence reel timeline")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Incident inspector" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Processing jobs" })).toBeInTheDocument();
