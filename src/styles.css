@@ -600,6 +600,7 @@ h1 {
 .media-list,
 .readiness-blockers,
 .runtime-status,
+.native-attempt-list,
 .runtime-command-list,
 .native-checklist,
 .native-checklist-list,
@@ -841,6 +842,45 @@ h1 {
   min-height: 32px;
   margin-top: 7px;
   padding: 0 9px;
+}
+
+.native-attempt-list {
+  margin-top: 8px;
+}
+
+.native-attempt-list > strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.native-attempt-list > small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.native-attempt-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.native-attempt-row strong,
+.native-attempt-row span {
+  overflow-wrap: anywhere;
+}
+
+.native-attempt-row strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.native-attempt-row span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .runtime-command-list {

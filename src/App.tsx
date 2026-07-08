@@ -74,6 +74,7 @@ import {
   DEFAULT_NATIVE_PROJECT_ROOT,
   parseSnapshot,
   type EvidencePacket,
+  type NativeCommandAttempt,
   type ProjectSnapshot
 } from "./features/project/projectState";
 import { summarizeReviewReadiness, type ReviewReadiness } from "./features/project/reviewReadiness";
@@ -110,6 +111,9 @@ export function App({
   const [media, setMedia] = useState<MediaAsset[]>(() => restoredSnapshot?.media ?? mediaAssets);
   const [jobs, setJobs] = useState<WorkstationJob[]>(() => restoredSnapshot?.jobs ?? initialJobs);
   const [nativeProjectRoot, setNativeProjectRoot] = useState(() => restoredSnapshot?.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT);
+  const [nativeCommandAttempts, setNativeCommandAttempts] = useState<NativeCommandAttempt[]>(
+    () => restoredSnapshot?.nativeCommandAttempts ?? []
+  );
   const [componentSlots, setComponentSlots] = useState<ComponentSlot[]>(() => componentSlotsOrDefaults(restoredSnapshot?.componentSlots));
   const [route, setRoute] = useState<TimedRoutePoint[]>(() => restoredSnapshot?.route ?? routePoints);
   const [officialFeatures, setOfficialFeatures] = useState<OfficialRoadFeature[]>(
@@ -156,6 +160,7 @@ export function App({
     incident: draft,
     jobs,
     media,
+    nativeCommandAttempts,
     nativeProjectRoot,
     officialFeatures,
     projectedFeatures: projectedRoadFeatures,
@@ -333,10 +338,27 @@ export function App({
   }
 
   async function handleProbeNativeProjectStore() {
+    const requestedAtIso = new Date().toISOString();
+    const requestSummary = `rootDirectory: ${nativeProjectRoot}`;
     const result = await nativeCommandBridge.invoke("project_create", {
       projectName: "RoadWatcher local review",
       rootDirectory: nativeProjectRoot
     });
+
+    const resultSummary = result.ok
+      ? `projectDirectory: ${nativeProjectDirectory(result.response)}`
+      : `${result.status}; fallback: ${result.fallback}`;
+    const attempt: NativeCommandAttempt = {
+      id: `project-create-${Date.now().toString(36)}`,
+      command: result.command,
+      status: result.status,
+      requestedAtIso,
+      requestSummary,
+      resultSummary
+    };
+
+    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    invalidateLatestExport();
 
     if (result.ok) {
       setAppStatus(`Native project store ready: ${nativeProjectDirectory(result.response)}`);
@@ -437,6 +459,7 @@ export function App({
     setDraft(snapshot.incident);
     setMedia(snapshot.media);
     setJobs(snapshot.jobs);
+    setNativeCommandAttempts(snapshot.nativeCommandAttempts ?? []);
     setNativeProjectRoot(snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT);
     setComponentSlots(componentSlotsOrDefaults(snapshot.componentSlots));
     setRoute(snapshot.route);
@@ -592,6 +615,7 @@ export function App({
         <section className="panel">
           <PanelHeader icon={<ShieldCheck size={18} />} title="Review readiness" meta={reviewReadiness.mode === "native_ready" ? "Native path clear" : "Browser fallback active"} />
           <ReviewReadinessPanel
+            nativeCommandAttempts={nativeCommandAttempts}
             nativeProjectRoot={nativeProjectRoot}
             readiness={reviewReadiness}
             onNativeProjectRootChange={handleNativeProjectRootChange}
@@ -657,11 +681,13 @@ export function App({
 }
 
 function ReviewReadinessPanel({
+  nativeCommandAttempts,
   nativeProjectRoot,
   onNativeProjectRootChange,
   onProbeNativeProjectStore,
   readiness
 }: {
+  nativeCommandAttempts: NativeCommandAttempt[];
   nativeProjectRoot: string;
   onNativeProjectRootChange: (value: string) => void;
   onProbeNativeProjectStore: () => void;
@@ -711,6 +737,20 @@ function ReviewReadinessPanel({
           <Settings size={15} />
           Probe native project store
         </button>
+        <div className="native-attempt-list">
+          <strong>Native command attempts</strong>
+          {nativeCommandAttempts.length === 0 ? (
+            <small>No native command attempts yet.</small>
+          ) : (
+            nativeCommandAttempts.map((attempt) => (
+              <article className="native-attempt-row" key={attempt.id}>
+                <strong>{`${attempt.command}: ${attempt.status}`}</strong>
+                <span>{attempt.requestSummary}</span>
+                <span>{attempt.resultSummary}</span>
+              </article>
+            ))
+          )}
+        </div>
         <div className="runtime-command-list">
           {readiness.runtime.commandSlots.map((slot) => (
             <article className="runtime-command-row" key={slot.id}>

@@ -1,6 +1,7 @@
 import type { ComponentSlot, MediaAsset, IncidentDraft } from "../../data/demoProject";
 import { normalizeProjectedFeatureReview, type OfficialRoadFeature, type ProjectedRoadFeature, type TimedRoutePoint } from "../geo/projection";
 import type { WorkstationJob } from "../jobs/jobModel";
+import type { NativeCommandName } from "../native/nativeCommandContracts";
 import type { NativeRuntimeStatus } from "../native/runtimeEnvironment";
 import type { TimelineClip } from "../timeline/timelineModel";
 import { summarizeReviewReadiness, type ReviewReadiness } from "./reviewReadiness";
@@ -8,12 +9,30 @@ import { summarizeReviewReadiness, type ReviewReadiness } from "./reviewReadines
 export const PROJECT_SCHEMA_VERSION = 1;
 export const DEFAULT_NATIVE_PROJECT_ROOT = "slot: native project root";
 
+export type NativeCommandAttemptStatus =
+  | "invoked"
+  | "browser_fallback"
+  | "bridge_unavailable"
+  | "invalid_request"
+  | "invalid_response"
+  | "failed";
+
+export interface NativeCommandAttempt {
+  id: string;
+  command: NativeCommandName;
+  status: NativeCommandAttemptStatus;
+  requestedAtIso: string;
+  requestSummary: string;
+  resultSummary: string;
+}
+
 export interface ProjectSnapshotInput {
   clips: TimelineClip[];
   componentSlots?: ComponentSlot[];
   incident: IncidentDraft;
   jobs: WorkstationJob[];
   media: MediaAsset[];
+  nativeCommandAttempts?: NativeCommandAttempt[];
   nativeProjectRoot?: string;
   officialFeatures?: OfficialRoadFeature[];
   projectedFeatures: ProjectedRoadFeature[];
@@ -24,6 +43,7 @@ export interface ProjectSnapshot extends ProjectSnapshotInput {
   schemaVersion: number;
   projectId: string;
   componentSlots: ComponentSlot[];
+  nativeCommandAttempts: NativeCommandAttempt[];
   nativeProjectRoot: string;
   route: TimedRoutePoint[];
   officialFeatures: OfficialRoadFeature[];
@@ -40,6 +60,7 @@ export interface EvidencePacket {
     incident: IncidentDraft;
     clips: TimelineClip[];
     componentSlots: ComponentSlot[];
+    nativeCommandAttempts: NativeCommandAttempt[];
     nativeProjectRoot: string;
     route: TimedRoutePoint[];
     sourceMedia: MediaAsset[];
@@ -62,6 +83,7 @@ export function createProjectSnapshot(input: ProjectSnapshotInput): ProjectSnaps
     incident: structuredClone(input.incident),
     jobs: structuredClone(input.jobs),
     media: structuredClone(input.media),
+    nativeCommandAttempts: structuredClone(input.nativeCommandAttempts ?? []),
     nativeProjectRoot: input.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT,
     officialFeatures: structuredClone(input.officialFeatures ?? []),
     projectedFeatures: structuredClone(input.projectedFeatures),
@@ -77,6 +99,7 @@ export function restoreProjectSnapshot(snapshot: ProjectSnapshot): ProjectSnapsh
   return {
     ...structuredClone(snapshot),
     componentSlots: structuredClone(snapshot.componentSlots ?? []),
+    nativeCommandAttempts: structuredClone(snapshot.nativeCommandAttempts ?? []),
     nativeProjectRoot: snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT,
     projectedFeatures: structuredClone(snapshot.projectedFeatures ?? []).map(normalizeProjectedFeatureReview)
   };
@@ -99,6 +122,7 @@ export function buildEvidencePacket(snapshot: ProjectSnapshot, options: Evidence
     incident: structuredClone(snapshot.incident),
     clips: structuredClone(snapshot.clips),
     componentSlots: structuredClone(snapshot.componentSlots ?? []),
+    nativeCommandAttempts: structuredClone(snapshot.nativeCommandAttempts ?? []),
     nativeProjectRoot: snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT,
     route: structuredClone(snapshot.route ?? []),
     sourceMedia: structuredClone(snapshot.media),
@@ -152,6 +176,9 @@ function buildMarkdown(packet: EvidencePacket["summaryJson"]): string {
       return `- ${item.label}: ${item.state}; reference: ${reference}; verify: ${item.verifyCommand}${jobs}${notes}`;
     })
     .join("\n");
+  const nativeCommandAttemptLines = packet.nativeCommandAttempts
+    .map((attempt) => `- ${attempt.command}: ${attempt.status}; ${attempt.requestSummary}; ${attempt.resultSummary}`)
+    .join("\n");
 
   return `# RoadWatcher Evidence Summary
 
@@ -178,6 +205,9 @@ ${clipLines || "- No clips saved."}
 - Summary: ${packet.reviewReadiness.summary}
 - Open component slots: ${packet.reviewReadiness.openComponentSlots.join(", ") || "none"}
 - Blocked jobs: ${packet.reviewReadiness.blockedJobs.join(", ") || "none"}
+
+## Native Command Attempts
+${nativeCommandAttemptLines || "- No native command attempts saved."}
 
 ## Native Setup Checklist
 ${nativeChecklistLines || "- No native setup slots saved."}

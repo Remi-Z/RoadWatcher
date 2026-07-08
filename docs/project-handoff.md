@@ -64,6 +64,9 @@ The runnable app today is the React/Vite evidence workstation:
   fallback without calling native code otherwise. Its native project root field
   is editable, saved in portable snapshots, and included in evidence/setup
   exports.
+- Native command attempt audit trail for the project-store probe; browser
+  fallback and ready-bridge `project_create` attempts are visible in readiness,
+  saved in portable snapshots, and exported with evidence packet Markdown/JSON.
 - Projected road-feature review rows with timing, confidence, and provenance.
 - Editable projected road-feature review status/notes, carried into snapshots
   and exported evidence packets.
@@ -105,6 +108,8 @@ Tests currently cover:
   successful ready-bridge `project_create` calls.
 - Native project root coverage for snapshot persistence, evidence packet/setup
   artifact export, UI editing, and probe request usage.
+- Native command attempt coverage for readiness-panel rendering, saved drafts,
+  and evidence packet Markdown/JSON export after project-store probes.
 - Export invalidation coverage for incident draft and component slot edits after
   a packet preview has been generated.
 - Review readiness helper coverage for browser fallback and native-ready states,
@@ -131,7 +136,7 @@ Passing on 2026-07-07:
 pnpm test
 ```
 
-Result: 15 files, 68 tests passing.
+Result: 15 files, 69 tests passing.
 
 Passing on 2026-07-07:
 
@@ -235,6 +240,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest project-store probe coverage verified browser fallback status without
   native invocation and ready-bridge `project_create` invocation with the
   editable native project root.
+- Latest native command attempt coverage verified project-store probe attempts
+  render in readiness and persist into browser-local draft snapshots and packet
+  exports.
 - Latest browser readiness smoke verified the rendered panel shows packet
   availability, `5 native slots need attention`, and the Valhalla blocker with
   no browser warnings/errors.
@@ -265,7 +273,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `src/features/media/mediaImport.ts` - tested browser media import fallback and
   proxy-job / placeholder timeline clip generation.
 - `src/features/project/projectState.ts` - tested project snapshot and evidence
-  packet model, including component slot export state.
+  packet model, including component slot export state and native command
+  attempt audit entries.
 - `src/features/project/browserProjectRepository.ts` - browser-local persistence
   fallback.
 - `src/features/project/downloadArtifacts.ts` - Markdown/JSON download artifact
@@ -284,7 +293,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   `@tauri-apps/api/core.invoke` once a Tauri shell is detected.
 - The current UI project-store probe sends the editable `Native project root`
   field as `rootDirectory`; it defaults to `slot: native project root` until a
-  native project-folder picker/root setting is implemented.
+  native project-folder picker/root setting is implemented. Probe attempts are
+  browser-state audit entries until the Rust project store can write native logs.
 - `src-tauri/` - Tauri 2 scaffold and first command slot.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.

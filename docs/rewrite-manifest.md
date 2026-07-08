@@ -75,6 +75,10 @@ Build a Windows-first, local-first evidence workstation:
   is available, and reports browser fallback without calling native code
   otherwise. The native project root is saved in portable snapshots and included
   in evidence/setup exports.
+- Added a native command attempt audit trail for the project-store probe so
+  browser fallback and ready-bridge `project_create` attempts are visible in the
+  readiness panel, saved in portable snapshots, and included in evidence packet
+  Markdown/JSON exports.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -94,7 +98,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-07. Current test count is 15 files / 68 tests.
+Both passed on 2026-07-07. Current test count is 15 files / 69 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -127,6 +131,9 @@ invoke bridge is injected.
 Project snapshot, packet, setup artifact, and App tests verify the editable
 native project root is saved, restored through snapshots, exported, and used by
 the project-store probe.
+Project state and App tests verify native command attempts are recorded after
+project-store probes, saved in drafts, rendered in the readiness panel, and
+exported in evidence packet Markdown/JSON.
 The latest browser project snapshot smoke before the standalone setup artifact
 verified three export downloads, decoded the `local-...-browser42-project.json`
 artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4
@@ -181,7 +188,9 @@ network/DNS access.
   for runtime readiness and packet export status, but Rust command handlers
   still need implementation. The UI project-store probe uses the editable
   native project root field; it defaults to `slot: native project root` until
-  the native project-folder picker/storage flow exists.
+  the native project-folder picker/storage flow exists. Probe attempts are
+  logged in browser state and portable snapshots, but no native command log file
+  exists until the Rust project store is implemented.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
   imported videos, but Tauri still needs real file handles or paths, hashing,
   metadata probing, duration detection, FFmpeg proxy generation, and render jobs.

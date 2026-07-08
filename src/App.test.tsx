@@ -284,6 +284,8 @@ describe("RoadWatcher workstation", () => {
 
     expect(nativeInvoke).not.toHaveBeenCalled();
     expect(await screen.findByText(/browser fallback remains active/)).toBeInTheDocument();
+    expect(screen.getByText("Native command attempts")).toBeInTheDocument();
+    expect(screen.getByText(/project_create: browser_fallback/)).toBeInTheDocument();
   });
 
   it("probes the native project store through the command bridge when invoke is available", async () => {
@@ -304,6 +306,8 @@ describe("RoadWatcher workstation", () => {
       projectName: "RoadWatcher local review",
       rootDirectory: "C:/RoadWatcher/native-projects"
     });
+    expect(screen.getByText("Native command attempts")).toBeInTheDocument();
+    expect(screen.getByText(/project_create: invoked/)).toBeInTheDocument();
   });
 
   it("persists editable native project root in drafts and export packets", () => {
@@ -320,6 +324,42 @@ describe("RoadWatcher workstation", () => {
     const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
     expect(exportPanel).not.toBeNull();
     expect(exportPanel as HTMLElement).toHaveTextContent("Native project root: D:/RoadWatcherProjects");
+  });
+
+  it("persists native project-store probe attempts in drafts and export packets", async () => {
+    const repository = createMemoryProjectRepository();
+    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
+      projectId: "native-roadwatcher",
+      projectDirectory: "D:/RoadWatcherProjects/native-roadwatcher",
+      sqlitePath: "D:/RoadWatcherProjects/native-roadwatcher/project.sqlite"
+    });
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={repository}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Native project root"), { target: { value: "D:/RoadWatcherProjects" } });
+    fireEvent.click(screen.getByRole("button", { name: "Probe native project store" }));
+    expect(await screen.findByText(/project_create: invoked/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
+      command: "project_create",
+      status: "invoked",
+      requestSummary: "rootDirectory: D:/RoadWatcherProjects"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("## Native Command Attempts");
+    expect(exportPanel as HTMLElement).toHaveTextContent("project_create: invoked");
+    expect(exportPanel as HTMLElement).toHaveTextContent("D:/RoadWatcherProjects/native-roadwatcher");
   });
 
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {
