@@ -93,6 +93,7 @@ import {
 } from "./features/timeline/timelineModel";
 
 const defaultProjectRepository = createBrowserProjectRepository();
+const NATIVE_GPX_PATH_SLOT = "slot: persisted GPX path from native import";
 
 export function App({
   nativeInvoke,
@@ -428,6 +429,39 @@ export function App({
     setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
   }
 
+  async function handleProbeGpxMatch() {
+    const requestedAtIso = new Date().toISOString();
+    const matcher = "Valhalla";
+    const result = await nativeCommandBridge.invoke("gpx_match", {
+      projectId: createProjectSnapshot(currentSnapshotInput).projectId,
+      gpxPath: NATIVE_GPX_PATH_SLOT,
+      matcher
+    });
+    const resultSummary = result.ok
+      ? `routeId: ${gpxRouteId(result.response)}; matchedPointCount: ${gpxMatchedPointCount(
+          result.response
+        )}; projectedFeatureCount: ${gpxProjectedFeatureCount(result.response)}`
+      : `${result.status}; fallback: ${result.fallback}; browser route points: ${route.length}`;
+    const attempt: NativeCommandAttempt = {
+      id: `gpx-match-probe-${Date.now().toString(36)}`,
+      command: result.command,
+      status: result.status,
+      requestedAtIso,
+      requestSummary: `gpxPath: ${NATIVE_GPX_PATH_SLOT}; matcher: ${matcher}`,
+      resultSummary
+    };
+
+    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    invalidateLatestExport();
+
+    if (result.ok) {
+      setAppStatus(`Native GPX matcher ready: ${gpxRouteId(result.response)}`);
+      return;
+    }
+
+    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
+  }
+
   async function handleMediaImport(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) {
@@ -699,6 +733,7 @@ export function App({
             nativeProjectRoot={nativeProjectRoot}
             readiness={reviewReadiness}
             onNativeProjectRootChange={handleNativeProjectRootChange}
+            onProbeGpxMatch={handleProbeGpxMatch}
             onProbeNativeProjectStore={handleProbeNativeProjectStore}
             onProbeCvScan={handleProbeCvScan}
           />
@@ -766,6 +801,7 @@ function ReviewReadinessPanel({
   nativeProjectRoot,
   onNativeProjectRootChange,
   onProbeCvScan,
+  onProbeGpxMatch,
   onProbeNativeProjectStore,
   readiness
 }: {
@@ -773,6 +809,7 @@ function ReviewReadinessPanel({
   nativeProjectRoot: string;
   onNativeProjectRootChange: (value: string) => void;
   onProbeCvScan: () => void;
+  onProbeGpxMatch: () => void;
   onProbeNativeProjectStore: () => void;
   readiness: ReviewReadiness;
 }) {
@@ -819,6 +856,10 @@ function ReviewReadinessPanel({
         <button type="button" className="button secondary native-probe-button" onClick={onProbeNativeProjectStore}>
           <Settings size={15} />
           Probe native project store
+        </button>
+        <button type="button" className="button secondary native-probe-button" onClick={onProbeGpxMatch}>
+          <Route size={15} />
+          Probe GPX matcher
         </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeCvScan}>
           <Gauge size={15} />
@@ -1342,6 +1383,30 @@ function nativeProjectDirectory(response: unknown): string {
   }
 
   return "(native project directory unavailable)";
+}
+
+function gpxRouteId(response: unknown): string {
+  if (response && typeof response === "object" && "routeId" in response) {
+    return String((response as { routeId: unknown }).routeId);
+  }
+
+  return "(route id unavailable)";
+}
+
+function gpxMatchedPointCount(response: unknown): string {
+  if (response && typeof response === "object" && "matchedPointCount" in response) {
+    return String((response as { matchedPointCount: unknown }).matchedPointCount);
+  }
+
+  return "(matched point count unavailable)";
+}
+
+function gpxProjectedFeatureCount(response: unknown): string {
+  if (response && typeof response === "object" && "projectedFeatureCount" in response) {
+    return String((response as { projectedFeatureCount: unknown }).projectedFeatureCount);
+  }
+
+  return "(projected feature count unavailable)";
 }
 
 function cvJobId(response: unknown): string {

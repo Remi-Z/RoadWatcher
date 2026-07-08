@@ -105,6 +105,10 @@ Build a Windows-first, local-first evidence workstation:
   editable CV model slot through the planned `cv_scan` bridge path, recording
   browser fallback attempts in readiness, saved drafts, and evidence packet
   exports until the Python sidecar and ONNX/labels paths are wired.
+- Added a readiness-panel GPX matcher probe that routes an explicit persisted
+  GPX path slot through the planned `gpx_match` bridge path, recording browser
+  fallback attempts in readiness, saved drafts, and evidence packet exports
+  until Valhalla/OSRM matching is wired.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -124,7 +128,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 78 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 80 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -165,10 +169,14 @@ project-store probes, saved in drafts, rendered in the readiness panel, and
 exported in evidence packet Markdown/JSON.
 App tests verify failed project-store probe invokes keep the app alive, update
 the status banner, and render a `project_create: failed` audit row.
-App tests verify the local CV scan probe does not call native code in browser
-fallback mode, records a `cv_scan: browser_fallback` audit row with the current
-media and CV model slot reference, and carries that row into saved drafts and
-packet exports.
+App tests verify the GPX matcher probe does not call native code in browser
+fallback mode, records a `gpx_match: browser_fallback` audit row with an
+explicit persisted GPX path slot, carries that row into saved drafts and packet
+exports, and calls `gpx_match` with `projectId`, `gpxPath`, and `matcher` when a
+ready invoke bridge is injected. App tests verify the local CV scan probe does
+not call native code in browser fallback mode, records a `cv_scan`
+browser-fallback audit row with the current media and CV model slot reference,
+and carries that row into saved drafts and packet exports.
 The latest browser project snapshot smoke before the standalone setup artifact
 verified three export downloads, decoded the `local-...-browser42-project.json`
 artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4

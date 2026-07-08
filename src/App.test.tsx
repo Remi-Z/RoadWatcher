@@ -439,6 +439,58 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("editable reviewer notes only");
   });
 
+  it("records browser GPX matcher fallbacks in drafts and export packets", async () => {
+    const repository = createMemoryProjectRepository();
+    const nativeInvoke = vi.fn<NativeInvoke>();
+    render(<App nativeInvoke={nativeInvoke} projectRepository={repository} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe GPX matcher" }));
+
+    expect(nativeInvoke).not.toHaveBeenCalled();
+    expect(await screen.findByText(/gpx_match: browser_fallback/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
+      command: "gpx_match",
+      status: "browser_fallback",
+      requestSummary: "gpxPath: slot: persisted GPX path from native import; matcher: Valhalla"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("gpx_match: browser_fallback");
+    expect(exportPanel as HTMLElement).toHaveTextContent("browser GPX parsing and queued Valhalla job");
+  });
+
+  it("probes the native GPX matcher through the command bridge when invoke is available", async () => {
+    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
+      routeId: "route-valhalla-1",
+      matchedPointCount: 42,
+      projectedFeatureCount: 3
+    });
+
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe GPX matcher" }));
+
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native GPX matcher ready");
+    expect(nativeInvoke).toHaveBeenCalledWith("gpx_match", {
+      projectId: expect.stringMatching(/^local-/),
+      gpxPath: "slot: persisted GPX path from native import",
+      matcher: "Valhalla"
+    });
+    expect(screen.getByText(/gpx_match: invoked/)).toBeInTheDocument();
+    expect(screen.getByText(/matchedPointCount: 42/)).toBeInTheDocument();
+  });
+
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {
     render(<App />);
 

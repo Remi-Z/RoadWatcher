@@ -86,6 +86,10 @@ The runnable app today is the React/Vite evidence workstation:
 - Native command attempt audit trail for the project-store probe; browser
   fallback and ready-bridge `project_create` attempts are visible in readiness,
   saved in portable snapshots, and exported with evidence packet Markdown/JSON.
+- Readiness-panel GPX matcher probe that routes an explicit persisted GPX path
+  slot through the planned `gpx_match` bridge path, recording browser fallback
+  attempts in readiness, saved drafts, and packet exports until Valhalla/OSRM
+  matching is wired.
 - Readiness-panel local CV scan probe that routes the selected media and
   editable CV model slot through the planned `cv_scan` bridge path, recording
   browser fallback attempts in readiness, saved drafts, and packet exports until
@@ -136,6 +140,10 @@ Tests currently cover:
   and evidence packet Markdown/JSON export after project-store probes.
 - Failed project-store probe coverage proving rejected native invokes update the
   status banner and render a `project_create: failed` attempt row.
+- GPX matcher probe coverage proving browser fallback avoids native invocation,
+  records an explicit persisted GPX path slot, persists/exports a
+  `gpx_match: browser_fallback` attempt row, and calls ready-bridge `gpx_match`
+  with `projectId`, `gpxPath`, and `matcher`.
 - CV scan probe coverage proving browser fallback avoids native invocation,
   records the current media and CV model slot reference, and persists/exports a
   `cv_scan: browser_fallback` attempt row.
@@ -173,7 +181,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 78 tests passing.
+Result: 15 files, 80 tests passing.
 
 Passing on 2026-07-08:
 
@@ -299,6 +307,10 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest native invoke failure coverage verified rejected project-store probes
   are converted to explicit failed results and visible audit rows instead of
   unhandled UI errors.
+- Latest GPX matcher probe coverage verified browser-mode probes do not invoke
+  native code, add `gpx_match: browser_fallback` rows with the persisted GPX
+  path slot, persist/export those rows, and call `gpx_match` when a ready invoke
+  bridge is injected.
 - Latest CV scan fallback audit coverage verified browser-mode CV probes do not
   invoke native code, add `cv_scan: browser_fallback` rows with the selected
   media and CV model slot reference, and persist those rows into saved drafts
