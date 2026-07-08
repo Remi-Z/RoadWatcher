@@ -368,6 +368,38 @@ export function App({
     setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
   }
 
+  async function handleProbeCvScan() {
+    const requestedAtIso = new Date().toISOString();
+    const mediaId = selectedClip?.mediaId ?? primaryMedia?.id ?? "slot: media id";
+    const cvSlotReference = componentSlots.find((slot) => slot.id === "cv-model")?.reference ?? "slot: ONNX model path + labels path";
+    const result = await nativeCommandBridge.invoke("cv_scan", {
+      projectId: createProjectSnapshot(currentSnapshotInput).projectId,
+      mediaId,
+      modelPath: cvSlotReference,
+      labelsPath: cvSlotReference
+    });
+    const attempt: NativeCommandAttempt = {
+      id: `cv-scan-${Date.now().toString(36)}`,
+      command: result.command,
+      status: result.status,
+      requestedAtIso,
+      requestSummary: `mediaId: ${mediaId}; modelPath: ${cvSlotReference}; labelsPath: ${cvSlotReference}`,
+      resultSummary: result.ok
+        ? `jobId: ${cvJobId(result.response)}; findings: ${cvFindingCount(result.response)}; reviewRequired: ${cvReviewRequired(result.response)}`
+        : `${result.status}; fallback: ${result.fallback}`
+    };
+
+    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    invalidateLatestExport();
+
+    if (result.ok) {
+      setAppStatus(`Local CV scan queued: ${cvJobId(result.response)}`);
+      return;
+    }
+
+    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
+  }
+
   async function handleMediaImport(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) {
@@ -636,6 +668,7 @@ export function App({
             readiness={reviewReadiness}
             onNativeProjectRootChange={handleNativeProjectRootChange}
             onProbeNativeProjectStore={handleProbeNativeProjectStore}
+            onProbeCvScan={handleProbeCvScan}
           />
         </section>
 
@@ -700,12 +733,14 @@ function ReviewReadinessPanel({
   nativeCommandAttempts,
   nativeProjectRoot,
   onNativeProjectRootChange,
+  onProbeCvScan,
   onProbeNativeProjectStore,
   readiness
 }: {
   nativeCommandAttempts: NativeCommandAttempt[];
   nativeProjectRoot: string;
   onNativeProjectRootChange: (value: string) => void;
+  onProbeCvScan: () => void;
   onProbeNativeProjectStore: () => void;
   readiness: ReviewReadiness;
 }) {
@@ -752,6 +787,10 @@ function ReviewReadinessPanel({
         <button type="button" className="button secondary native-probe-button" onClick={onProbeNativeProjectStore}>
           <Settings size={15} />
           Probe native project store
+        </button>
+        <button type="button" className="button secondary native-probe-button" onClick={onProbeCvScan}>
+          <Gauge size={15} />
+          Probe local CV scan
         </button>
         <div className="native-attempt-list">
           <strong>Native command attempts</strong>
@@ -1268,6 +1307,30 @@ function nativeProjectDirectory(response: unknown): string {
   }
 
   return "(native project directory unavailable)";
+}
+
+function cvJobId(response: unknown): string {
+  if (response && typeof response === "object" && "jobId" in response) {
+    return String((response as { jobId: unknown }).jobId);
+  }
+
+  return "(cv job id unavailable)";
+}
+
+function cvFindingCount(response: unknown): string {
+  if (response && typeof response === "object" && "findingCount" in response) {
+    return String((response as { findingCount: unknown }).findingCount);
+  }
+
+  return "(finding count unavailable)";
+}
+
+function cvReviewRequired(response: unknown): string {
+  if (response && typeof response === "object" && "reviewRequired" in response) {
+    return String((response as { reviewRequired: unknown }).reviewRequired);
+  }
+
+  return "(review status unavailable)";
 }
 
 function createBrowserMediaImportAttempt(asset: MediaAsset, requestedAtIso: string, index: number): NativeCommandAttempt {

@@ -94,6 +94,10 @@ Build a Windows-first, local-first evidence workstation:
   browser fallback and ready-bridge `project_create` attempts are visible in the
   readiness panel, saved in portable snapshots, and included in evidence packet
   Markdown/JSON exports.
+- Added a readiness-panel local CV scan probe that routes the selected media and
+  editable CV model slot through the planned `cv_scan` bridge path, recording
+  browser fallback attempts in readiness, saved drafts, and evidence packet
+  exports until the Python sidecar and ONNX/labels paths are wired.
 - Added editable projected-feature review status/notes so stop signs, signals,
   bike lanes, and crosswalk projections remain reviewer-controlled before
   packet export.
@@ -113,7 +117,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 75 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 76 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -151,6 +155,10 @@ project-store probes, saved in drafts, rendered in the readiness panel, and
 exported in evidence packet Markdown/JSON.
 App tests verify failed project-store probe invokes keep the app alive, update
 the status banner, and render a `project_create: failed` audit row.
+App tests verify the local CV scan probe does not call native code in browser
+fallback mode, records a `cv_scan: browser_fallback` audit row with the current
+media and CV model slot reference, and carries that row into saved drafts and
+packet exports.
 The latest browser project snapshot smoke before the standalone setup artifact
 verified three export downloads, decoded the `local-...-browser42-project.json`
 artifact, and confirmed plate `BROWSER42`, incident clip range `840-852`, 4
@@ -203,17 +211,19 @@ network/DNS access.
 - The native runtime boundary detects Tauri shell globals and lists planned
   command names and DTO fields, but the Rust commands themselves are not
   implemented or invoked yet.
-- The native command bridge is dependency-injected and tested, but the app does
-  not call project/media/GPX/GIS/FFmpeg/CV commands from workflows yet. Browser
-  mode returns explicit fallback results. Required request fields are validated
-  before Tauri invoke is called, and required response fields are validated
-  before native data is accepted. The browser-safe Tauri invoke adapter is wired
-  for runtime readiness and packet export status, but Rust command handlers
-  still need implementation. The UI project-store probe uses the editable
-  native project root field; it defaults to `slot: native project root` until
-  the native project-folder picker/storage flow exists. Probe attempts are
-  logged in browser state and portable snapshots, but no native command log file
-  exists until the Rust project store is implemented.
+- The native command bridge is dependency-injected and tested. The app now calls
+  project-store and CV-scan probe paths through the bridge, but media/GPX/GIS/
+  FFmpeg workflow commands and all Rust/Python handlers still need
+  implementation. Browser mode returns explicit fallback results. Required
+  request fields are validated before Tauri invoke is called, and required
+  response fields are validated before native data is accepted. The browser-safe
+  Tauri invoke adapter is wired for runtime readiness and packet export status,
+  but Rust command handlers still need implementation. The UI project-store
+  probe uses the editable native project root field; it defaults to
+  `slot: native project root` until the native project-folder picker/storage
+  flow exists. Project-store and CV probe attempts are logged in browser state
+  and portable snapshots, but no native command log file exists until the Rust
+  project store is implemented.
 - Browser media import is a fallback only. It now adds placeholder reel clips for
   imported videos plus `media_import` and `ffmpeg_proxy` browser-fallback audit
   entries, but Tauri still needs real file handles or paths, hashing, metadata
@@ -236,7 +246,8 @@ network/DNS access.
 - GPStitch has not been vendored yet.
 - Valhalla/OSRM adapters are not implemented yet.
 - Official GIS import and CRS normalization are not implemented yet.
-- CV scan only has a configuration sidecar stub.
+- CV scan only has a configuration sidecar stub and a browser-fallback audit
+  probe; no real ONNX model loading or frame scanning is implemented yet.
 - RoadWatch browser automation remains deferred.
 
 ## User-Filled Slots

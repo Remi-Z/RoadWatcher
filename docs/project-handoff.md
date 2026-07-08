@@ -81,6 +81,10 @@ The runnable app today is the React/Vite evidence workstation:
 - Native command attempt audit trail for the project-store probe; browser
   fallback and ready-bridge `project_create` attempts are visible in readiness,
   saved in portable snapshots, and exported with evidence packet Markdown/JSON.
+- Readiness-panel local CV scan probe that routes the selected media and
+  editable CV model slot through the planned `cv_scan` bridge path, recording
+  browser fallback attempts in readiness, saved drafts, and packet exports until
+  the Python sidecar and ONNX/labels paths are wired.
 - Projected road-feature review rows with timing, confidence, and provenance.
 - Editable projected road-feature review status/notes, carried into snapshots
   and exported evidence packets.
@@ -126,6 +130,9 @@ Tests currently cover:
   and evidence packet Markdown/JSON export after project-store probes.
 - Failed project-store probe coverage proving rejected native invokes update the
   status banner and render a `project_create: failed` attempt row.
+- CV scan probe coverage proving browser fallback avoids native invocation,
+  records the current media and CV model slot reference, and persists/exports a
+  `cv_scan: browser_fallback` attempt row.
 - Export invalidation coverage for incident draft and component slot edits after
   a packet preview has been generated.
 - Review readiness helper coverage for browser fallback and native-ready states,
@@ -159,7 +166,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 75 tests passing.
+Result: 15 files, 76 tests passing.
 
 Passing on 2026-07-08:
 
@@ -281,6 +288,10 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest native invoke failure coverage verified rejected project-store probes
   are converted to explicit failed results and visible audit rows instead of
   unhandled UI errors.
+- Latest CV scan fallback audit coverage verified browser-mode CV probes do not
+  invoke native code, add `cv_scan: browser_fallback` rows with the selected
+  media and CV model slot reference, and persist those rows into saved drafts
+  and packet exports.
 - Latest browser readiness smoke verified the rendered panel shows packet
   availability, `5 native slots need attention`, and the Valhalla blocker with
   no browser warnings/errors.

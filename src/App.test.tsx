@@ -376,6 +376,32 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("D:/RoadWatcherProjects/native-roadwatcher");
   });
 
+  it("records browser CV scan fallbacks in drafts and export packets", async () => {
+    const repository = createMemoryProjectRepository();
+    const nativeInvoke = vi.fn<NativeInvoke>();
+    render(<App nativeInvoke={nativeInvoke} projectRepository={repository} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe local CV scan" }));
+
+    expect(nativeInvoke).not.toHaveBeenCalled();
+    expect(await screen.findByText(/cv_scan: browser_fallback/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
+      command: "cv_scan",
+      status: "browser_fallback",
+      requestSummary: "mediaId: media-front-001; modelPath: slot: ONNX model path + labels path; labelsPath: slot: ONNX model path + labels path"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel).not.toBeNull();
+    expect(exportPanel as HTMLElement).toHaveTextContent("cv_scan: browser_fallback");
+    expect(exportPanel as HTMLElement).toHaveTextContent("editable reviewer notes only");
+  });
+
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {
     render(<App />);
 
