@@ -291,6 +291,17 @@ describe("RoadWatcher workstation", () => {
     expect(within(featurePanel as HTMLElement).getByText("slot: official cycling network layer")).toBeInTheDocument();
   });
 
+  it("shows setup slot guidance for blocked processing jobs", () => {
+    render(<App />);
+
+    const jobsPanel = screen.getByRole("heading", { name: "Processing jobs" }).closest("aside");
+    expect(jobsPanel).not.toBeNull();
+    expect(jobsPanel as HTMLElement).toHaveTextContent("Unblock with York/GTA Valhalla data");
+    expect(jobsPanel as HTMLElement).toHaveTextContent("valhalla_service <path-to-valhalla.json>");
+    expect(jobsPanel as HTMLElement).toHaveTextContent("Unblock with CV model and labels");
+    expect(jobsPanel as HTMLElement).toHaveTextContent("roadwatcher-cv --model <model.onnx> --labels <labels.txt>");
+  });
+
   it("lets the reviewer mark projected road features for packet export", () => {
     render(<App />);
 

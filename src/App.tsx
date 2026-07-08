@@ -827,7 +827,7 @@ export function App({
 
         <aside className="jobs-panel panel">
           <PanelHeader icon={<Gauge size={18} />} title="Processing jobs" meta="Runnable slots are explicit" />
-          <JobList jobs={jobs} />
+          <JobList jobs={jobs} nativeChecklist={reviewReadiness.nativeChecklist} />
         </aside>
       </section>
 
@@ -1338,21 +1338,35 @@ function InspectorField({ label, value, onChange }: { label: string; value: stri
   );
 }
 
-function JobList({ jobs }: { jobs: WorkstationJob[] }) {
+function JobList({ jobs, nativeChecklist }: { jobs: WorkstationJob[]; nativeChecklist: NativeReadinessChecklistItem[] }) {
   return (
     <div className="job-list">
-      {jobs.map((job) => (
-        <article className="job-row" key={job.id}>
-          <div>
-            <StatusPill status={job.status} label={job.status} />
-            <strong>{job.label}</strong>
-          </div>
-          <div className="progress-line" aria-label={`${job.label} progress`}>
-            <span style={{ width: `${job.progress}%` }} />
-          </div>
-          <p>{job.detail}</p>
-        </article>
-      ))}
+      {jobs.map((job) => {
+        const blockers = nativeChecklist.filter((item) => item.blockingJobs.includes(job.label));
+
+        return (
+          <article className="job-row" key={job.id}>
+            <div>
+              <StatusPill status={job.status} label={job.status} />
+              <strong>{job.label}</strong>
+            </div>
+            <div className="progress-line" aria-label={`${job.label} progress`}>
+              <span style={{ width: `${job.progress}%` }} />
+            </div>
+            <p>{job.detail}</p>
+            {blockers.length > 0 && (
+              <div className="job-blocker-list">
+                {blockers.map((blocker) => (
+                  <div className="job-blocker" key={blocker.id}>
+                    <span>Unblock with {blocker.label}</span>
+                    <code>{blocker.verifyCommand}</code>
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 }

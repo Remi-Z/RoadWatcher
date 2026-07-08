@@ -70,6 +70,8 @@ The runnable app today is the React/Vite evidence workstation:
 - Native setup checklist rows generated from component slots and blocked jobs,
   including saved references, verification commands, and linked blocked jobs in
   both the UI and exported evidence packet.
+- Processing job rail unblock hints reuse the native setup checklist to show
+  which setup slot and verification command clears each blocked job.
 - Native runtime status that detects browser fallback versus Tauri shell
   presence and lists planned Rust command names without claiming they are
   implemented.
@@ -116,7 +118,7 @@ The runnable app today is the React/Vite evidence workstation:
 - Projected road-feature review rows with timing, confidence, and provenance.
 - Editable projected road-feature review status/notes, carried into snapshots
   and exported evidence packets.
-- Processing job rail with explicit blocked slots.
+- Processing job rail with explicit blocked slots and per-job unblock guidance.
 - Session media and install/data slot panels.
 
 Tests currently cover:
@@ -124,6 +126,8 @@ Tests currently cover:
 - Timeline clipping, trimming, splitting, duplication, removal, reordering, and
   reel-duration math.
 - Job state transitions.
+- Processing job UI coverage for setup slot and verification-command guidance
+  on blocked jobs.
 - Projection of official GIS-style features onto timed route segments.
 - Projected road-feature default review state, UI edit flow, and evidence packet
   export status/notes.
@@ -214,7 +218,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 88 tests passing.
+Result: 15 files, 89 tests passing.
 
 Passing on 2026-07-08:
 
@@ -312,6 +316,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   references with no browser console warnings/errors.
 - Latest Session media coverage verified referenced originals show duration,
   detected start, file size, and hash/provenance metadata in the panel.
+- Latest processing-job blocker coverage verified blocked jobs show the setup
+  slot and verification command needed to unblock Valhalla and local CV work.
 - Latest media-import implementation coverage verified a browser-imported video
   becomes a referenced media asset, queues a proxy job, appends an editable
   `Imported ...` reel clip, and appears in exported Markdown.

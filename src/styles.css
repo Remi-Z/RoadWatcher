@@ -638,6 +638,32 @@ h1 {
   text-transform: capitalize;
 }
 
+.job-blocker-list {
+  display: grid;
+  gap: 5px;
+}
+
+.job-blocker {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #f3d8bc;
+  border-radius: 6px;
+  background: #fff7ed;
+  padding: 7px 8px;
+}
+
+.job-blocker span {
+  color: #7c4a03;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.job-blocker code {
+  overflow-wrap: anywhere;
+  color: #3b2b18;
+  font-size: 11px;
+}
+
 .progress-line {
   height: 6px;
 }

@@ -78,6 +78,8 @@ Build a Windows-first, local-first evidence workstation:
 - Added a native setup checklist generated from component slots and blocked jobs
   so UI and evidence packets show each missing install/data slot, its saved
   reference, a verification command, and related blocked jobs.
+- Added Processing job rail unblock hints that reuse the native setup checklist
+  to show which setup slot and verification command clears each blocked job.
 - Added a native runtime boundary that detects browser fallback versus Tauri
   shell presence, manifests planned Tauri command names, and keeps Rust command
   implementation explicitly pending.
@@ -148,7 +150,7 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 88 tests.
+Both passed on 2026-07-08. Current test count is 15 files / 89 tests.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -157,6 +159,8 @@ download links, projected feature review rows, and RoadWatcher project JSON
 restore. Browser-local draft tests now cover restoring a saved draft and clearing
 it back to the seeded review state. Session media tests cover visible duration,
 detected start, file size, and hash/provenance metadata for referenced originals.
+Processing job tests cover setup slot and verification-command hints for
+blocked native jobs.
 Component slot tests cover editable
 references/status/notes, top-level Slots focus behavior, snapshot persistence,
 evidence packet export, per-slot verification command visibility, and fallback

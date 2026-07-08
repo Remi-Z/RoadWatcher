@@ -32,8 +32,10 @@ A review-readiness panel and exported packet section summarize whether the
 browser fallback can export and which native slots/jobs still block the full
 workflow, including a native setup checklist with per-slot references,
 verification commands, linked blocked jobs, runtime command-slot status, and
-typed request/response field manifests for the future Tauri path. A safe native
-command bridge now returns explicit browser fallback or bridge-unavailable
+typed request/response field manifests for the future Tauri path. The
+Processing jobs rail also shows which setup slot and verification command
+unblocks each blocked job. A safe native command bridge now returns explicit
+browser fallback or bridge-unavailable
 results until real Tauri `invoke` wiring exists, and validates required request
 fields before any native call and required response fields after invoke. A
 browser-safe Tauri invoke adapter is resolved only inside a detected Tauri shell,
