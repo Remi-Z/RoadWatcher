@@ -58,6 +58,8 @@ The runnable app today is the React/Vite evidence workstation:
   projected features, with source media duration, detected-start, file-size, and
   hash metadata plus per-clip source media filenames and imported-route endpoint
   provenance included in Markdown exports.
+- Generated-artifact manifest inside the export preview listing the project
+  snapshot, native setup checklist, packet JSON, and packet Markdown outputs.
 - Standalone native setup checklist Markdown download generated beside packet
   exports, carrying slot references, verification commands, and linked blocked
   jobs for handoff.
@@ -143,7 +145,7 @@ Tests currently cover:
   filenames, and imported-route endpoint provenance in Markdown exports
   alongside JSON source media and route records.
 - UI coverage for editing/saving incident drafts and generating export packet
-  previews.
+  previews, including the generated-artifact manifest.
 - UI coverage for clearing a browser-local draft back to seeded review state.
 - Session media coverage for visible duration, detected start, file size, and
   hash/provenance metadata beside referenced originals.
@@ -317,6 +319,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest evidence packet metadata coverage verified source media duration,
   detected-start, file-size, hash metadata, per-clip source media filenames, and
   imported-route endpoint provenance are included in Markdown exports.
+- Latest export preview coverage verified the generated-artifact manifest lists
+  the project snapshot, native setup checklist, packet JSON, and packet Markdown
+  outputs.
 - Latest browser project snapshot smoke before the standalone setup artifact
   verified three export downloads, including
   `local-...-browser42-project.json`; the decoded project snapshot retained

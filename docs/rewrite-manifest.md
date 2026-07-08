@@ -23,6 +23,9 @@ Build a Windows-first, local-first evidence workstation:
   behavior, and export packet preview generation.
 - Added project snapshot and packet builder helpers that can become Tauri DTOs.
 - Added browser-downloadable Markdown/JSON evidence packet artifacts.
+- Added a generated-artifact manifest to the export preview so reviewers can
+  see the project snapshot, native setup checklist, packet JSON, and packet
+  Markdown outputs before downloading.
 - Added source media duration, detected-start, file-size, and hash metadata to
   evidence packet Markdown so browser-visible media provenance travels with
   exports.
@@ -163,8 +166,9 @@ Both passed on 2026-07-08. Current test count is 15 files / 89 tests.
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
 check. The latest slice added automated UI coverage for restored drafts,
-download links, projected feature review rows, and RoadWatcher project JSON
-restore. Browser-local draft tests now cover restoring a saved draft and clearing
+download links, generated export artifact manifests, projected feature review
+rows, and RoadWatcher project JSON restore. Browser-local draft tests now cover
+restoring a saved draft and clearing
 it back to the seeded review state. Session media tests cover visible duration,
 detected start, file size, and hash/provenance metadata for referenced originals.
 Processing job tests cover setup slot and verification-command hints for

@@ -67,7 +67,12 @@ import {
 import type { WorkstationJob } from "./features/jobs/jobModel";
 import { createImportedMediaAssets, createProxyJobsForImportedMedia, createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
 import { createBrowserProjectRepository, type ProjectRepository } from "./features/project/browserProjectRepository";
-import { createNativeSetupChecklistArtifact, createPacketArtifacts, createProjectSnapshotArtifact } from "./features/project/downloadArtifacts";
+import {
+  createNativeSetupChecklistArtifact,
+  createPacketArtifacts,
+  createProjectSnapshotArtifact,
+  type DownloadArtifact
+} from "./features/project/downloadArtifacts";
 import {
   buildEvidencePacket,
   createProjectSnapshot,
@@ -147,8 +152,24 @@ export function App({
   const selectedClip = clips.find((clip) => clip.id === selectedClipId) ?? clips[0];
   const primaryMedia = media[0];
   const totalDuration = timelineDurationSeconds(clips);
-  const latestProjectArtifact = latestProjectSnapshot ? createProjectSnapshotArtifact(latestProjectSnapshot) : null;
-  const latestNativeSetupArtifact = latestPacket ? createNativeSetupChecklistArtifact(latestPacket) : null;
+  const latestProjectArtifact = useMemo(
+    () => (latestProjectSnapshot ? createProjectSnapshotArtifact(latestProjectSnapshot) : null),
+    [latestProjectSnapshot]
+  );
+  const latestNativeSetupArtifact = useMemo(
+    () => (latestPacket ? createNativeSetupChecklistArtifact(latestPacket) : null),
+    [latestPacket]
+  );
+  const latestPacketArtifacts = useMemo(() => (latestPacket ? createPacketArtifacts(latestPacket) : []), [latestPacket]);
+  const latestGeneratedArtifacts = useMemo(
+    () =>
+      buildGeneratedArtifactManifest({
+        packetArtifacts: latestPacketArtifacts,
+        projectArtifact: latestProjectArtifact,
+        setupArtifact: latestNativeSetupArtifact
+      }),
+    [latestNativeSetupArtifact, latestPacketArtifacts, latestProjectArtifact]
+  );
   const activeNativeRuntimeStatus = nativeRuntimeStatus ?? detectedNativeRuntimeStatus;
   const activeNativeInvoke = nativeInvoke ?? detectedNativeInvoke;
   const nativeCommandBridge = useMemo(
@@ -888,20 +909,19 @@ export function App({
           <section className="panel export-panel">
             <PanelHeader icon={<Download size={18} />} title="Latest export packet" meta="Browser-local preview" />
             <p>Markdown and JSON packet preview generated locally.</p>
+            <div className="artifact-summary" aria-label="Generated artifacts">
+              <strong>Generated artifacts</strong>
+              <ul>
+                {latestGeneratedArtifacts.map(({ artifact, label }) => (
+                  <li key={artifact.fileName}>
+                    <span>{label}</span>
+                    <span>{artifact.mimeType}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
             <div className="export-file-list">
-              {latestProjectArtifact && (
-                <a href={latestProjectArtifact.href} download={latestProjectArtifact.fileName}>
-                  <Download size={14} />
-                  {latestProjectArtifact.fileName}
-                </a>
-              )}
-              {latestNativeSetupArtifact && (
-                <a href={latestNativeSetupArtifact.href} download={latestNativeSetupArtifact.fileName}>
-                  <Download size={14} />
-                  {latestNativeSetupArtifact.fileName}
-                </a>
-              )}
-              {createPacketArtifacts(latestPacket).map((artifact) => (
+              {latestGeneratedArtifacts.map(({ artifact }) => (
                 <a key={artifact.fileName} href={artifact.href} download={artifact.fileName}>
                   <Download size={14} />
                   {artifact.fileName}
@@ -913,6 +933,38 @@ export function App({
         )}
       </section>
     </main>
+  );
+}
+
+interface GeneratedArtifactManifestItem {
+  artifact: DownloadArtifact;
+  label: string;
+}
+
+function buildGeneratedArtifactManifest({
+  packetArtifacts,
+  projectArtifact,
+  setupArtifact
+}: {
+  packetArtifacts: DownloadArtifact[];
+  projectArtifact: DownloadArtifact | null;
+  setupArtifact: DownloadArtifact | null;
+}): GeneratedArtifactManifestItem[] {
+  const manifest: GeneratedArtifactManifestItem[] = [];
+
+  if (projectArtifact) {
+    manifest.push({ artifact: projectArtifact, label: "Project snapshot" });
+  }
+
+  if (setupArtifact) {
+    manifest.push({ artifact: setupArtifact, label: "Native setup checklist" });
+  }
+
+  return manifest.concat(
+    packetArtifacts.map((artifact) => ({
+      artifact,
+      label: artifact.fileName.endsWith(".json") ? "Evidence packet JSON" : "Evidence packet Markdown"
+    }))
   );
 }
 

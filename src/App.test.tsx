@@ -233,6 +233,12 @@ describe("RoadWatcher workstation", () => {
     expect(setupDownload).toHaveAttribute("download", expect.stringMatching(/-native-setup\.md$/));
     expect(setupDownload).toHaveAttribute("href", expect.stringMatching(/^data:text\/markdown/));
     expect(screen.getByText("Markdown and JSON packet preview generated locally.")).toBeInTheDocument();
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel as HTMLElement).toHaveTextContent("Generated artifacts");
+    expect(exportPanel as HTMLElement).toHaveTextContent("Project snapshot");
+    expect(exportPanel as HTMLElement).toHaveTextContent("Native setup checklist");
+    expect(exportPanel as HTMLElement).toHaveTextContent("Evidence packet JSON");
+    expect(exportPanel as HTMLElement).toHaveTextContent("Evidence packet Markdown");
   });
 
   it("adds a restorable RoadWatcher project snapshot download to export previews", () => {

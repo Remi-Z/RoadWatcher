@@ -27,7 +27,7 @@ projection is wired, RoadWatcher `.json` snapshots restore portable review state
 before falling back to GeoJSON parsing, and export packet previews produce
 downloadable Markdown/JSON artifacts with source media metadata, per-clip source
 filenames, imported-route endpoint provenance, a standalone native setup
-checklist Markdown artifact, plus a restorable
+checklist Markdown artifact, a generated-artifact manifest, plus a restorable
 RoadWatcher project snapshot JSON from the current draft, then invalidate when
 later edits make those downloads stale.
 A review-readiness panel and exported packet section summarize whether the

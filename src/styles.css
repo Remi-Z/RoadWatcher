@@ -733,6 +733,46 @@ h1 {
   margin-bottom: 10px;
 }
 
+.artifact-summary {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+}
+
+.artifact-summary strong {
+  color: var(--text);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.artifact-summary ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.artifact-summary li {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(110px, auto);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.artifact-summary li span:last-child {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .export-file-list a {
   display: inline-flex;
   align-items: center;
