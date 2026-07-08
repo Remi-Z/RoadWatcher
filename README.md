@@ -24,9 +24,10 @@ audit entries until native Valhalla/OSRM matching is wired,
 imported GeoJSON layers project supported official road features onto the active
 route with `gis_project` fallback audit entries until Turf/PostGIS/native
 projection is wired, RoadWatcher `.json` snapshots restore portable review state
-before falling back to GeoJSON parsing, and export packet previews produce downloadable
-Markdown/JSON artifacts with source media metadata and per-clip source filenames,
-a standalone native setup checklist Markdown artifact, plus a restorable
+before falling back to GeoJSON parsing, and export packet previews produce
+downloadable Markdown/JSON artifacts with source media metadata, per-clip source
+filenames, imported-route endpoint provenance, a standalone native setup
+checklist Markdown artifact, plus a restorable
 RoadWatcher project snapshot JSON from the current draft, then invalidate when
 later edits make those downloads stale.
 A review-readiness panel and exported packet section summarize whether the

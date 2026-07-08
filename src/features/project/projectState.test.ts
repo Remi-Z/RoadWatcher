@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { initialClips, initialJobs, incidentDraft, mediaAssets, missingSlots, officialRoadFeatures, projectedFeatures } from "../../data/demoProject";
+import {
+  initialClips,
+  initialJobs,
+  incidentDraft,
+  mediaAssets,
+  missingSlots,
+  officialRoadFeatures,
+  projectedFeatures,
+  routePoints
+} from "../../data/demoProject";
 import { detectNativeRuntime } from "../native/runtimeEnvironment";
 import { buildEvidencePacket, createProjectSnapshot, restoreProjectSnapshot } from "./projectState";
 
@@ -60,7 +69,8 @@ describe("project state", () => {
         componentSlots: [
           { ...missingSlots[2], reference: "C:/roadwatcher/valhalla/greater-toronto.json", notes: "York/GTA extract staged." }
         ],
-        projectedFeatures
+        projectedFeatures,
+        route: routePoints
       })
     );
 
@@ -80,6 +90,9 @@ describe("project state", () => {
     expect(packet.summaryMarkdown).toContain("detected start: 2026-07-06 14:00:00 -04:00");
     expect(packet.summaryMarkdown).toContain("size: 8120000000 bytes");
     expect(packet.summaryMarkdown).toContain("hash: sha256 pending after import");
+    expect(packet.summaryMarkdown).toContain("- Timed route points: 5");
+    expect(packet.summaryMarkdown).toContain("- First point: 43.856000, -79.337000 at 0s");
+    expect(packet.summaryMarkdown).toContain("- Last point: 43.857700, -79.338420 at 98s");
     expect(packet.summaryJson.projectedFeatures[0].sourceLayer).toContain("slot:");
     expect(packet.summaryJson.projectedFeatures[0].reviewStatus).toBe("needs_review");
     expect(packet.summaryMarkdown).toContain("review needs_review");

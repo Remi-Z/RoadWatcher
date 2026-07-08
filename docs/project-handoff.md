@@ -56,8 +56,8 @@ The runnable app today is the React/Vite evidence workstation:
 - Export packet preview that generates browser-downloadable Markdown and JSON
   artifacts from the current incident draft, clips, source media references, and
   projected features, with source media duration, detected-start, file-size, and
-  hash metadata plus per-clip source media filenames included in Markdown
-  exports.
+  hash metadata plus per-clip source media filenames and imported-route endpoint
+  provenance included in Markdown exports.
 - Standalone native setup checklist Markdown download generated beside packet
   exports, carrying slot references, verification commands, and linked blocked
   jobs for handoff.
@@ -139,8 +139,9 @@ Tests currently cover:
 - Regression coverage for manual inspector Start/End edits persisting after clip
   selection and exporting through packet JSON.
 - Browser-local project snapshot and evidence packet builder coverage.
-- Evidence packet coverage for source media metadata and per-clip source media
-  filenames in Markdown exports alongside JSON source media records.
+- Evidence packet coverage for source media metadata, per-clip source media
+  filenames, and imported-route endpoint provenance in Markdown exports
+  alongside JSON source media and route records.
 - UI coverage for editing/saving incident drafts and generating export packet
   previews.
 - UI coverage for clearing a browser-local draft back to seeded review state.
@@ -314,8 +315,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   parse with `parseSnapshot`, retain edited clips/media/jobs, and remain distinct
   from evidence packet JSON.
 - Latest evidence packet metadata coverage verified source media duration,
-  detected-start, file-size, hash metadata, and per-clip source media filenames
-  are included in Markdown exports.
+  detected-start, file-size, hash metadata, per-clip source media filenames, and
+  imported-route endpoint provenance are included in Markdown exports.
 - Latest browser project snapshot smoke before the standalone setup artifact
   verified three export downloads, including
   `local-...-browser42-project.json`; the decoded project snapshot retained

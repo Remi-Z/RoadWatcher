@@ -148,6 +148,7 @@ export function parseSnapshot(text: string): ProjectSnapshot {
 
 function buildMarkdown(packet: EvidencePacket["summaryJson"]): string {
   const mediaFileNameById = new Map(packet.sourceMedia.map((asset) => [asset.id, asset.fileName]));
+  const routeSummaryLines = buildRouteSummaryLines(packet.route);
   const featureLines = packet.projectedFeatures
     .map(
       (feature) =>
@@ -224,7 +225,7 @@ ${nativeCommandAttemptLines || "- No native command attempts saved."}
 ${nativeChecklistLines || "- No native setup slots saved."}
 
 ## Imported Route
-- Timed route points: ${packet.route.length}
+${routeSummaryLines}
 
 ## Projected Road Features
 ${featureLines || "- No projected features saved."}
@@ -243,6 +244,25 @@ function stableIncidentKey(incident: IncidentDraft): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 72);
+}
+
+function buildRouteSummaryLines(route: TimedRoutePoint[]): string {
+  if (route.length === 0) {
+    return "- Timed route points: 0";
+  }
+
+  const firstPoint = route[0];
+  const lastPoint = route[route.length - 1];
+
+  return [
+    `- Timed route points: ${route.length}`,
+    `- First point: ${formatCoordinate(firstPoint.latitude)}, ${formatCoordinate(firstPoint.longitude)} at ${Math.round(firstPoint.timeSeconds)}s`,
+    `- Last point: ${formatCoordinate(lastPoint.latitude)}, ${formatCoordinate(lastPoint.longitude)} at ${Math.round(lastPoint.timeSeconds)}s`
+  ].join("\n");
+}
+
+function formatCoordinate(value: number): string {
+  return value.toFixed(6);
 }
 
 function blank(value: string): string {
