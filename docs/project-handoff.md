@@ -44,6 +44,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Editable component slot registry for Rust/Cargo, GPStitch, Valhalla, OSRM,
   GIS layers, FFmpeg, and CV model paths/status/notes; slot data is saved in
   project snapshots and included in evidence packet Markdown/JSON.
+- Editable install/data slots show the same per-slot verification commands as
+  the native setup checklist, so setup checks remain visible while references,
+  statuses, and notes are being filled.
 - Top-level Slots action that focuses the first install/data slot reference and
   updates the status banner so user-filled references are quick to reach before
   export.
@@ -194,9 +197,9 @@ Tests currently cover:
   entries, and snapshot official-feature persistence.
 - RoadWatcher project JSON import coverage for restoring incident, media, route,
   and projected feature state without treating project snapshots as GeoJSON.
-- Component slot coverage for editable references/status/notes, top-level Slots
-  focus behavior, project snapshot persistence, evidence packet export, and
-  older-snapshot fallback.
+- Component slot coverage for editable references/status/notes, per-slot
+  verification command visibility, top-level Slots focus behavior, project
+  snapshot persistence, evidence packet export, and older-snapshot fallback.
 
 ## Verified Commands
 
@@ -206,7 +209,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 86 tests passing.
+Result: 15 files, 87 tests passing.
 
 Passing on 2026-07-08:
 
@@ -285,6 +288,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   Valhalla reference and notes.
 - Latest Slots action coverage verified the top action focuses the Rust/Cargo
   reference field and updates the status banner before export.
+- Latest slot verification coverage verified the editable install/data panel
+  shows verification commands including `cargo --version`, FFmpeg/ffprobe, and
+  the local CV sidecar command beside user-fillable slots.
 - Latest timeline-editing coverage verified selected clip trim, split,
   duplicate, remove, selected-clip action menu fallback, contiguous reel timing,
   and export Markdown updates.

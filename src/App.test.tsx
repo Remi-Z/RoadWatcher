@@ -190,6 +190,16 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByLabelText("Rust/Cargo for Tauri reference")).toHaveFocus();
   });
 
+  it("shows verification commands beside editable install and data slots", () => {
+    render(<App />);
+
+    const slotPanel = screen.getByRole("heading", { name: "Install and data slots" }).closest("section");
+    expect(slotPanel).not.toBeNull();
+    expect(slotPanel as HTMLElement).toHaveTextContent("cargo --version");
+    expect(slotPanel as HTMLElement).toHaveTextContent("ffmpeg -version && ffprobe -version");
+    expect(slotPanel as HTMLElement).toHaveTextContent("roadwatcher-cv --model <model.onnx> --labels <labels.txt>");
+  });
+
   it("generates an export packet preview from the current draft", () => {
     render(<App />);
 

@@ -77,7 +77,11 @@ import {
   type NativeCommandAttempt,
   type ProjectSnapshot
 } from "./features/project/projectState";
-import { summarizeReviewReadiness, type ReviewReadiness } from "./features/project/reviewReadiness";
+import {
+  summarizeReviewReadiness,
+  type NativeReadinessChecklistItem,
+  type ReviewReadiness
+} from "./features/project/reviewReadiness";
 import { createNativeCommandBridge, type NativeInvoke } from "./features/native/nativeCommandBridge";
 import { detectNativeRuntime, type NativeRuntimeHost, type NativeRuntimeStatus } from "./features/native/runtimeEnvironment";
 import { resolveTauriInvoke } from "./features/native/tauriInvokeAdapter";
@@ -861,7 +865,12 @@ export function App({
 
         <section className="panel">
           <PanelHeader icon={<AlertTriangle size={18} />} title="Install and data slots" meta="No hidden placeholders" />
-          <ComponentSlotList slots={componentSlots} firstReferenceInputRef={firstSlotReferenceInputRef} onSlotChange={handleComponentSlotChange} />
+          <ComponentSlotList
+            checklist={reviewReadiness.nativeChecklist}
+            slots={componentSlots}
+            firstReferenceInputRef={firstSlotReferenceInputRef}
+            onSlotChange={handleComponentSlotChange}
+          />
         </section>
 
         <section className="panel">
@@ -1394,59 +1403,71 @@ function formatFeatureKind(kind: string): string {
 }
 
 function ComponentSlotList({
+  checklist,
   firstReferenceInputRef,
   slots,
   onSlotChange
 }: {
+  checklist: NativeReadinessChecklistItem[];
   firstReferenceInputRef?: RefObject<HTMLInputElement | null>;
   slots: ComponentSlot[];
   onSlotChange: (id: string, field: keyof Pick<ComponentSlot, "status" | "reference" | "notes">, value: string) => void;
 }) {
+  const checklistBySlotId = new Map(checklist.map((item) => [item.id, item]));
+
   return (
     <div className="slot-list">
-      {slots.map((slot, index) => (
-        <article className="slot-row component-slot-row" key={slot.id}>
-          <div className="slot-summary">
-            <StatusPill status={componentSlotPillStatus(slot.status)} label={slot.status} />
-            <div>
-              <strong>{slot.label}</strong>
-              <span>{slot.ownerAction}</span>
+      {slots.map((slot, index) => {
+        const checklistItem = checklistBySlotId.get(slot.id);
+
+        return (
+          <article className="slot-row component-slot-row" key={slot.id}>
+            <div className="slot-summary">
+              <StatusPill status={componentSlotPillStatus(slot.status)} label={slot.status} />
+              <div>
+                <strong>{slot.label}</strong>
+                <span>{slot.ownerAction}</span>
+              </div>
             </div>
-          </div>
-          <div className="slot-fields">
-            <label>
-              <span>Reference</span>
-              <input
-                aria-label={`${slot.label} reference`}
-                ref={index === 0 ? firstReferenceInputRef : undefined}
-                value={slot.reference}
-                onChange={(event) => onSlotChange(slot.id, "reference", event.target.value)}
-              />
-            </label>
-            <label>
-              <span>Status</span>
-              <select
-                aria-label={`${slot.label} status`}
-                value={slot.status}
-                onChange={(event) => onSlotChange(slot.id, "status", event.target.value)}
-              >
-                <option value="needed">needed</option>
-                <option value="configured">configured</option>
-                <option value="optional">optional</option>
-                <option value="later">later</option>
-              </select>
-            </label>
-            <label className="slot-notes-field">
-              <span>Notes</span>
-              <textarea
-                aria-label={`${slot.label} notes`}
-                value={slot.notes}
-                onChange={(event) => onSlotChange(slot.id, "notes", event.target.value)}
-              />
-            </label>
-          </div>
-        </article>
-      ))}
+            <div className="slot-fields">
+              <label>
+                <span>Reference</span>
+                <input
+                  aria-label={`${slot.label} reference`}
+                  ref={index === 0 ? firstReferenceInputRef : undefined}
+                  value={slot.reference}
+                  onChange={(event) => onSlotChange(slot.id, "reference", event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Status</span>
+                <select
+                  aria-label={`${slot.label} status`}
+                  value={slot.status}
+                  onChange={(event) => onSlotChange(slot.id, "status", event.target.value)}
+                >
+                  <option value="needed">needed</option>
+                  <option value="configured">configured</option>
+                  <option value="optional">optional</option>
+                  <option value="later">later</option>
+                </select>
+              </label>
+              <div className="slot-verify-command">
+                <span>Verify</span>
+                <code>{checklistItem?.verifyCommand ?? "manual verification required"}</code>
+              </div>
+              <label className="slot-notes-field">
+                <span>Notes</span>
+                <textarea
+                  aria-label={`${slot.label} notes`}
+                  value={slot.notes}
+                  onChange={(event) => onSlotChange(slot.id, "notes", event.target.value)}
+                />
+              </label>
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }

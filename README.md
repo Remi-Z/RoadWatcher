@@ -53,7 +53,8 @@ Projected road features are reviewer-markable as
 exports.
 Missing components and data sources are
 tracked as editable slot records with status, reference, and notes so the
-handoff remains durable; the top Slots action focuses the first install/data
+handoff remains durable; the editable install/data panel shows each slot's
+verification command, and the top Slots action focuses the first install/data
 slot so those references are quick to fill before export. The Tauri and Python
 sidecar slots are scaffolded, but Rust/Cargo and the GPStitch, Valhalla,
 production GIS, FFmpeg proxy, hashing, and CV model data still need to be filled
