@@ -41,10 +41,6 @@ import {
 } from "lucide-react";
 import { type ChangeEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import {
-  type ComponentSlot,
-  type ComponentSlotStatus,
-  type MediaAsset,
-  type IncidentDraft,
   incidentDraft,
   initialClips,
   initialJobs,
@@ -54,6 +50,7 @@ import {
   projectedFeatures,
   routePoints
 } from "./data/demoProject";
+import type { ComponentSlot, ComponentSlotStatus, IncidentDraft, MediaAsset } from "./domain/projectModels";
 import { createGisProjectionJob, parseOfficialFeaturesFromGeoJson } from "./features/geo/geoJsonImport";
 import { createValhallaMatchJob, parseGpxTrack } from "./features/geo/gpxImport";
 import {

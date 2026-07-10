@@ -2,39 +2,7 @@ import type { OfficialRoadFeature, ProjectedRoadFeature, TimedRoutePoint } from 
 import { projectFeaturesOntoRoute } from "../features/geo/projection";
 import type { WorkstationJob } from "../features/jobs/jobModel";
 import type { TimelineClip } from "../features/timeline/timelineModel";
-
-export interface MediaAsset {
-  id: string;
-  fileName: string;
-  originalPath: string;
-  durationSeconds: number;
-  detectedStart: string;
-  proxyStatus: "ready" | "running" | "queued" | "blocked";
-  hash: string;
-  fileSizeBytes: number;
-}
-
-export interface IncidentDraft {
-  category: string;
-  start: string;
-  end: string;
-  plate: string;
-  vehicleNotes: string;
-  locationNotes: string;
-  narrative: string;
-  provenance: string;
-}
-
-export type ComponentSlotStatus = "needed" | "optional" | "later" | "configured";
-
-export interface ComponentSlot {
-  id: string;
-  label: string;
-  ownerAction: string;
-  status: ComponentSlotStatus;
-  reference: string;
-  notes: string;
-}
+import type { ComponentSlot, IncidentDraft, MediaAsset } from "../domain/projectModels";
 
 export const mediaAssets: MediaAsset[] = [
   {

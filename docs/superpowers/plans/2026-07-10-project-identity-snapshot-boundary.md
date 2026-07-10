@@ -36,7 +36,7 @@
 - Produces: `ProjectId`, `MediaAsset`, `IncidentDraft`, `ComponentSlotStatus`, and `ComponentSlot` from `src/domain/projectModels.ts`.
 - Consumers keep the same property names and unions; this task changes ownership, not runtime behavior.
 
-- [ ] **Step 1: Create the canonical type module**
+- [x] **Step 1: Create the canonical type module**
 
 ```ts
 export declare const projectIdBrand: unique symbol;
@@ -76,11 +76,11 @@ export interface ComponentSlot {
 }
 ```
 
-- [ ] **Step 2: Replace imports from `data/demoProject` with imports from `domain/projectModels`**
+- [x] **Step 2: Replace imports from `data/demoProject` with imports from `domain/projectModels`**
 
 `demoProject.ts` imports the types and continues exporting only fixture values. Production modules and `App.tsx` import canonical types from the domain file.
 
-- [ ] **Step 3: Run type/build verification**
+- [x] **Step 3: Run type/build verification**
 
 Run: `pnpm build`
 
@@ -471,4 +471,3 @@ git commit -m "docs: hand off validated project snapshots"
 Run: `git status --short`
 
 Expected: no unstaged or untracked files from this module.
-

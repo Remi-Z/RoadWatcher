@@ -17,6 +17,9 @@ Build a Windows-first, local-first evidence workstation:
 ## Completed In This Slice
 
 - Replaced the old `.NET/WinUI` project files with a React/Vite app.
+- Moved canonical project-facing types into `src/domain/projectModels.ts`, so
+  production features no longer depend on the seeded demo fixture for their
+  contracts.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
 - Added a dense evidence workstation UI that renders and builds.
 - Added editable inspector state, browser-local draft save/restore/clear

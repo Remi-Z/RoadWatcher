@@ -1,4 +1,4 @@
-import type { ComponentSlot, MediaAsset, IncidentDraft } from "../../data/demoProject";
+import type { ComponentSlot, IncidentDraft, MediaAsset } from "../../domain/projectModels";
 import { normalizeProjectedFeatureReview, type OfficialRoadFeature, type ProjectedRoadFeature, type TimedRoutePoint } from "../geo/projection";
 import type { WorkstationJob } from "../jobs/jobModel";
 import type { NativeCommandName } from "../native/nativeCommandContracts";

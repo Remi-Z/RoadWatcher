@@ -1,4 +1,4 @@
-import type { MediaAsset } from "../../data/demoProject";
+import type { MediaAsset } from "../../domain/projectModels";
 import type { WorkstationJob } from "../jobs/jobModel";
 import { clipDurationSeconds, timelineDurationSeconds, type TimelineClip } from "../timeline/timelineModel";
 

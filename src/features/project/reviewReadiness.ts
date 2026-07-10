@@ -1,4 +1,4 @@
-import type { ComponentSlot, ComponentSlotStatus, MediaAsset } from "../../data/demoProject";
+import type { ComponentSlot, ComponentSlotStatus, MediaAsset } from "../../domain/projectModels";
 import type { ProjectedRoadFeature } from "../geo/projection";
 import type { WorkstationJob } from "../jobs/jobModel";
 import { detectNativeRuntime, type NativeRuntimeStatus } from "../native/runtimeEnvironment";
