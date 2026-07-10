@@ -145,7 +145,7 @@ git commit -m "feat: add durable proxy job state"
 - Produces: `ProcessRunner`, `SystemProcessRunner`, `ProxyWorkerManager::start`,
   `ProxyWorkerManager::cancel`, and synchronous test seam `run_proxy_job`.
 
-- [ ] **Step 1: Add failing parser and fake-runner tests**
+- [x] **Step 1: Add failing parser and fake-runner tests**
 
 Define a fake runner with scripted ffprobe JSON, encoder listing, progress lines,
 exit status, and observed invocations. Cover:
@@ -160,7 +160,7 @@ Worker tests must prove hardware success, hardware failure followed by one
 `libx264` invocation, cancellation without fallback, missing binary blocked
 state, failed cleanup, and completed output/status.
 
-- [ ] **Step 2: Run focused tests and confirm RED**
+- [x] **Step 2: Run focused tests and confirm RED**
 
 ```powershell
 $env:CARGO_TARGET_DIR="$env:TEMP\roadwatcher-cargo-target"
@@ -169,7 +169,7 @@ cargo test --offline --lib proxy_worker::tests
 
 Expected: compile failure because `proxy_worker` does not exist.
 
-- [ ] **Step 3: Implement runner, parsing, render, and cleanup**
+- [x] **Step 3: Implement runner, parsing, render, and cleanup**
 
 The runner boundary must be process-agnostic:
 
@@ -191,7 +191,7 @@ SQLite progress writes, retry hardware only on non-cancelled render failure,
 generate thumbnails, rename outputs, and call the correct terminal store method.
 Wrap stderr detail to the last 2,000 characters.
 
-- [ ] **Step 4: Implement serialized manager and panic boundary**
+- [x] **Step 4: Implement serialized manager and panic boundary**
 
 ```rust
 pub struct ProxyWorkerManager<R: ProcessRunner = SystemProcessRunner> {

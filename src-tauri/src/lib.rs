@@ -6,6 +6,7 @@ use project_store::{
 use std::path::PathBuf;
 
 mod project_store;
+mod proxy_worker;
 
 #[tauri::command]
 fn project_create(
