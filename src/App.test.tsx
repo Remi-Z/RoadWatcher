@@ -14,6 +14,9 @@ import type { ProjectRepository } from "./features/project/browserProjectReposit
 import { createProjectSnapshot, parseSnapshot, serializeSnapshot, type ProjectSnapshot } from "./features/project/projectState";
 import { detectNativeRuntime } from "./features/native/runtimeEnvironment";
 import type { NativeInvoke } from "./features/native/nativeCommandBridge";
+import type { ProjectId } from "./domain/projectModels";
+
+const TEST_PROJECT_ID = "local-app-test-project" as ProjectId;
 
 describe("RoadWatcher workstation", () => {
   it("renders the core evidence review regions", () => {
@@ -138,12 +141,25 @@ describe("RoadWatcher workstation", () => {
     expect(repository.snapshot?.incident.narrative).toBe("Reviewer confirmed the vehicle did not yield.");
   });
 
+  it("keeps one generated project identity across incident edits and saves", () => {
+    const repository = createMemoryProjectRepository();
+    const projectId = "local-app-project" as ProjectId;
+    render(<App projectRepository={repository} projectIdFactory={() => projectId} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+    fireEvent.change(screen.getByLabelText("Plate"), { target: { value: "CHANGED7" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.savedSnapshots.map((snapshot) => snapshot.projectId)).toEqual([projectId, projectId]);
+  });
+
   it("restores a browser-local draft when one is available", () => {
     const snapshot = createProjectSnapshot({
       clips: initialClips,
       incident: { ...incidentDraft, plate: "RESTORED7", narrative: "Loaded from a previous review session." },
       jobs: initialJobs,
       media: mediaAssets,
+      projectId: TEST_PROJECT_ID,
       projectedFeatures
     });
 
@@ -164,6 +180,7 @@ describe("RoadWatcher workstation", () => {
       },
       jobs: initialJobs,
       media: mediaAssets,
+      projectId: TEST_PROJECT_ID,
       projectedFeatures
     });
     const repository = createMemoryProjectRepository(snapshot);
@@ -186,6 +203,7 @@ describe("RoadWatcher workstation", () => {
       incident: incidentDraft,
       jobs: initialJobs,
       media: mediaAssets,
+      projectId: TEST_PROJECT_ID,
       projectedFeatures
     });
 
@@ -244,7 +262,7 @@ describe("RoadWatcher workstation", () => {
   });
 
   it("adds a restorable RoadWatcher project snapshot download to export previews", () => {
-    render(<App />);
+    render(<App projectIdFactory={() => TEST_PROJECT_ID} />);
 
     fireEvent.change(screen.getByLabelText("Plate"), { target: { value: "SNAP123" } });
     fireEvent.change(screen.getByLabelText("Selected clip source in seconds"), { target: { value: "840" } });
@@ -252,7 +270,7 @@ describe("RoadWatcher workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
 
     const projectDownload = screen.getByRole("link", {
-      name: "local-suggested-possible-bike-lane-obstruction-00-13-56-0-00-14-14-0-snap123-project.json"
+      name: `${TEST_PROJECT_ID}-project.json`
     });
     const href = projectDownload.getAttribute("href") ?? "";
     const [, encodedContent] = href.split(",");
@@ -935,6 +953,7 @@ describe("RoadWatcher workstation", () => {
       jobs: initialJobs,
       media: [{ ...mediaAssets[0], id: "media-restored", fileName: "restored-front.mp4", originalPath: "browser import: restored-front.mp4" }],
       officialFeatures: officialRoadFeatures,
+      projectId: TEST_PROJECT_ID,
       projectedFeatures,
       route: routePoints.slice(0, 3)
     });
@@ -981,14 +1000,18 @@ describe("RoadWatcher workstation", () => {
   });
 });
 
-function createMemoryProjectRepository(snapshot: ProjectSnapshot | null = null): ProjectRepository & { snapshot: ProjectSnapshot | null } {
+function createMemoryProjectRepository(
+  snapshot: ProjectSnapshot | null = null
+): ProjectRepository & { snapshot: ProjectSnapshot | null; savedSnapshots: ProjectSnapshot[] } {
   return {
     snapshot,
+    savedSnapshots: [],
     load() {
       return this.snapshot;
     },
     save(nextSnapshot) {
       this.snapshot = nextSnapshot;
+      this.savedSnapshots.push(nextSnapshot);
       return true;
     },
     clear() {

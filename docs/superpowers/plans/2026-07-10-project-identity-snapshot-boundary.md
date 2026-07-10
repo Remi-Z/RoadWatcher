@@ -109,7 +109,7 @@ git commit -m "refactor: centralize project domain models"
 - Changes: `ProjectSnapshotInput.projectId` becomes required.
 - Changes: `createProjectSnapshot(input)` preserves `input.projectId`.
 
-- [ ] **Step 1: Write failing identity tests**
+- [x] **Step 1: Write failing identity tests**
 
 Add to `projectState.test.ts`:
 
@@ -134,13 +134,13 @@ it("creates distinct opaque IDs for new projects", () => {
 
 Add an App test that edits the plate, saves twice, and asserts the two repository snapshots have the same `projectId`.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run: `pnpm test -- src/features/project/projectState.test.ts src/App.test.tsx`
 
 Expected: FAIL because `createProjectId` is missing and `ProjectSnapshotInput` does not own identity.
 
-- [ ] **Step 3: Implement the project ID factory and required snapshot input**
+- [x] **Step 3: Implement the project ID factory and required snapshot input**
 
 ```ts
 export function createProjectId(uuid: () => string = () => globalThis.crypto.randomUUID()): ProjectId {
@@ -171,11 +171,11 @@ const [projectId, setProjectId] = useState<ProjectId>(
 
 Include `projectId` in `currentSnapshotInput`, set it from imported snapshots, and create a new ID when clearing to a new seeded project.
 
-- [ ] **Step 4: Update all snapshot test fixtures/call sites to pass a deterministic project ID**
+- [x] **Step 4: Update all snapshot test fixtures/call sites to pass a deterministic project ID**
 
 Use explicit values such as `"local-test-project" as ProjectId`; do not add a default that would allow saves to regenerate identity.
 
-- [ ] **Step 5: Run focused tests and verify GREEN**
+- [x] **Step 5: Run focused tests and verify GREEN**
 
 Run: `pnpm test -- src/features/project/projectState.test.ts src/features/project/browserProjectRepository.test.ts src/features/project/downloadArtifacts.test.ts src/App.test.tsx`
 

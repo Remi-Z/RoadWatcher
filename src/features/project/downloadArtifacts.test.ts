@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { initialClips, initialJobs, incidentDraft, mediaAssets, missingSlots, projectedFeatures } from "../../data/demoProject";
+import type { ProjectId } from "../../domain/projectModels";
 import { createNativeSetupChecklistArtifact, createPacketArtifacts, createProjectSnapshotArtifact } from "./downloadArtifacts";
 import { buildEvidencePacket, createProjectSnapshot, parseSnapshot } from "./projectState";
+
+const TEST_PROJECT_ID = "local-artifact-test" as ProjectId;
 
 describe("download artifacts", () => {
   it("creates JSON and Markdown browser-downloadable packet artifacts", () => {
@@ -12,6 +15,7 @@ describe("download artifacts", () => {
         jobs: initialJobs,
         media: mediaAssets,
         nativeProjectRoot: "D:/RoadWatcherProjects",
+        projectId: TEST_PROJECT_ID,
         projectedFeatures
       })
     );
@@ -32,6 +36,7 @@ describe("download artifacts", () => {
       incident: { ...incidentDraft, plate: "PORTABLE9" },
       jobs: initialJobs,
       media: mediaAssets,
+      projectId: TEST_PROJECT_ID,
       projectedFeatures
     });
 
@@ -55,6 +60,7 @@ describe("download artifacts", () => {
         jobs: initialJobs,
         media: mediaAssets,
         nativeProjectRoot: "D:/RoadWatcherProjects",
+        projectId: TEST_PROJECT_ID,
         projectedFeatures
       })
     );

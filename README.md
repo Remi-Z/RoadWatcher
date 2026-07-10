@@ -10,7 +10,9 @@ project snapshots, browser-native media/GPX/GeoJSON import, RoadWatcher project
 JSON restore, editable component slots, browser-local clip trim/split/duplicate/
 remove controls with a command-menu fallback, and evidence packet generation. The
 canonical project-facing types now live under `src/domain/`; seeded demo data is
-only a fixture consumer of those models rather than their production owner. The
+only a fixture consumer of those models rather than their production owner. New
+projects receive one opaque local ID that is preserved across saves, exports,
+imports, and incident edits; clearing the workspace creates a new identity. The
 inspector is editable, including manual incident Start/End timing after clip
 selection, drafts can be saved to, restored from, and cleared from
 browser-local storage when available, imported media is referenced by filename

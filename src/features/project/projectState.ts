@@ -1,4 +1,4 @@
-import type { ComponentSlot, IncidentDraft, MediaAsset } from "../../domain/projectModels";
+import type { ComponentSlot, IncidentDraft, MediaAsset, ProjectId } from "../../domain/projectModels";
 import { normalizeProjectedFeatureReview, type OfficialRoadFeature, type ProjectedRoadFeature, type TimedRoutePoint } from "../geo/projection";
 import type { WorkstationJob } from "../jobs/jobModel";
 import type { NativeCommandName } from "../native/nativeCommandContracts";
@@ -35,13 +35,14 @@ export interface ProjectSnapshotInput {
   nativeCommandAttempts?: NativeCommandAttempt[];
   nativeProjectRoot?: string;
   officialFeatures?: OfficialRoadFeature[];
+  projectId: ProjectId;
   projectedFeatures: ProjectedRoadFeature[];
   route?: TimedRoutePoint[];
 }
 
 export interface ProjectSnapshot extends ProjectSnapshotInput {
   schemaVersion: number;
-  projectId: string;
+  projectId: ProjectId;
   componentSlots: ComponentSlot[];
   nativeCommandAttempts: NativeCommandAttempt[];
   nativeProjectRoot: string;
@@ -73,10 +74,14 @@ export interface EvidencePacketOptions {
   runtimeStatus?: NativeRuntimeStatus;
 }
 
+export function createProjectId(uuid: () => string = () => globalThis.crypto.randomUUID()): ProjectId {
+  return `local-${uuid()}` as ProjectId;
+}
+
 export function createProjectSnapshot(input: ProjectSnapshotInput): ProjectSnapshot {
   return {
     schemaVersion: PROJECT_SCHEMA_VERSION,
-    projectId: `local-${stableIncidentKey(input.incident)}`,
+    projectId: input.projectId,
     savedAtIso: new Date().toISOString(),
     clips: structuredClone(input.clips),
     componentSlots: structuredClone(input.componentSlots ?? []),

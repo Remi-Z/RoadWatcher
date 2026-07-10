@@ -20,6 +20,9 @@ Build a Windows-first, local-first evidence workstation:
 - Moved canonical project-facing types into `src/domain/projectModels.ts`, so
   production features no longer depend on the seeded demo fixture for their
   contracts.
+- Replaced incident-derived project IDs with one opaque local identity per
+  project. Saves, exported snapshots, and imported snapshots preserve that ID;
+  clearing the workspace starts a new identity.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
 - Added a dense evidence workstation UI that renders and builds.
 - Added editable inspector state, browser-local draft save/restore/clear

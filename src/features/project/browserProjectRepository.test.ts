@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { initialClips, initialJobs, incidentDraft, mediaAssets, projectedFeatures } from "../../data/demoProject";
+import type { ProjectId } from "../../domain/projectModels";
 import { createBrowserProjectRepository, type BrowserStorageLike } from "./browserProjectRepository";
 import { createProjectSnapshot, serializeSnapshot } from "./projectState";
+
+const TEST_PROJECT_ID = "local-repository-test" as ProjectId;
 
 describe("browser project repository", () => {
   it("saves and restores a project snapshot from browser-like storage", () => {
@@ -12,6 +15,7 @@ describe("browser project repository", () => {
       incident: { ...incidentDraft, plate: "ABC1234" },
       jobs: initialJobs,
       media: mediaAssets,
+      projectId: TEST_PROJECT_ID,
       projectedFeatures
     });
 
@@ -38,6 +42,7 @@ describe("browser project repository", () => {
       incident: incidentDraft,
       jobs: initialJobs,
       media: mediaAssets,
+      projectId: TEST_PROJECT_ID,
       projectedFeatures
     });
 
@@ -52,6 +57,7 @@ describe("browser project repository", () => {
       incident: incidentDraft,
       jobs: initialJobs,
       media: mediaAssets,
+      projectId: TEST_PROJECT_ID,
       projectedFeatures
     });
     storage.setItem("roadwatcher.currentProject", serializeSnapshot({ ...snapshot, schemaVersion: 999 }));

@@ -10,6 +10,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Canonical project models (`MediaAsset`, `IncidentDraft`, component slots, and
   the branded project-ID type) live in `src/domain/projectModels.ts`; demo data
   now consumes those types instead of defining production contracts.
+- Project identity is generated once as an opaque local ID, survives incident
+  edits/save/export/import cycles, and is regenerated only when clearing into a
+  new project.
 - Video preview panel with transport controls and referenced-media posture.
 - Route/map review panel showing raw GPX, matched route, and projected official
   feature markers.

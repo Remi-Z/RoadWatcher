@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ProjectId } from "../../domain/projectModels";
 import {
   initialClips,
   initialJobs,
@@ -10,9 +11,40 @@ import {
   routePoints
 } from "../../data/demoProject";
 import { detectNativeRuntime } from "../native/runtimeEnvironment";
-import { buildEvidencePacket, createProjectSnapshot, restoreProjectSnapshot } from "./projectState";
+import { buildEvidencePacket, createProjectId, createProjectSnapshot, restoreProjectSnapshot } from "./projectState";
+
+const TEST_PROJECT_ID = "local-test-project" as ProjectId;
 
 describe("project state", () => {
+  it("keeps project identity stable when incident metadata changes", () => {
+    const projectId = "local-stable-project" as ProjectId;
+    const baseInput = {
+      clips: initialClips,
+      jobs: initialJobs,
+      media: mediaAssets,
+      projectId,
+      projectedFeatures
+    };
+
+    const first = createProjectSnapshot({ ...baseInput, incident: incidentDraft });
+    const second = createProjectSnapshot({
+      ...baseInput,
+      incident: { ...incidentDraft, plate: "EDITED", start: "00:42:00" }
+    });
+
+    expect(first.projectId).toBe(projectId);
+    expect(second.projectId).toBe(projectId);
+  });
+
+  it("creates distinct opaque IDs for new projects", () => {
+    const first = createProjectId(() => "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    const second = createProjectId(() => "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+
+    expect(first).toBe("local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    expect(second).toBe("local-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    expect(first).not.toBe(second);
+  });
+
   it("creates a portable local project snapshot with versioned schema", () => {
     const snapshot = createProjectSnapshot({
       clips: initialClips,
@@ -21,6 +53,7 @@ describe("project state", () => {
       media: mediaAssets,
       nativeProjectRoot: "C:/RoadWatcher/projects",
       officialFeatures: officialRoadFeatures,
+      projectId: TEST_PROJECT_ID,
       projectedFeatures
     });
 
@@ -39,6 +72,7 @@ describe("project state", () => {
       incident: incidentDraft,
       jobs: initialJobs,
       media: mediaAssets,
+      projectId: TEST_PROJECT_ID,
       projectedFeatures
     });
 
@@ -69,6 +103,7 @@ describe("project state", () => {
         componentSlots: [
           { ...missingSlots[2], reference: "C:/roadwatcher/valhalla/greater-toronto.json", notes: "York/GTA extract staged." }
         ],
+        projectId: TEST_PROJECT_ID,
         projectedFeatures,
         route: routePoints
       })
@@ -136,6 +171,7 @@ describe("project state", () => {
         incident: { ...incidentDraft, plate: "NATIVE7" },
         jobs: initialJobs,
         media: mediaAssets,
+        projectId: TEST_PROJECT_ID,
         projectedFeatures
       }),
       { runtimeStatus: detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true }) }

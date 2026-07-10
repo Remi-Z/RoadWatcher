@@ -50,7 +50,7 @@ import {
   projectedFeatures,
   routePoints
 } from "./data/demoProject";
-import type { ComponentSlot, ComponentSlotStatus, IncidentDraft, MediaAsset } from "./domain/projectModels";
+import type { ComponentSlot, ComponentSlotStatus, IncidentDraft, MediaAsset, ProjectId } from "./domain/projectModels";
 import { createGisProjectionJob, parseOfficialFeaturesFromGeoJson } from "./features/geo/geoJsonImport";
 import { createValhallaMatchJob, parseGpxTrack } from "./features/geo/gpxImport";
 import {
@@ -72,6 +72,7 @@ import {
 } from "./features/project/downloadArtifacts";
 import {
   buildEvidencePacket,
+  createProjectId,
   createProjectSnapshot,
   DEFAULT_NATIVE_PROJECT_ROOT,
   parseSnapshot,
@@ -107,13 +108,16 @@ const REVIEW_PROXY_PROFILE = "review-proxy";
 export function App({
   nativeInvoke,
   nativeRuntimeStatus,
+  projectIdFactory = createProjectId,
   projectRepository = defaultProjectRepository
 }: {
   nativeInvoke?: NativeInvoke;
   nativeRuntimeStatus?: NativeRuntimeStatus;
+  projectIdFactory?: () => ProjectId;
   projectRepository?: ProjectRepository;
 }) {
   const [restoredSnapshot] = useState(() => projectRepository.load());
+  const [projectId, setProjectId] = useState<ProjectId>(() => restoredSnapshot?.projectId ?? projectIdFactory());
   const [detectedNativeRuntimeStatus, setDetectedNativeRuntimeStatus] = useState(() => detectNativeRuntime());
   const [detectedNativeInvoke, setDetectedNativeInvoke] = useState<NativeInvoke | undefined>();
   const [clips, setClips] = useState<TimelineClip[]>(() => restoredSnapshot?.clips ?? initialClips);
@@ -190,6 +194,7 @@ export function App({
     nativeCommandAttempts,
     nativeProjectRoot,
     officialFeatures,
+    projectId,
     projectedFeatures: projectedRoadFeatures,
     route
   };
@@ -377,6 +382,7 @@ export function App({
     setJobs(initialJobs);
     setNativeCommandAttempts([]);
     setNativeProjectRoot(DEFAULT_NATIVE_PROJECT_ROOT);
+    setProjectId(projectIdFactory());
     setComponentSlots(missingSlots);
     setRoute(routePoints);
     setOfficialFeatures(officialRoadFeatures);
@@ -695,6 +701,7 @@ export function App({
     setJobs(snapshot.jobs);
     setNativeCommandAttempts(snapshot.nativeCommandAttempts ?? []);
     setNativeProjectRoot(snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT);
+    setProjectId(snapshot.projectId);
     setComponentSlots(componentSlotsOrDefaults(snapshot.componentSlots));
     setRoute(snapshot.route);
     setOfficialFeatures(snapshot.officialFeatures);
