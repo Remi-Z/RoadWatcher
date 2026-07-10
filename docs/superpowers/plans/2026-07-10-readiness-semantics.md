@@ -35,4 +35,4 @@ dimensions and derive per-command evidence from native attempt history. Preserve
 - [x] Confirm no module files are dirty.
 - [x] Record readiness semantics and the next Tauri/SQLite module in README,
   handoff, and rewrite manifest.
-- [ ] Commit `docs: hand off readiness semantics` and mark completed checkpoints.
+- [x] Commit `docs: hand off readiness semantics` and mark completed checkpoints.
