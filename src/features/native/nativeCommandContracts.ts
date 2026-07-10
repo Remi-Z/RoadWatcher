@@ -1,4 +1,12 @@
-export type NativeCommandName = "project_create" | "media_import" | "gpx_match" | "gis_project" | "ffmpeg_proxy" | "cv_scan";
+export type NativeCommandName =
+  | "project_create"
+  | "project_save"
+  | "project_load"
+  | "media_import"
+  | "gpx_match"
+  | "gis_project"
+  | "ffmpeg_proxy"
+  | "cv_scan";
 export type NativeCommandImplementation = "implemented" | "planned";
 
 export interface NativeCommandContract {
@@ -14,14 +22,34 @@ export interface NativeCommandContract {
 
 export const nativeCommandContracts: NativeCommandContract[] = [
   {
-    id: "project-store",
-    label: "Project store",
+    id: "project-store-create",
+    label: "Project creation",
     command: "project_create",
     implementation: "implemented",
     requestFields: ["projectName", "rootDirectory"],
     responseFields: ["projectId", "projectDirectory", "sqlitePath"],
     fallback: "browser-local project snapshots",
     ownerAction: "Implement SQLite-backed project folders with assets, proxies, exports, and logs."
+  },
+  {
+    id: "project-store-save",
+    label: "Project save",
+    command: "project_save",
+    implementation: "implemented",
+    requestFields: ["sqlitePath", "snapshotJson"],
+    responseFields: ["projectId", "schemaVersion", "savedAtIso"],
+    fallback: "browser-local project snapshots",
+    ownerAction: "Persist the validated workstation snapshot transactionally in SQLite."
+  },
+  {
+    id: "project-store-load",
+    label: "Project load",
+    command: "project_load",
+    implementation: "implemented",
+    requestFields: ["sqlitePath"],
+    responseFields: ["projectId", "schemaVersion", "savedAtIso", "snapshotJson"],
+    fallback: "browser-local project snapshots",
+    ownerAction: "Load the last SQLite snapshot and validate it before restoring workstation state."
   },
   {
     id: "media-import",

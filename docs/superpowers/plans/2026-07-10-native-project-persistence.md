@@ -16,12 +16,12 @@ active Tauri SQLite project while retaining browser fallback behavior.
 
 ### Task 2: Tauri Commands and Frontend Adapter
 
-- [ ] Register thin `project_save` and `project_load` Tauri commands with
+- [x] Register thin `project_save` and `project_load` Tauri commands with
   camel-case DTOs.
-- [ ] Add implemented command contracts and bridge validation tests.
-- [ ] Add an asynchronous native repository that serializes saves and validates
+- [x] Add implemented command contracts and bridge validation tests.
+- [x] Add an asynchronous native repository that serializes saves and validates
   loaded snapshots through the existing schema parser.
-- [ ] Add a small injectable last-project locator with browser-storage tests.
+- [x] Add a small injectable last-project locator with browser-storage tests.
 - [ ] Run focused Rust/frontend tests and commit `feat: add native project repository`.
 
 ### Task 3: Application Integration

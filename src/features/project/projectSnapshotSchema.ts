@@ -43,7 +43,16 @@ class SnapshotValidationFailure extends Error {
 const COMPONENT_SLOT_STATUSES = ["needed", "optional", "later", "configured"] as const;
 const JOB_TYPES = ["proxy", "valhalla", "gis", "cv", "export", "gpstitch"] as const;
 const JOB_STATUSES = ["queued", "running", "complete", "failed", "cancelled", "blocked"] as const;
-const NATIVE_COMMANDS = ["project_create", "media_import", "gpx_match", "gis_project", "ffmpeg_proxy", "cv_scan"] as const;
+const NATIVE_COMMANDS = [
+  "project_create",
+  "project_save",
+  "project_load",
+  "media_import",
+  "gpx_match",
+  "gis_project",
+  "ffmpeg_proxy",
+  "cv_scan"
+] as const;
 const NATIVE_ATTEMPT_STATUSES = [
   "invoked",
   "browser_fallback",
