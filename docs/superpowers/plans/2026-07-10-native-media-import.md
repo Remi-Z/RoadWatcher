@@ -11,13 +11,13 @@ streaming SHA-256 metadata and an atomic durable proxy job.
   missing/non-file paths, project mismatch, and transaction atomicity.
 - [x] Add direct cached SHA-256 dependencies and typed media import DTOs/errors.
 - [x] Implement streaming hash and transactional media/job inserts.
-- [ ] Run focused Rust tests and commit `feat: persist native media imports`.
+- [x] Run focused Rust tests and commit `feat: persist native media imports`.
 
 ### Task 2: Command Contract and Atomic Reducer Transition
 
-- [ ] Register `media_import` with `sqlitePath` and the expanded response DTO.
-- [ ] Add bridge/contract tests for exact request and response fields.
-- [ ] Add a reducer action that atomically appends native media, proxy job,
+- [x] Register `media_import` with `sqlitePath` and the expanded response DTO.
+- [x] Add bridge/contract tests for exact request and response fields.
+- [x] Add a reducer action that atomically appends native media, proxy job,
   default clip, and command attempt.
 - [ ] Run focused Rust/frontend tests and commit `feat: wire native media import`.
 

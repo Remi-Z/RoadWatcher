@@ -55,9 +55,19 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "media-import",
     label: "Media import",
     command: "media_import",
-    implementation: "planned",
-    requestFields: ["projectId", "sourcePath"],
-    responseFields: ["mediaId", "hash", "durationSeconds", "proxyJobId"],
+    implementation: "implemented",
+    requestFields: ["sqlitePath", "projectId", "sourcePath"],
+    responseFields: [
+      "mediaId",
+      "fileName",
+      "originalPath",
+      "hash",
+      "fileSizeBytes",
+      "durationSeconds",
+      "detectedStart",
+      "proxyStatus",
+      "proxyJobId"
+    ],
     fallback: "browser file references and placeholder clips",
     ownerAction: "Import source paths or file handles, hash originals, probe metadata, and queue proxy work."
   },

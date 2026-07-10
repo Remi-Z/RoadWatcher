@@ -84,6 +84,52 @@ describe("workstation state", () => {
     expect(next.media).not.toBe(replacement.media);
   });
 
+  it("adds native media, proxy work, review clip, and audit attempt atomically", () => {
+    const state = createInitialWorkstationState({ seed: createSeed(FIRST_PROJECT_ID) });
+    const media = {
+      id: "media-native-1",
+      fileName: "front.mp4",
+      originalPath: "D:/Evidence/front.mp4",
+      durationSeconds: 0,
+      detectedStart: "",
+      proxyStatus: "queued" as const,
+      hash: "sha256-value",
+      fileSizeBytes: 2048
+    };
+    const job = {
+      id: "job-native-1",
+      type: "proxy" as const,
+      label: "Auto proxy: front.mp4",
+      status: "queued" as const,
+      progress: 0,
+      detail: "ffprobe/FFmpeg pending"
+    };
+    const clip = {
+      id: "clip-media-native-1",
+      mediaId: media.id,
+      sourceInSeconds: 0,
+      sourceOutSeconds: 30,
+      reelStartSeconds: 102,
+      label: "Imported front"
+    };
+    const attempt = {
+      id: "attempt-native-1",
+      command: "media_import" as const,
+      status: "invoked" as const,
+      requestedAtIso: "2026-07-10T17:00:00.000Z",
+      requestSummary: "sourcePath: D:/Evidence/front.mp4",
+      resultSummary: "mediaId: media-native-1"
+    };
+
+    const next = workstationReducer(state, { type: "import_native_media", media, job, clip, attempt });
+
+    expect(next.media.at(-1)).toEqual(media);
+    expect(next.jobs.at(-1)).toEqual(job);
+    expect(next.clips.at(-1)).toEqual(clip);
+    expect(next.nativeCommandAttempts[0]).toEqual(attempt);
+    expect(next.selectedClipId).toBe(clip.id);
+  });
+
   it("resets the complete project with a newly supplied identity", () => {
     const firstSeed = createSeed(FIRST_PROJECT_ID);
     const secondSeed = createSeed(SECOND_PROJECT_ID);

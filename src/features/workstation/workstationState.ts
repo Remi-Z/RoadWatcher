@@ -96,6 +96,13 @@ export type WorkstationAction =
       requestedAtIso: string;
     }
   | {
+      type: "import_native_media";
+      media: MediaAsset;
+      job: WorkstationJob;
+      clip: TimelineClip;
+      attempt: NativeCommandAttempt;
+    }
+  | {
       type: "import_route";
       fileName: string;
       route: TimedRoutePoint[];
@@ -223,6 +230,14 @@ export function workstationReducer(state: WorkstationState, action: WorkstationA
     case "record_native_attempt":
       return withInvalidatedExport(state, {
         nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+      });
+    case "import_native_media":
+      return withInvalidatedExport(state, {
+        media: [...state.media, action.media],
+        jobs: [...state.jobs, action.job],
+        clips: [...state.clips, action.clip],
+        nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8),
+        selectedClipId: action.clip.id
       });
     case "import_media": {
       const importedAssets = createImportedMediaAssets(action.files, state.media.length);

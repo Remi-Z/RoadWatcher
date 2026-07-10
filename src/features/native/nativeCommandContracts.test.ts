@@ -32,9 +32,19 @@ describe("native command contracts", () => {
       responseFields: ["projectId", "schemaVersion", "savedAtIso", "snapshotJson"]
     });
     expect(nativeCommandContracts.find((contract) => contract.command === "media_import")).toMatchObject({
-      implementation: "planned",
-      requestFields: ["projectId", "sourcePath"],
-      responseFields: ["mediaId", "hash", "durationSeconds", "proxyJobId"]
+      implementation: "implemented",
+      requestFields: ["sqlitePath", "projectId", "sourcePath"],
+      responseFields: [
+        "mediaId",
+        "fileName",
+        "originalPath",
+        "hash",
+        "fileSizeBytes",
+        "durationSeconds",
+        "detectedStart",
+        "proxyStatus",
+        "proxyJobId"
+      ]
     });
   });
 
