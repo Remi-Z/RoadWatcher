@@ -21,7 +21,11 @@ describe("native command bridge", () => {
   it("reports a missing invoke bridge inside a Tauri shell without claiming success", async () => {
     const bridge = createNativeCommandBridge({ runtime: detectNativeRuntime({ __TAURI_INTERNALS__: {} }) });
 
-    const result = await bridge.invoke("media_import", { projectId: "local-1", sourcePath: "D:/Dashcam/front.mp4" });
+    const result = await bridge.invoke("media_import", {
+      sqlitePath: "D:/RoadWatcher/project.sqlite",
+      projectId: "local-1",
+      sourcePath: "D:/Dashcam/front.mp4"
+    });
 
     expect(result).toMatchObject({
       ok: false,
@@ -102,12 +106,22 @@ describe("native command bridge", () => {
   it("passes through complete requests with additional metadata", async () => {
     const invoke = vi.fn().mockResolvedValue({
       mediaId: "media-1",
+      fileName: "front.mp4",
+      originalPath: "D:/Dashcam/front.mp4",
       hash: "sha256:abc123",
+      fileSizeBytes: 1024,
       durationSeconds: 42,
+      detectedStart: "",
+      proxyStatus: "queued",
       proxyJobId: "job-1"
     });
     const bridge = createNativeCommandBridge({ runtime: detectNativeRuntime({ __TAURI_INTERNALS__: {} }), invoke });
-    const request = { projectId: "project-1", sourcePath: "D:/Dashcam/front.mp4", importMode: "reference" };
+    const request = {
+      sqlitePath: "D:/RoadWatcher/project.sqlite",
+      projectId: "project-1",
+      sourcePath: "D:/Dashcam/front.mp4",
+      importMode: "reference"
+    };
 
     const result = await bridge.invoke("media_import", request);
 
