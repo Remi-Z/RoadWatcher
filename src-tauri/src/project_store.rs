@@ -1,12 +1,12 @@
 use rusqlite::{params, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
 
-const PROJECT_SCHEMA_VERSION: i64 = 1;
+const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 2;
 
 #[derive(Debug)]
 pub struct ProjectCreateRequest {
@@ -22,6 +22,37 @@ pub struct ProjectCreateResponse {
     pub sqlite_path: String,
 }
 
+#[derive(Debug)]
+pub struct ProjectSaveRequest {
+    pub sqlite_path: PathBuf,
+    pub snapshot_json: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSaveResponse {
+    pub project_id: String,
+    pub schema_version: i64,
+    pub saved_at_iso: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectLoadResponse {
+    pub project_id: String,
+    pub schema_version: i64,
+    pub saved_at_iso: String,
+    pub snapshot_json: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SnapshotEnvelope {
+    project_id: String,
+    schema_version: i64,
+    saved_at_iso: String,
+}
+
 #[derive(Debug, Error)]
 pub enum ProjectStoreError {
     #[error("Project name must not be blank.")]
@@ -32,6 +63,21 @@ pub enum ProjectStoreError {
     Io(#[from] std::io::Error),
     #[error("Could not initialize the SQLite project: {0}")]
     Sqlite(#[from] rusqlite::Error),
+    #[error("The selected file is not a RoadWatcher SQLite project: {0}")]
+    InvalidDatabase(String),
+    #[error(
+        "RoadWatcher database schema version {found} is newer than supported version {supported}."
+    )]
+    UnsupportedDatabaseVersion { found: i64, supported: i64 },
+    #[error("Project snapshot is invalid: {0}")]
+    InvalidSnapshot(String),
+    #[error("Snapshot project ID {snapshot_id} does not match database project ID {database_id}.")]
+    ProjectIdentityMismatch {
+        snapshot_id: String,
+        database_id: String,
+    },
+    #[error("The RoadWatcher project does not contain a saved snapshot yet.")]
+    SnapshotMissing,
     #[error("System clock is before the Unix epoch.")]
     InvalidSystemClock,
 }
@@ -98,13 +144,139 @@ fn initialize_project_directory(
     connection.execute_batch(SCHEMA_SQL)?;
     connection.execute(
         "INSERT INTO schema_info (version) VALUES (?1)",
-        params![PROJECT_SCHEMA_VERSION],
+        params![PROJECT_DATABASE_SCHEMA_VERSION],
     )?;
     connection.execute(
         "INSERT INTO projects (id, display_name, created_at_unix) VALUES (?1, ?2, ?3)",
         params![project_id.to_string(), display_name, created_at_unix],
     )?;
     Ok(())
+}
+
+pub fn save_project_snapshot(
+    request: ProjectSaveRequest,
+) -> Result<ProjectSaveResponse, ProjectStoreError> {
+    let envelope: SnapshotEnvelope = serde_json::from_str(&request.snapshot_json)
+        .map_err(|error| ProjectStoreError::InvalidSnapshot(error.to_string()))?;
+    if envelope.project_id.trim().is_empty() {
+        return Err(ProjectStoreError::InvalidSnapshot(
+            "projectId must not be blank".to_string(),
+        ));
+    }
+    if envelope.schema_version <= 0 {
+        return Err(ProjectStoreError::InvalidSnapshot(
+            "schemaVersion must be a positive integer".to_string(),
+        ));
+    }
+    if envelope.saved_at_iso.trim().is_empty() {
+        return Err(ProjectStoreError::InvalidSnapshot(
+            "savedAtIso must not be blank".to_string(),
+        ));
+    }
+
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    let database_id = project_id(&connection)?;
+    if envelope.project_id != database_id {
+        return Err(ProjectStoreError::ProjectIdentityMismatch {
+            snapshot_id: envelope.project_id,
+            database_id,
+        });
+    }
+
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO project_snapshots (project_id, snapshot_schema_version, saved_at_iso, snapshot_json)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(project_id) DO UPDATE SET
+           snapshot_schema_version = excluded.snapshot_schema_version,
+           saved_at_iso = excluded.saved_at_iso,
+           snapshot_json = excluded.snapshot_json",
+        params![
+            envelope.project_id,
+            envelope.schema_version,
+            envelope.saved_at_iso,
+            request.snapshot_json
+        ],
+    )?;
+    transaction.commit()?;
+
+    Ok(ProjectSaveResponse {
+        project_id: envelope.project_id,
+        schema_version: envelope.schema_version,
+        saved_at_iso: envelope.saved_at_iso,
+    })
+}
+
+pub fn load_project_snapshot(sqlite_path: &Path) -> Result<ProjectLoadResponse, ProjectStoreError> {
+    let connection = open_project_database(sqlite_path)?;
+    let database_id = project_id(&connection)?;
+    let response = connection.query_row(
+        "SELECT project_id, snapshot_schema_version, saved_at_iso, snapshot_json
+         FROM project_snapshots WHERE project_id = ?1",
+        params![database_id],
+        |row| {
+            Ok(ProjectLoadResponse {
+                project_id: row.get(0)?,
+                schema_version: row.get(1)?,
+                saved_at_iso: row.get(2)?,
+                snapshot_json: row.get(3)?,
+            })
+        },
+    );
+    match response {
+        Ok(response) => Ok(response),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Err(ProjectStoreError::SnapshotMissing),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn open_project_database(sqlite_path: &Path) -> Result<Connection, ProjectStoreError> {
+    if !sqlite_path.is_file() {
+        return Err(ProjectStoreError::InvalidDatabase(path_string(sqlite_path)));
+    }
+    let mut connection = Connection::open(sqlite_path)?;
+    connection.execute_batch("PRAGMA foreign_keys = ON;")?;
+    migrate_database(&mut connection)?;
+    Ok(connection)
+}
+
+fn migrate_database(connection: &mut Connection) -> Result<(), ProjectStoreError> {
+    let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version > PROJECT_DATABASE_SCHEMA_VERSION {
+        return Err(ProjectStoreError::UnsupportedDatabaseVersion {
+            found: version,
+            supported: PROJECT_DATABASE_SCHEMA_VERSION,
+        });
+    }
+    if version < 1 {
+        return Err(ProjectStoreError::InvalidDatabase(
+            "missing RoadWatcher schema version".to_string(),
+        ));
+    }
+    if version == 1 {
+        let transaction = connection.transaction()?;
+        transaction.execute_batch(PROJECT_SNAPSHOT_TABLE_SQL)?;
+        transaction.execute(
+            "UPDATE schema_info SET version = ?1",
+            params![PROJECT_DATABASE_SCHEMA_VERSION],
+        )?;
+        transaction.pragma_update(None, "user_version", PROJECT_DATABASE_SCHEMA_VERSION)?;
+        transaction.commit()?;
+    }
+    let recorded_version: i64 =
+        connection.query_row("SELECT version FROM schema_info", [], |row| row.get(0))?;
+    if recorded_version != PROJECT_DATABASE_SCHEMA_VERSION {
+        return Err(ProjectStoreError::InvalidDatabase(format!(
+            "schema_info records version {recorded_version}"
+        )));
+    }
+    Ok(())
+}
+
+fn project_id(connection: &Connection) -> Result<String, ProjectStoreError> {
+    connection
+        .query_row("SELECT id FROM projects LIMIT 1", [], |row| row.get(0))
+        .map_err(ProjectStoreError::from)
 }
 
 fn slugify(value: &str) -> String {
@@ -134,7 +306,7 @@ fn path_string(path: &Path) -> String {
 const SCHEMA_SQL: &str = r#"
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 
 CREATE TABLE schema_info (
     version INTEGER NOT NULL CHECK (version > 0)
@@ -228,11 +400,30 @@ CREATE TABLE native_command_attempts (
     request_summary TEXT NOT NULL,
     result_summary TEXT NOT NULL
 );
+
+CREATE TABLE project_snapshots (
+    project_id TEXT PRIMARY KEY NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    snapshot_schema_version INTEGER NOT NULL CHECK (snapshot_schema_version > 0),
+    saved_at_iso TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL
+);
+"#;
+
+const PROJECT_SNAPSHOT_TABLE_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS project_snapshots (
+    project_id TEXT PRIMARY KEY NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    snapshot_schema_version INTEGER NOT NULL CHECK (snapshot_schema_version > 0),
+    saved_at_iso TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL
+);
 "#;
 
 #[cfg(test)]
 mod tests {
-    use super::{create_project_at, ProjectCreateRequest, ProjectStoreError};
+    use super::{
+        create_project_at, load_project_snapshot, save_project_snapshot, ProjectCreateRequest,
+        ProjectSaveRequest, ProjectStoreError,
+    };
     use rusqlite::Connection;
     use std::collections::BTreeSet;
     use std::fs;
@@ -280,7 +471,7 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(schema_version, 1);
+        assert_eq!(schema_version, 2);
         assert_eq!(
             metadata,
             (
@@ -308,6 +499,7 @@ mod tests {
             "projected_features",
             "component_slots",
             "native_command_attempts",
+            "project_snapshots",
         ] {
             assert!(table_names.contains(table), "missing table {table}");
         }
@@ -360,6 +552,148 @@ mod tests {
                 "sqlitePath": "C:/RoadWatcher/native/project.sqlite"
             })
         );
+    }
+
+    #[test]
+    fn migrates_v1_and_round_trips_the_latest_snapshot() {
+        let root = TestRoot::new();
+        let project_id = Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Persistence review".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        connection
+            .execute("DROP TABLE project_snapshots", [])
+            .unwrap();
+        connection
+            .execute("UPDATE schema_info SET version = 1", [])
+            .unwrap();
+        connection.pragma_update(None, "user_version", 1).unwrap();
+        drop(connection);
+
+        let first = snapshot_json(project_id, 2, "2026-07-10T12:00:00.000Z", "First");
+        let saved = save_project_snapshot(ProjectSaveRequest {
+            sqlite_path: PathBuf::from(&created.sqlite_path),
+            snapshot_json: first,
+        })
+        .unwrap();
+        assert_eq!(saved.project_id, project_id.to_string());
+        assert_eq!(saved.schema_version, 2);
+        assert_eq!(saved.saved_at_iso, "2026-07-10T12:00:00.000Z");
+
+        let second = snapshot_json(project_id, 2, "2026-07-10T13:00:00.000Z", "Updated");
+        save_project_snapshot(ProjectSaveRequest {
+            sqlite_path: PathBuf::from(&created.sqlite_path),
+            snapshot_json: second.clone(),
+        })
+        .unwrap();
+        let loaded = load_project_snapshot(Path::new(&created.sqlite_path)).unwrap();
+        assert_eq!(loaded.project_id, project_id.to_string());
+        assert_eq!(loaded.schema_version, 2);
+        assert_eq!(loaded.saved_at_iso, "2026-07-10T13:00:00.000Z");
+        assert_eq!(loaded.snapshot_json, second);
+
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        let user_version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        let schema_version: i64 = connection
+            .query_row("SELECT version FROM schema_info", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(user_version, 2);
+        assert_eq!(schema_version, 2);
+    }
+
+    #[test]
+    fn rejects_invalid_or_mismatched_snapshot_envelopes_without_writing() {
+        let root = TestRoot::new();
+        let project_id = Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Envelope review".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+
+        let invalid = save_project_snapshot(ProjectSaveRequest {
+            sqlite_path: PathBuf::from(&created.sqlite_path),
+            snapshot_json: "{".to_string(),
+        });
+        assert!(matches!(
+            invalid,
+            Err(ProjectStoreError::InvalidSnapshot(_))
+        ));
+
+        let mismatched = save_project_snapshot(ProjectSaveRequest {
+            sqlite_path: PathBuf::from(&created.sqlite_path),
+            snapshot_json: snapshot_json(Uuid::nil(), 2, "2026-07-10T12:00:00.000Z", "Wrong"),
+        });
+        assert!(matches!(
+            mismatched,
+            Err(ProjectStoreError::ProjectIdentityMismatch { .. })
+        ));
+        assert!(matches!(
+            load_project_snapshot(Path::new(&created.sqlite_path)),
+            Err(ProjectStoreError::SnapshotMissing)
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_and_future_database_files_without_creating_them() {
+        let root = TestRoot::new();
+        let missing = root.path().join("missing.sqlite");
+        assert!(matches!(
+            load_project_snapshot(&missing),
+            Err(ProjectStoreError::InvalidDatabase(_))
+        ));
+        assert!(!missing.exists());
+
+        let project_id = Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Future review".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        connection.pragma_update(None, "user_version", 99).unwrap();
+        drop(connection);
+
+        assert!(matches!(
+            load_project_snapshot(Path::new(&created.sqlite_path)),
+            Err(ProjectStoreError::UnsupportedDatabaseVersion {
+                found: 99,
+                supported: 2
+            })
+        ));
+    }
+
+    fn snapshot_json(
+        project_id: Uuid,
+        schema_version: i64,
+        saved_at_iso: &str,
+        title: &str,
+    ) -> String {
+        serde_json::json!({
+            "schemaVersion": schema_version,
+            "projectId": project_id.to_string(),
+            "savedAtIso": saved_at_iso,
+            "incident": { "title": title }
+        })
+        .to_string()
     }
 
     struct TestRoot(PathBuf);

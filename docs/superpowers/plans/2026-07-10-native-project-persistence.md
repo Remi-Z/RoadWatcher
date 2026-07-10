@@ -7,10 +7,10 @@ active Tauri SQLite project while retaining browser fallback behavior.
 
 ### Task 1: SQLite Snapshot Store and Migration
 
-- [ ] Add failing Rust tests for v1-to-v2 migration, missing snapshot, round-trip
+- [x] Add failing Rust tests for v1-to-v2 migration, missing snapshot, round-trip
   save/load, overwrite, invalid JSON, and project-ID mismatch.
-- [ ] Add schema version 2 and idempotent project-open migration.
-- [ ] Implement typed `save_project_snapshot` and `load_project_snapshot` store
+- [x] Add schema version 2 and idempotent project-open migration.
+- [x] Implement typed `save_project_snapshot` and `load_project_snapshot` store
   operations with transactional upsert and envelope validation.
 - [ ] Run focused Rust tests and commit `feat: persist project snapshots in SQLite`.
 
