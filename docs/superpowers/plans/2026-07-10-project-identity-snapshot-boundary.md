@@ -86,7 +86,7 @@ Run: `pnpm build`
 
 Expected: TypeScript and Vite build exit 0 with no missing or duplicate type definitions.
 
-- [ ] **Step 4: Commit the type-boundary refactor**
+- [x] **Step 4: Commit the type-boundary refactor**
 
 ```powershell
 git add src/domain/projectModels.ts src/data/demoProject.ts src/features/media/mediaImport.ts src/features/project/projectState.ts src/features/project/reviewReadiness.ts src/App.tsx
