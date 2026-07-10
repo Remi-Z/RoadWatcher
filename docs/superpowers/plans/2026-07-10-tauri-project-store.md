@@ -24,10 +24,10 @@ SQLite-backed RoadWatcher project folder.
 
 ### Task 3: Verification and Native Repository Follow-on
 
-- [ ] Run full frontend tests/build, Rust tests, and `git diff --check`.
-- [ ] Record actual native verification constraints/results without overstating
+- [x] Run full frontend tests/build, Rust tests, and `git diff --check`.
+- [x] Record actual native verification constraints/results without overstating
   Tauri bundle readiness.
-- [ ] Document `project_save`/`project_load` and native repository adaptation as
+- [x] Document `project_save`/`project_load` and native repository adaptation as
   the next storage slice.
 - [ ] Commit `docs: hand off native project creation` and close completed plan
   checkpoints.

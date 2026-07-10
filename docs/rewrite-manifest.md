@@ -215,15 +215,15 @@ Fresh check on 2026-07-08 after Rustup install:
 - `uv --version`: `uv 0.11.23 (3cdf50e09 2026-06-19 x86_64-pc-windows-msvc)`
 - `cargo --version`: `cargo 1.96.1 (356927216 2026-06-26)`
 - `rustc --version`: `rustc 1.96.1 (31fca3adb 2026-06-26)`
-- `pnpm test`: 15 files / 89 tests passed when run elevated.
+- `pnpm test`: 17 files / 118 tests passed when run elevated.
 - `pnpm build`: TypeScript and Vite production build passed when run elevated.
-- `pnpm tauri:dev`: Vite started on `http://127.0.0.1:5174/` and Cargo fetched
-  crates. `src-tauri\Cargo.lock` now exists and is tracked. Direct builds still
-  fail when generated dependency build scripts write under `src-tauri\target`.
-  A temporary Cargo target lets dependencies compile, after which Tauri fails
-  when it generates permissions under `src-tauri\`. Native verification is
-  therefore blocked by generated-process write access to this managed checkout,
-  not by the Rust toolchain or lockfile.
+- `cargo test --offline --all-targets` passes all four Rust tests with a temp
+  target directory.
+- `pnpm tauri:build -- --debug` completes with `CARGO_TARGET_DIR` set to
+  `%TEMP%\roadwatcher-tauri-build`, producing the native EXE, an x64 MSI, and an
+  x64 NSIS installer. The first packaging attempt exposed missing explicit icon
+  configuration; `tauri.conf.json` now lists `icons/icon.ico` and uses the
+  non-conflicting `dev.roadwatcher.desktop` identifier.
 
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
@@ -403,8 +403,8 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement and verify Tauri `project_create` as the first native capability,
-   creating a SQLite-backed project folder and returning the registered DTO.
+1. Implement `project_save`/`project_load` against the SQLite schema and add a
+   native repository adapter for atomic workstation snapshots.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -414,28 +414,19 @@ network/DNS access.
    - `pnpm install`
    - `pnpm test`
    - `pnpm build`
-4. From a workspace where generated Cargo/Tauri processes can write, run:
-   - `pnpm tauri:dev`
-5. Add Rust tests for project folder creation and command DTOs before
-   implementing SQLite storage.
-6. Implement a minimal SQLite-backed project:
-   - project metadata
-   - media asset records
-   - GPX track records
-   - jobs table
-   - timeline clips
-   - projected feature records
-7. Replace browser-local project save/download fallback with Tauri
+4. Run Tauri commands with a temp target in this managed workspace; debug MSI
+   and NSIS bundling is verified.
+5. Replace browser-local project save/download fallback with Tauri
    command-backed SQLite save and native file export.
-8. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
+6. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
    demo fallback only for empty projects.
-9. Replace browser import fallback with real media import by reference and
+7. Replace browser import fallback with real media import by reference and
    hash/metadata jobs.
-10. Replace browser GPX parsing with persisted GPX import and local Valhalla map
+8. Replace browser GPX parsing with persisted GPX import and local Valhalla map
    matching.
-11. Replace browser GeoJSON projection with Turf.js MVP geometry and production
+9. Replace browser GeoJSON projection with Turf.js MVP geometry and production
    PostGIS import/indexing.
-12. Add FFmpeg proxy generation with GPU probe and CPU fallback.
+10. Add FFmpeg proxy generation with GPU probe and CPU fallback.
 
 ## Design Guardrails
 

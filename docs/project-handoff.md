@@ -302,12 +302,11 @@ Follow-up Bash/WSL check on 2026-07-07:
   returned `rustc 1.96.1 (31fca3adb 2026-06-26)` when run outside the sandbox
   with `%USERPROFILE%\.cargo\bin` on PATH.
 - `src-tauri\Cargo.lock` now exists and is tracked for reproducible application
-  builds. Direct builds under this managed `Documents` checkout still fail when
-  dependency build scripts write to `src-tauri\target`. Moving Cargo's target
-  directory to `%TEMP%` lets dependencies compile, then Tauri fails when its
-  build script must generate permissions back under `src-tauri\`. The remaining
-  blocker is therefore generated-process write access to the checkout, not the
-  Rust toolchain or lockfile.
+  builds. `cargo test --offline --all-targets` passes with a temp target, and
+  `pnpm tauri:build -- --debug` now completes when `CARGO_TARGET_DIR` points to
+  `%TEMP%\roadwatcher-tauri-build`. It produced the native EXE plus MSI and NSIS
+  installers. Direct in-checkout targets remain avoided because the managed
+  workspace restricts generated writes.
 - Vitest/Vite needed elevated execution in the sandbox because esbuild was
   denied parent-directory access while resolving config files.
 - `uv run --project sidecars\roadwatcher-cv roadwatcher-cv` was blocked by
@@ -495,23 +494,18 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 
 ## Next Best Implementation Slice
 
-1. Implement the first verified native capability: Tauri `project_create` with a
-   SQLite-backed project folder, durable metadata, assets/proxies/exports/logs
-   directories, and a matching TypeScript/Rust DTO contract.
-2. Build from a workspace where Cargo/Tauri build scripts can write, or adjust
-   the managed-workspace policy, and verify `pnpm tauri:dev`.
-3. Add SQLite project creation in Rust, including a project folder with
-   `project.sqlite`, `assets/`, `proxies/`, `exports/`, and `logs/`.
-4. Replace seeded demo data with Tauri command-backed project state.
-5. Replace browser media import fallback with Tauri file handles/real paths,
+1. Add tested `project_save`/`project_load` commands and a native repository
+   adapter so atomic workstation snapshots persist to the created SQLite store.
+2. Replace seeded demo data with Tauri command-backed project state.
+3. Replace browser media import fallback with Tauri file handles/real paths,
    metadata probing, hash records, and native FFmpeg proxy workers.
-6. Replace browser GPX parsing with Tauri-backed GPX persistence and local
+4. Replace browser GPX parsing with Tauri-backed GPX persistence and local
    Valhalla map matching, with OSRM Match wired as the simpler fallback.
-7. Wire official GIS imports and reprojection behind real local configuration
+5. Wire official GIS imports and reprojection behind real local configuration
    slots.
-8. Replace browser GeoJSON projection with Turf.js MVP helpers and production
+6. Replace browser GeoJSON projection with Turf.js MVP helpers and production
    PostGIS/CRS-normalization import.
-9. Replace browser-local storage/download fallback with SQLite and native export
+7. Replace browser-local storage/download fallback with SQLite and native export
    once Tauri command-backed storage is available.
 
 ## Boundaries To Preserve

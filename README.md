@@ -110,8 +110,9 @@ ordinary Vite once dependencies are installed.
   upgrade once thumbnail lanes, waveforms, zoom, and dense markers outgrow the
   current tested HTML/dnd-kit track.
 - Shell: Tauri 2 scaffold under `src-tauri/`.
-- Local orchestration: Rust/Tauri commands; Rust/Cargo is installed, with Tauri
-  verification blocked by generated-process writes in this managed workspace.
+- Local orchestration: Rust/Tauri commands; Rust/Cargo is installed, offline
+  Rust tests pass, and a temp-target debug build produces both MSI and NSIS
+  installers.
 - Sidecars: `uv` Python packages under `sidecars/`.
 - Package manager: pnpm 11.7.0. `pnpm-workspace.yaml` explicitly approves the
   required `esbuild` postinstall for Vite.
@@ -121,8 +122,8 @@ fallback/snapshot initialization, replace/reset, edits, timeline operations,
 native attempts, paired export invalidation, and media/GPX/GIS imports derived
 against current state. `App` now uses that single reducer for every project-facing
 value; only runtime discovery, status text, and DOM concerns remain local React
-state. The next correctness module will split browser packet-export readiness
-from true native workflow readiness. The core domain split is now in place:
+state. Browser packet-export readiness is split from true native workflow
+readiness:
 browser packet export can be ready while native workflow is independently
 unavailable, blocked, or unverified. Native command attempt history now produces
 per-capability verified/failed/fallback/unverified evidence; all required command
@@ -132,13 +133,11 @@ SQLite project folder and durable project metadata. Its pure Rust store now
 creates the UUID layout, required directories, schema version, project metadata,
 and foundational tables under test. `project_create` is now registered as a real
 Tauri command with the exact camel-case TypeScript response contract; remaining
-native commands stay explicitly planned.
+native commands stay explicitly planned. The next storage slice is durable
+`project_save`/`project_load` plus a native repository adapter.
 
 ## Slots You Need To Fill
 
-- Move the native build to a workspace where Cargo/Tauri build scripts can write,
-  or adjust the managed-workspace policy, then verify `pnpm tauri:dev` and
-  `pnpm tauri:build`.
 - Vendor or submodule the GPL-compatible GPStitch fork into
   `sidecars/roadwatcher-gpstitch/`.
 - Provide York/GTA Valhalla data/config for local map matching.
