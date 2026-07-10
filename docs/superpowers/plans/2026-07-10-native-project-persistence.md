@@ -22,7 +22,7 @@ active Tauri SQLite project while retaining browser fallback behavior.
 - [x] Add an asynchronous native repository that serializes saves and validates
   loaded snapshots through the existing schema parser.
 - [x] Add a small injectable last-project locator with browser-storage tests.
-- [ ] Run focused Rust/frontend tests and commit `feat: add native project repository`.
+- [x] Run focused Rust/frontend tests and commit `feat: add native project repository`.
 
 ### Task 3: Application Integration
 
