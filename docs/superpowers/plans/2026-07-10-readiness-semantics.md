@@ -12,11 +12,11 @@ dimensions and derive per-command evidence from native attempt history. Preserve
 
 ### Task 1: Independent Packet and Native Status
 
-- [ ] Write failing readiness tests proving browser runtime never becomes
+- [x] Write failing readiness tests proving browser runtime never becomes
   native-ready, a ready bridge alone is unverified, and packet export remains
   ready independently.
-- [ ] Verify RED.
-- [ ] Add packet/native status models and rigorous native preconditions.
+- [x] Verify RED.
+- [x] Add packet/native status models and rigorous native preconditions.
 - [ ] Verify focused GREEN and commit `fix: separate packet and native readiness`.
 
 ### Task 2: Capability Evidence, UI, and Packet Export

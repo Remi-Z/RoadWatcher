@@ -20,6 +20,9 @@ The runnable app today is the React/Vite evidence workstation:
   `unsupported`, or `unavailable`; startup keeps seeded state usable while
   showing the precise recovery condition. Schema-declaring project imports no
   longer fall through to GeoJSON parsing when snapshot validation fails.
+- Review readiness now models browser packet readiness independently from native
+  workflow readiness. Browser runtime can never be labeled native-ready, and a
+  ready Tauri bridge remains unverified until command capability is evidenced.
 - `src/features/workstation/workstationState.ts` now defines the pure atomic
   workstation boundary and tested fallback/snapshot initialization plus complete
   project replace/reset transitions. It also owns tested inspector, timeline,

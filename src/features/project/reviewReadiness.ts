@@ -6,6 +6,20 @@ import type { TimelineClip } from "../timeline/timelineModel";
 
 export type ReviewReadinessMode = "browser_fallback" | "native_ready";
 export type NativeChecklistState = "ready" | "blocked" | "optional" | "later";
+export type PacketReadinessStatus = "ready" | "blocked";
+export type NativeWorkflowStatus = "ready" | "blocked" | "unavailable" | "unverified";
+
+export interface PacketReadiness {
+  status: PacketReadinessStatus;
+  blockers: string[];
+  summary: string;
+}
+
+export interface NativeWorkflowReadiness {
+  status: NativeWorkflowStatus;
+  blockers: string[];
+  summary: string;
+}
 
 export interface ReviewReadinessInput {
   clips: TimelineClip[];
@@ -18,6 +32,8 @@ export interface ReviewReadinessInput {
 
 export interface ReviewReadiness {
   mode: ReviewReadinessMode;
+  packet: PacketReadiness;
+  native: NativeWorkflowReadiness;
   canExportPacket: boolean;
   openComponentSlots: string[];
   blockedJobs: string[];
@@ -48,17 +64,21 @@ export function summarizeReviewReadiness(input: ReviewReadinessInput): ReviewRea
   const blockedJobs = input.jobs.filter((job) => job.status === "blocked" || job.status === "failed").map((job) => job.label);
   const nativeChecklist = input.componentSlots.map((slot) => buildNativeChecklistItem(slot, input.jobs));
   const runtime = input.runtimeStatus ?? detectNativeRuntime();
-  const canExportPacket = input.clips.length > 0 && input.media.length > 0;
-  const mode: ReviewReadinessMode = openComponentSlots.length === 0 && blockedJobs.length === 0 ? "native_ready" : "browser_fallback";
+  const packet = buildPacketReadiness(input);
+  const native = buildNativeWorkflowReadiness(runtime, openComponentSlots, blockedJobs);
+  const canExportPacket = packet.status === "ready";
+  const mode: ReviewReadinessMode = native.status === "ready" ? "native_ready" : "browser_fallback";
 
   return {
     mode,
+    packet,
+    native,
     canExportPacket,
     openComponentSlots,
     blockedJobs,
     nativeChecklist,
     runtime,
-    summary: buildSummary(mode, canExportPacket, openComponentSlots.length, blockedJobs.length),
+    summary: `${packet.summary}; ${native.summary}.`,
     counts: {
       clips: input.clips.length,
       media: input.media.length,
@@ -98,25 +118,50 @@ function checklistState(status: ComponentSlotStatus): NativeChecklistState {
   return status;
 }
 
-function buildSummary(
-  mode: ReviewReadinessMode,
-  canExportPacket: boolean,
-  openComponentSlotCount: number,
-  blockedJobCount: number
-): string {
-  if (mode === "native_ready") {
-    return canExportPacket ? "Native workflow slots are clear; packet export is available." : "Native workflow slots are clear; add media and clips before export.";
-  }
-
-  const exportState = canExportPacket ? "Browser fallback can export packets" : "Browser fallback needs media and clips before export";
-  return `${exportState}; ${openComponentSlotCount} ${plural(openComponentSlotCount, "component slot")} and ${blockedJobCount} ${plural(
-    blockedJobCount,
-    "job"
-  )} still need attention before native workflow.`;
+function buildPacketReadiness(input: ReviewReadinessInput): PacketReadiness {
+  const blockers = [
+    ...(input.media.length === 0 ? ["At least one media asset is required."] : []),
+    ...(input.clips.length === 0 ? ["At least one evidence clip is required."] : [])
+  ];
+  return {
+    status: blockers.length === 0 ? "ready" : "blocked",
+    blockers,
+    summary: blockers.length === 0 ? "Browser packet export is available" : "Browser packet export needs media and clips"
+  };
 }
 
-function plural(count: number, singular: string): string {
-  return count === 1 ? singular : `${singular}s`;
+function buildNativeWorkflowReadiness(
+  runtime: NativeRuntimeStatus,
+  openComponentSlots: string[],
+  blockedJobs: string[]
+): NativeWorkflowReadiness {
+  const blockers = [...openComponentSlots, ...blockedJobs];
+  if (runtime.mode === "browser_fallback") {
+    return {
+      status: "unavailable",
+      blockers,
+      summary: "native workflow is unavailable because Tauri runtime is not detected"
+    };
+  }
+  if (runtime.bridgeStatus !== "ready") {
+    return {
+      status: "unavailable",
+      blockers,
+      summary: "native workflow is unavailable because the invoke bridge is not ready"
+    };
+  }
+  if (blockers.length > 0) {
+    return {
+      status: "blocked",
+      blockers,
+      summary: `native workflow is blocked by ${blockers.length} recorded ${blockers.length === 1 ? "condition" : "conditions"}`
+    };
+  }
+  return {
+    status: "unverified",
+    blockers,
+    summary: "native command capability is unverified"
+  };
 }
 
 const verifyCommands: Record<string, string> = {

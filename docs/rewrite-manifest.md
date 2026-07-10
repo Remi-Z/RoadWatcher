@@ -43,6 +43,9 @@ Build a Windows-first, local-first evidence workstation:
   with one workstation reducer. Restore, clear, edits, probes, exports, and file
   imports now dispatch complete transitions; a mixed GPX/GIS regression verifies
   projection uses the newly imported route.
+- Split packet-export readiness from native workflow readiness in the domain
+  summary. Packet export remains independently useful, while runtime, bridge,
+  dependency, and job conditions prevent false native-ready claims.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
 - Added a dense evidence workstation UI that renders and builds.
 - Added editable inspector state, browser-local draft save/restore/clear

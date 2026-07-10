@@ -122,7 +122,9 @@ native attempts, paired export invalidation, and media/GPX/GIS imports derived
 against current state. `App` now uses that single reducer for every project-facing
 value; only runtime discovery, status text, and DOM concerns remain local React
 state. The next correctness module will split browser packet-export readiness
-from true native workflow readiness.
+from true native workflow readiness. The core domain split is now in place:
+browser packet export can be ready while native workflow is independently
+unavailable, blocked, or unverified; command evidence is the next slice.
 
 ## Slots You Need To Fill
 
