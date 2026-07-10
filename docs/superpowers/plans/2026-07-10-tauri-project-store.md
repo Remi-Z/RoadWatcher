@@ -20,7 +20,7 @@ SQLite-backed RoadWatcher project folder.
 - [x] Add/adjust TypeScript contract and bridge/App tests for exact camel-case
   request/response fields and native attempt evidence.
 - [x] Run Rust/frontend focused tests and builds.
-- [ ] Update handoff docs and commit `feat: wire native project creation`.
+- [x] Update handoff docs and commit `feat: wire native project creation`.
 
 ### Task 3: Verification and Native Repository Follow-on
 
