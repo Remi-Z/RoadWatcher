@@ -29,5 +29,5 @@ SQLite-backed RoadWatcher project folder.
   Tauri bundle readiness.
 - [x] Document `project_save`/`project_load` and native repository adaptation as
   the next storage slice.
-- [ ] Commit `docs: hand off native project creation` and close completed plan
+- [x] Commit `docs: hand off native project creation` and close completed plan
   checkpoints.
