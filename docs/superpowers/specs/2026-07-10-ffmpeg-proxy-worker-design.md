@@ -66,13 +66,16 @@ recovery detail, because no child process survives application restart.
 
 `ffmpeg_proxy` request:
 
-- `sqlitePath`, `projectId`, `mediaId`, `jobId`, `profile`
+- `sqlitePath`, `projectId`, `mediaId`, `jobId`, `profile`, `binaryDirectory`
 
 Response:
 
 - `jobId`, `status`
 
-Only profile `review-proxy` is accepted initially.
+Only profile `review-proxy` is accepted initially. `binaryDirectory` is the
+configured FFmpeg component-slot reference. A blank value or unchanged `slot:`
+placeholder resolves `ffmpeg`/`ffprobe` from PATH; a real directory must contain
+both executables.
 
 `job_status` request:
 
