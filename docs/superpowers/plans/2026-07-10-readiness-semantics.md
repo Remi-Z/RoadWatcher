@@ -27,7 +27,7 @@ dimensions and derive per-command evidence from native attempt history. Preserve
 - [x] Pass native attempts into readiness summarization, render separate status
   rows/evidence gaps, and export the new dimensions.
 - [x] Run focused readiness/project/App tests and `pnpm build`.
-- [ ] Update handoff documents and commit `feat: expose native capability evidence`.
+- [x] Update handoff documents and commit `feat: expose native capability evidence`.
 
 ### Task 3: Full Verification and Handoff
 
