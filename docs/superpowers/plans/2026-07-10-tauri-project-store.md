@@ -12,7 +12,7 @@ SQLite-backed RoadWatcher project folder.
 - [x] Add cached `rusqlite` bundled dependency and verify RED/compile baseline.
 - [x] Implement `project_store.rs` with typed request/response/error models,
   cleanup-on-failure, and schema initialization.
-- [ ] Run `cargo test --offline --lib` and commit `feat: create SQLite project store`.
+- [x] Run `cargo test --offline --lib` and commit `feat: create SQLite project store`.
 
 ### Task 2: Tauri Command and DTO Contract
 
