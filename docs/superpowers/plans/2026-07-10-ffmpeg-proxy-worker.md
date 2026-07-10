@@ -205,7 +205,7 @@ pub struct ProxyWorkerManager<R: ProcessRunner = SystemProcessRunner> {
 persists unexpected failure, removes the token, and releases the lock. `cancel`
 sets the token and persists `cancellation_requested = 1`.
 
-- [ ] **Step 5: Run worker/store tests and commit**
+- [x] **Step 5: Run worker/store tests and commit**
 
 ```powershell
 cargo fmt
