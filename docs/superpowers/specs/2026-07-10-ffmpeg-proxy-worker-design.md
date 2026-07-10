@@ -55,10 +55,13 @@ Migration 2 to 3 adds:
 ALTER TABLE media_assets ADD COLUMN proxy_path TEXT NOT NULL DEFAULT '';
 ALTER TABLE media_assets ADD COLUMN thumbnail_directory TEXT NOT NULL DEFAULT '';
 ALTER TABLE media_assets ADD COLUMN video_codec TEXT NOT NULL DEFAULT '';
+ALTER TABLE jobs ADD COLUMN media_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE jobs ADD COLUMN cancellation_requested INTEGER NOT NULL DEFAULT 0;
 ```
 
 The existing `status`, `progress`, and `detail` columns remain authoritative.
+New imports write `jobs.media_id`; migrated version-2 jobs bind a blank media ID
+only during the first guarded claim that supplies matching project/media/job IDs.
 Opening a database converts stale `running` proxy jobs to `queued` with a
 recovery detail, because no child process survives application restart.
 

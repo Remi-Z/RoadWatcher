@@ -55,13 +55,14 @@ process/thread synchronization, React 19, TypeScript, Vitest.
   `read_proxy_job_status`, `request_proxy_job_cancel`, `update_proxy_progress`,
   `complete_proxy_job`, `fail_proxy_job`.
 
-- [ ] **Step 1: Add failing migration and store-operation tests**
+- [x] **Step 1: Add failing migration and store-operation tests**
 
 Add tests that downgrade a fixture to schema 2, reopen it, and assert:
 
 ```rust
 assert_eq!(pragma_user_version(&connection), 3);
 assert_eq!(column_default(&connection, "media_assets", "proxy_path"), "''");
+assert_eq!(column_default(&connection, "jobs", "media_id"), "''");
 assert_eq!(column_default(&connection, "jobs", "cancellation_requested"), "0");
 assert_eq!(status.status, "queued"); // stale running recovery
 ```
@@ -69,7 +70,7 @@ assert_eq!(status.status, "queued"); // stale running recovery
 Add claim/progress/complete/cancel/fail tests using the media/job pair created by
 `import_media_at`; assert wrong project/media/job combinations mutate zero rows.
 
-- [ ] **Step 2: Run the focused tests and confirm RED**
+- [x] **Step 2: Run the focused tests and confirm RED**
 
 Run:
 
@@ -80,7 +81,7 @@ cargo test --offline --lib project_store::tests::migrates_v2_proxy_state
 
 Expected: compile failure for missing proxy job interfaces.
 
-- [ ] **Step 3: Implement schema v3 and typed operations**
+- [x] **Step 3: Implement schema v3 and typed operations**
 
 Use these core DTO fields:
 
@@ -115,7 +116,7 @@ Migration must use `ALTER TABLE`, update both schema markers to 3, and recover
 stale running proxy jobs. Every update uses a transaction or one guarded SQL
 statement with project/media/job predicates.
 
-- [ ] **Step 4: Run all project-store tests and format check**
+- [x] **Step 4: Run all project-store tests and format check**
 
 ```powershell
 cargo fmt

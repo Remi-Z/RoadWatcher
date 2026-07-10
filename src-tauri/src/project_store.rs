@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
 
-const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 2;
+const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug)]
 pub struct ProjectCreateRequest {
@@ -68,6 +68,47 @@ pub struct MediaImportResponse {
     pub proxy_job_id: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct ProxyJobRequest {
+    pub sqlite_path: PathBuf,
+    pub project_id: String,
+    pub media_id: String,
+    pub job_id: String,
+    pub profile: String,
+    pub binary_directory: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClaimedProxyJob {
+    pub source_path: PathBuf,
+    pub project_directory: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProxyCompletion {
+    pub duration_seconds: f64,
+    pub detected_start: String,
+    pub proxy_path: String,
+    pub thumbnail_directory: String,
+    pub video_codec: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyJobStatus {
+    pub job_id: String,
+    pub media_id: String,
+    pub status: String,
+    pub progress: f64,
+    pub detail: String,
+    pub duration_seconds: f64,
+    pub detected_start: String,
+    pub proxy_status: String,
+    pub proxy_path: String,
+    pub thumbnail_directory: String,
+    pub video_codec: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SnapshotEnvelope {
@@ -105,6 +146,12 @@ pub enum ProjectStoreError {
     InvalidMediaSource(String),
     #[error("Media source is too large for SQLite byte-size metadata: {0}")]
     MediaSourceTooLarge(String),
+    #[error("Unsupported proxy profile: {0}")]
+    InvalidProxyProfile(String),
+    #[error("Proxy job was not found for the supplied project/media identity.")]
+    ProxyJobNotFound,
+    #[error("Proxy job cannot be claimed from status {0}.")]
+    InvalidProxyJobState(String),
     #[error("System clock is before the Unix epoch.")]
     InvalidSystemClock,
 }
@@ -312,11 +359,12 @@ pub fn import_media_at(
         ],
     )?;
     transaction.execute(
-        "INSERT INTO jobs (id, project_id, job_type, label, status, progress, detail)
-         VALUES (?1, ?2, 'proxy', ?3, 'queued', 0, ?4)",
+        "INSERT INTO jobs (id, project_id, media_id, job_type, label, status, progress, detail)
+         VALUES (?1, ?2, ?3, 'proxy', ?4, 'queued', 0, ?5)",
         params![
             proxy_job_id,
             request.project_id,
+            media_id,
             format!("Auto proxy: {file_name}"),
             detail
         ],
@@ -350,6 +398,231 @@ fn sha256_file(path: &Path) -> Result<String, ProjectStoreError> {
     Ok(hex::encode(digest.finalize()))
 }
 
+pub fn claim_proxy_job(request: &ProxyJobRequest) -> Result<ClaimedProxyJob, ProjectStoreError> {
+    if request.profile != "review-proxy" {
+        return Err(ProjectStoreError::InvalidProxyProfile(
+            request.profile.clone(),
+        ));
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let source_path: String = connection
+        .query_row(
+            "SELECT original_path FROM media_assets WHERE id = ?1 AND project_id = ?2",
+            params![request.media_id, request.project_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::ProxyJobNotFound,
+            other => other.into(),
+        })?;
+    let current_status: String = connection
+        .query_row(
+            "SELECT status FROM jobs
+             WHERE id = ?1 AND project_id = ?2 AND job_type = 'proxy'
+               AND (media_id = '' OR media_id = ?3)",
+            params![request.job_id, request.project_id, request.media_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::ProxyJobNotFound,
+            other => other.into(),
+        })?;
+    if current_status == "complete" || current_status == "running" {
+        return Err(ProjectStoreError::InvalidProxyJobState(current_status));
+    }
+
+    let transaction = connection.transaction()?;
+    let updated = transaction.execute(
+        "UPDATE jobs
+         SET media_id = ?1, status = 'running', progress = 1,
+             detail = 'probing source metadata', cancellation_requested = 0
+         WHERE id = ?2 AND project_id = ?3 AND job_type = 'proxy'
+           AND (media_id = '' OR media_id = ?1)",
+        params![request.media_id, request.job_id, request.project_id],
+    )?;
+    if updated != 1 {
+        return Err(ProjectStoreError::ProxyJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE media_assets SET proxy_status = 'running'
+         WHERE id = ?1 AND project_id = ?2",
+        params![request.media_id, request.project_id],
+    )?;
+    transaction.commit()?;
+    let project_directory = request
+        .sqlite_path
+        .parent()
+        .ok_or_else(|| ProjectStoreError::InvalidDatabase(path_string(&request.sqlite_path)))?;
+    Ok(ClaimedProxyJob {
+        source_path: PathBuf::from(source_path),
+        project_directory: project_directory.to_path_buf(),
+    })
+}
+
+pub fn read_proxy_job_status(
+    sqlite_path: &Path,
+    expected_project_id: &str,
+    job_id: &str,
+) -> Result<ProxyJobStatus, ProjectStoreError> {
+    let connection = open_project_database(sqlite_path)?;
+    verify_project_identity(&connection, expected_project_id)?;
+    connection
+        .query_row(
+            "SELECT j.id, j.media_id, j.status, j.progress, j.detail,
+                    m.duration_seconds, m.detected_start, m.proxy_status,
+                    m.proxy_path, m.thumbnail_directory, m.video_codec
+             FROM jobs j JOIN media_assets m
+               ON m.id = j.media_id AND m.project_id = j.project_id
+             WHERE j.id = ?1 AND j.project_id = ?2 AND j.job_type = 'proxy'",
+            params![job_id, expected_project_id],
+            |row| {
+                Ok(ProxyJobStatus {
+                    job_id: row.get(0)?,
+                    media_id: row.get(1)?,
+                    status: row.get(2)?,
+                    progress: row.get(3)?,
+                    detail: row.get(4)?,
+                    duration_seconds: row.get(5)?,
+                    detected_start: row.get(6)?,
+                    proxy_status: row.get(7)?,
+                    proxy_path: row.get(8)?,
+                    thumbnail_directory: row.get(9)?,
+                    video_codec: row.get(10)?,
+                })
+            },
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::ProxyJobNotFound,
+            other => other.into(),
+        })
+}
+
+pub fn update_proxy_progress(
+    request: &ProxyJobRequest,
+    progress: f64,
+    detail: &str,
+) -> Result<(), ProjectStoreError> {
+    let connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let updated = connection.execute(
+        "UPDATE jobs SET progress = ?1, detail = ?2
+         WHERE id = ?3 AND project_id = ?4 AND media_id = ?5
+           AND job_type = 'proxy' AND status = 'running'",
+        params![
+            progress.clamp(1.0, 99.0),
+            detail,
+            request.job_id,
+            request.project_id,
+            request.media_id
+        ],
+    )?;
+    if updated == 1 {
+        Ok(())
+    } else {
+        Err(ProjectStoreError::ProxyJobNotFound)
+    }
+}
+
+pub fn complete_proxy_job(
+    request: &ProxyJobRequest,
+    completion: ProxyCompletion,
+) -> Result<(), ProjectStoreError> {
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let media_updated = transaction.execute(
+        "UPDATE media_assets
+         SET duration_seconds = ?1, detected_start = ?2, proxy_status = 'ready',
+             proxy_path = ?3, thumbnail_directory = ?4, video_codec = ?5
+         WHERE id = ?6 AND project_id = ?7",
+        params![
+            completion.duration_seconds,
+            completion.detected_start,
+            completion.proxy_path,
+            completion.thumbnail_directory,
+            completion.video_codec,
+            request.media_id,
+            request.project_id
+        ],
+    )?;
+    let job_updated = transaction.execute(
+        "UPDATE jobs SET status = 'complete', progress = 100, detail = 'proxy and thumbnails ready'
+         WHERE id = ?1 AND project_id = ?2 AND media_id = ?3 AND job_type = 'proxy'",
+        params![request.job_id, request.project_id, request.media_id],
+    )?;
+    if media_updated != 1 || job_updated != 1 {
+        return Err(ProjectStoreError::ProxyJobNotFound);
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn fail_proxy_job(
+    request: &ProxyJobRequest,
+    status: &str,
+    detail: &str,
+) -> Result<(), ProjectStoreError> {
+    if !matches!(status, "blocked" | "failed" | "cancelled") {
+        return Err(ProjectStoreError::InvalidProxyJobState(status.to_string()));
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let media_updated = transaction.execute(
+        "UPDATE media_assets SET proxy_status = 'blocked'
+         WHERE id = ?1 AND project_id = ?2",
+        params![request.media_id, request.project_id],
+    )?;
+    let job_updated = transaction.execute(
+        "UPDATE jobs SET status = ?1, detail = ?2
+         WHERE id = ?3 AND project_id = ?4 AND media_id = ?5 AND job_type = 'proxy'",
+        params![
+            status,
+            detail,
+            request.job_id,
+            request.project_id,
+            request.media_id
+        ],
+    )?;
+    if media_updated != 1 || job_updated != 1 {
+        return Err(ProjectStoreError::ProxyJobNotFound);
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn request_proxy_job_cancel(
+    request: &ProxyJobRequest,
+) -> Result<ProxyJobStatus, ProjectStoreError> {
+    let connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let updated = connection.execute(
+        "UPDATE jobs SET cancellation_requested = 1
+         WHERE id = ?1 AND project_id = ?2 AND media_id = ?3 AND job_type = 'proxy'",
+        params![request.job_id, request.project_id, request.media_id],
+    )?;
+    if updated != 1 {
+        return Err(ProjectStoreError::ProxyJobNotFound);
+    }
+    read_proxy_job_status(&request.sqlite_path, &request.project_id, &request.job_id)
+}
+
+fn verify_project_identity(
+    connection: &Connection,
+    expected_project_id: &str,
+) -> Result<(), ProjectStoreError> {
+    let database_id = project_id(connection)?;
+    if database_id == expected_project_id {
+        Ok(())
+    } else {
+        Err(ProjectStoreError::ProjectIdentityMismatch {
+            snapshot_id: expected_project_id.to_string(),
+            database_id,
+        })
+    }
+}
+
 fn open_project_database(sqlite_path: &Path) -> Result<Connection, ProjectStoreError> {
     if !sqlite_path.is_file() {
         return Err(ProjectStoreError::InvalidDatabase(path_string(sqlite_path)));
@@ -373,9 +646,14 @@ fn migrate_database(connection: &mut Connection) -> Result<(), ProjectStoreError
             "missing RoadWatcher schema version".to_string(),
         ));
     }
-    if version == 1 {
+    if version < PROJECT_DATABASE_SCHEMA_VERSION {
         let transaction = connection.transaction()?;
-        transaction.execute_batch(PROJECT_SNAPSHOT_TABLE_SQL)?;
+        if version == 1 {
+            transaction.execute_batch(PROJECT_SNAPSHOT_TABLE_SQL)?;
+        }
+        if version <= 2 {
+            transaction.execute_batch(PROXY_JOB_MIGRATION_SQL)?;
+        }
         transaction.execute(
             "UPDATE schema_info SET version = ?1",
             params![PROJECT_DATABASE_SCHEMA_VERSION],
@@ -426,7 +704,7 @@ fn path_string(path: &Path) -> String {
 const SCHEMA_SQL: &str = r#"
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 
 CREATE TABLE schema_info (
     version INTEGER NOT NULL CHECK (version > 0)
@@ -447,17 +725,22 @@ CREATE TABLE media_assets (
     detected_start TEXT NOT NULL DEFAULT '',
     proxy_status TEXT NOT NULL,
     hash TEXT NOT NULL DEFAULT '',
-    file_size_bytes INTEGER NOT NULL DEFAULT 0
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    proxy_path TEXT NOT NULL DEFAULT '',
+    thumbnail_directory TEXT NOT NULL DEFAULT '',
+    video_codec TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE jobs (
     id TEXT PRIMARY KEY NOT NULL,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id TEXT NOT NULL DEFAULT '',
     job_type TEXT NOT NULL,
     label TEXT NOT NULL,
     status TEXT NOT NULL,
     progress REAL NOT NULL DEFAULT 0,
-    detail TEXT NOT NULL DEFAULT ''
+    detail TEXT NOT NULL DEFAULT '',
+    cancellation_requested INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE timeline_clips (
@@ -538,11 +821,26 @@ CREATE TABLE IF NOT EXISTS project_snapshots (
 );
 "#;
 
+const PROXY_JOB_MIGRATION_SQL: &str = r#"
+ALTER TABLE media_assets ADD COLUMN proxy_path TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN thumbnail_directory TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN video_codec TEXT NOT NULL DEFAULT '';
+ALTER TABLE jobs ADD COLUMN media_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE jobs ADD COLUMN cancellation_requested INTEGER NOT NULL DEFAULT 0;
+UPDATE jobs
+SET status = 'queued', progress = 0,
+    detail = 'Proxy job recovered after restart.', cancellation_requested = 0
+WHERE job_type = 'proxy' AND status = 'running';
+UPDATE media_assets SET proxy_status = 'queued' WHERE proxy_status = 'running';
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::{
-        create_project_at, import_media_at, load_project_snapshot, save_project_snapshot,
-        MediaImportRequest, ProjectCreateRequest, ProjectSaveRequest, ProjectStoreError,
+        claim_proxy_job, complete_proxy_job, create_project_at, fail_proxy_job, import_media_at,
+        load_project_snapshot, read_proxy_job_status, request_proxy_job_cancel,
+        save_project_snapshot, update_proxy_progress, MediaImportRequest, ProjectCreateRequest,
+        ProjectSaveRequest, ProjectStoreError, ProxyCompletion, ProxyJobRequest,
     };
     use rusqlite::Connection;
     use std::collections::BTreeSet;
@@ -591,7 +889,7 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(schema_version, 2);
+        assert_eq!(schema_version, 3);
         assert_eq!(
             metadata,
             (
@@ -675,7 +973,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v1_and_round_trips_the_latest_snapshot() {
+    fn round_trips_the_latest_snapshot_in_current_schema() {
         let root = TestRoot::new();
         let project_id = Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap();
         let created = create_project_at(
@@ -687,16 +985,6 @@ mod tests {
             1_788_000_000,
         )
         .unwrap();
-
-        let connection = Connection::open(&created.sqlite_path).unwrap();
-        connection
-            .execute("DROP TABLE project_snapshots", [])
-            .unwrap();
-        connection
-            .execute("UPDATE schema_info SET version = 1", [])
-            .unwrap();
-        connection.pragma_update(None, "user_version", 1).unwrap();
-        drop(connection);
 
         let first = snapshot_json(project_id, 2, "2026-07-10T12:00:00.000Z", "First");
         let saved = save_project_snapshot(ProjectSaveRequest {
@@ -727,8 +1015,8 @@ mod tests {
         let schema_version: i64 = connection
             .query_row("SELECT version FROM schema_info", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(user_version, 2);
-        assert_eq!(schema_version, 2);
+        assert_eq!(user_version, 3);
+        assert_eq!(schema_version, 3);
     }
 
     #[test]
@@ -796,7 +1084,7 @@ mod tests {
             load_project_snapshot(Path::new(&created.sqlite_path)),
             Err(ProjectStoreError::UnsupportedDatabaseVersion {
                 found: 99,
-                supported: 2
+                supported: 3
             })
         ));
     }
@@ -924,6 +1212,202 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM jobs", [], |row| row.get(0))
             .unwrap();
         assert_eq!((media_count, job_count), (0, 0));
+    }
+
+    #[test]
+    fn migrates_v2_proxy_state_and_recovers_stale_running_jobs() {
+        let root = TestRoot::new();
+        let sqlite_path = root.path().join("v2-project.sqlite");
+        let project_id = "99999999-9999-4999-8999-999999999999";
+        let connection = Connection::open(&sqlite_path).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA user_version = 2;
+                 CREATE TABLE schema_info (version INTEGER NOT NULL);
+                 INSERT INTO schema_info VALUES (2);
+                 CREATE TABLE projects (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, created_at_unix INTEGER NOT NULL);
+                 INSERT INTO projects VALUES ('99999999-9999-4999-8999-999999999999', 'V2 review', 0);
+                 CREATE TABLE project_snapshots (
+                   project_id TEXT PRIMARY KEY, snapshot_schema_version INTEGER NOT NULL,
+                   saved_at_iso TEXT NOT NULL, snapshot_json TEXT NOT NULL
+                 );
+                 CREATE TABLE media_assets (
+                   id TEXT PRIMARY KEY, project_id TEXT NOT NULL, file_name TEXT NOT NULL,
+                   original_path TEXT NOT NULL, duration_seconds REAL NOT NULL DEFAULT 0,
+                   detected_start TEXT NOT NULL DEFAULT '', proxy_status TEXT NOT NULL,
+                   hash TEXT NOT NULL DEFAULT '', file_size_bytes INTEGER NOT NULL DEFAULT 0
+                 );
+                 INSERT INTO media_assets VALUES ('media-v2', '99999999-9999-4999-8999-999999999999', 'v2.mp4', 'D:/v2.mp4', 0, '', 'running', '', 1);
+                 CREATE TABLE jobs (
+                   id TEXT PRIMARY KEY, project_id TEXT NOT NULL, job_type TEXT NOT NULL,
+                   label TEXT NOT NULL, status TEXT NOT NULL, progress REAL NOT NULL DEFAULT 0,
+                   detail TEXT NOT NULL DEFAULT ''
+                 );
+                 INSERT INTO jobs VALUES ('job-v2', '99999999-9999-4999-8999-999999999999', 'proxy', 'Auto proxy: v2.mp4', 'running', 44, 'interrupted');",
+            )
+            .unwrap();
+        drop(connection);
+
+        assert!(matches!(
+            load_project_snapshot(&sqlite_path),
+            Err(ProjectStoreError::SnapshotMissing)
+        ));
+        let connection = Connection::open(&sqlite_path).unwrap();
+        let recovered: (String, f64, String) = connection
+            .query_row(
+                "SELECT status, progress, detail FROM jobs WHERE id = 'job-v2'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(recovered.0, "queued");
+        assert_eq!(recovered.1, 0.0);
+        assert!(recovered.2.contains("recovered after restart"));
+        drop(connection);
+
+        let migrated_request = ProxyJobRequest {
+            sqlite_path: sqlite_path.clone(),
+            project_id: project_id.to_string(),
+            media_id: "media-v2".to_string(),
+            job_id: "job-v2".to_string(),
+            profile: "review-proxy".to_string(),
+            binary_directory: String::new(),
+        };
+        claim_proxy_job(&migrated_request).unwrap();
+        let status = read_proxy_job_status(&sqlite_path, project_id, "job-v2").unwrap();
+        assert_eq!(status.media_id, "media-v2");
+        assert_eq!(status.status, "running");
+
+        let connection = Connection::open(&sqlite_path).unwrap();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 3);
+        let media_columns: BTreeSet<String> = connection
+            .prepare("PRAGMA table_info(media_assets)")
+            .unwrap()
+            .query_map([], |row| row.get(1))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        for column in ["proxy_path", "thumbnail_directory", "video_codec"] {
+            assert!(media_columns.contains(column), "missing {column}");
+        }
+        let job_columns: BTreeSet<String> = connection
+            .prepare("PRAGMA table_info(jobs)")
+            .unwrap()
+            .query_map([], |row| row.get(1))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert!(job_columns.contains("cancellation_requested"));
+    }
+
+    #[test]
+    fn claims_updates_completes_and_cancels_proxy_jobs_with_identity_guards() {
+        let root = TestRoot::new();
+        let project_id = Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").unwrap();
+        let media_id = Uuid::parse_str("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").unwrap();
+        let job_id = Uuid::parse_str("cccccccc-cccc-4ccc-8ccc-cccccccccccc").unwrap();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Proxy state".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let source_path = root.path().join("source.mp4");
+        fs::write(&source_path, b"source").unwrap();
+        import_media_at(
+            MediaImportRequest {
+                sqlite_path: PathBuf::from(&created.sqlite_path),
+                project_id: project_id.to_string(),
+                source_path: source_path.clone(),
+            },
+            media_id,
+            job_id,
+        )
+        .unwrap();
+        let request = ProxyJobRequest {
+            sqlite_path: PathBuf::from(&created.sqlite_path),
+            project_id: project_id.to_string(),
+            media_id: media_id.to_string(),
+            job_id: job_id.to_string(),
+            profile: "review-proxy".to_string(),
+            binary_directory: String::new(),
+        };
+
+        let claimed = claim_proxy_job(&request).unwrap();
+        assert_eq!(claimed.source_path, source_path);
+        assert_eq!(
+            claimed.project_directory,
+            PathBuf::from(&created.project_directory)
+        );
+        assert_eq!(
+            read_proxy_job_status(&request.sqlite_path, &request.project_id, &request.job_id)
+                .unwrap()
+                .status,
+            "running"
+        );
+
+        update_proxy_progress(&request, 42.5, "rendering with libx264").unwrap();
+        let running =
+            read_proxy_job_status(&request.sqlite_path, &request.project_id, &request.job_id)
+                .unwrap();
+        assert_eq!(running.progress, 42.5);
+        assert_eq!(running.detail, "rendering with libx264");
+
+        fail_proxy_job(&request, "failed", "hardware and CPU encoders failed").unwrap();
+        let failed =
+            read_proxy_job_status(&request.sqlite_path, &request.project_id, &request.job_id)
+                .unwrap();
+        assert_eq!(failed.status, "failed");
+        assert_eq!(failed.proxy_status, "blocked");
+        assert_eq!(failed.detail, "hardware and CPU encoders failed");
+        claim_proxy_job(&request).unwrap();
+
+        complete_proxy_job(
+            &request,
+            ProxyCompletion {
+                duration_seconds: 12.5,
+                detected_start: "2026-07-10T12:00:00Z".to_string(),
+                proxy_path: "D:/project/proxies/review.mp4".to_string(),
+                thumbnail_directory: "D:/project/proxies/thumbs".to_string(),
+                video_codec: "libx264".to_string(),
+            },
+        )
+        .unwrap();
+        let complete =
+            read_proxy_job_status(&request.sqlite_path, &request.project_id, &request.job_id)
+                .unwrap();
+        assert_eq!(complete.status, "complete");
+        assert_eq!(complete.progress, 100.0);
+        assert_eq!(complete.proxy_status, "ready");
+        assert_eq!(complete.duration_seconds, 12.5);
+        assert_eq!(complete.video_codec, "libx264");
+
+        let wrong = ProxyJobRequest {
+            project_id: Uuid::nil().to_string(),
+            ..request.clone()
+        };
+        assert!(matches!(
+            claim_proxy_job(&wrong),
+            Err(ProjectStoreError::ProjectIdentityMismatch { .. })
+        ));
+
+        let cancellation = request_proxy_job_cancel(&request).unwrap();
+        assert_eq!(cancellation.status, "complete");
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        let cancellation_requested: i64 = connection
+            .query_row(
+                "SELECT cancellation_requested FROM jobs WHERE id = ?1",
+                [job_id.to_string()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(cancellation_requested, 1);
     }
 
     fn snapshot_json(
