@@ -127,14 +127,17 @@ readiness:
 browser packet export can be ready while native workflow is independently
 unavailable, blocked, or unverified. Native command attempt history now produces
 per-capability verified/failed/fallback/unverified evidence; all required command
-paths must be invoked successfully before native-ready is claimed. The next
-module is the first real native capability: Tauri `project_create` backed by a
-SQLite project folder and durable project metadata. Its pure Rust store now
+paths must be invoked successfully before native-ready is claimed. Tauri
+`project_create` is backed by a SQLite project folder and durable metadata. Its
+pure Rust store now
 creates the UUID layout, required directories, schema version, project metadata,
-and foundational tables under test. `project_create` is now registered as a real
-Tauri command with the exact camel-case TypeScript response contract; remaining
-native commands stay explicitly planned. The next storage slice is durable
-`project_save`/`project_load` plus a native repository adapter.
+and foundational tables under test. Database schema version 2 adds a canonical
+transactional snapshot record and migrates version-1 projects on open.
+`project_create`, `project_save`, and `project_load` are registered with exact
+camel-case DTO contracts. The app adopts the native UUID, persists saves and
+imports to SQLite, reopens the last native project through a shell-local locator,
+and retains browser storage as recovery fallback. The next native slice is real
+media import by reference with metadata/hash records and FFmpeg proxy jobs.
 
 ## Slots You Need To Fill
 

@@ -32,12 +32,12 @@ active Tauri SQLite project while retaining browser fallback behavior.
   workstation reducer.
 - [x] Keep browser save/import behavior as fallback and record truthful native
   command attempts/status messages.
-- [ ] Run focused App tests and commit `feat: persist Tauri workstation state`.
+- [x] Run focused App tests and commit `feat: persist Tauri workstation state`.
 
 ### Task 4: Verification and Handoff
 
-- [ ] Run full frontend tests/build, Rust all-target tests, formatting, and
+- [x] Run full frontend tests/build, Rust all-target tests, formatting, and
   `git diff --check`.
-- [ ] Update README, rewrite manifest, and project handoff with the durable
+- [x] Update README, rewrite manifest, and project handoff with the durable
   persistence boundary and remaining normalized-table work.
 - [ ] Commit `docs: hand off native project persistence` and close this plan.

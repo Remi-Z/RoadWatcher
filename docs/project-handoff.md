@@ -485,28 +485,36 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   `@tauri-apps/api/core.invoke` once a Tauri shell is detected.
 - The current UI project-store probe sends the editable `Native project root`
   field as `rootDirectory`; it defaults to `slot: native project root` until a
-  native project-folder picker/root setting is implemented. Probe attempts are
-  browser-state audit entries until the Rust project store can write native logs.
-- `src-tauri/` - Tauri 2 scaffold and first command slot.
+  native project-folder picker/root setting is implemented. A successful create
+  adopts the native UUID, saves the current snapshot, and records the SQLite path
+  in the shell-local last-project locator.
+- `src/features/project/nativeProjectRepository.ts` - asynchronous adapter over
+  the validated Tauri bridge; loaded JSON must pass the versioned snapshot parser
+  and agree with native response metadata.
+- `src/features/project/nativeProjectLocator.ts` - stores only the last SQLite
+  path for startup hydration; clearing it never deletes the project directory.
+- `src-tauri/` - Tauri 2 shell with implemented create/save/load commands and
+  SQLite database migration through schema version 2.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
 
 ## Next Best Implementation Slice
 
-1. Add tested `project_save`/`project_load` commands and a native repository
-   adapter so atomic workstation snapshots persist to the created SQLite store.
-2. Replace seeded demo data with Tauri command-backed project state.
-3. Replace browser media import fallback with Tauri file handles/real paths,
+1. Replace browser media import fallback with Tauri file handles/real paths,
    metadata probing, hash records, and native FFmpeg proxy workers.
+2. Populate the normalized SQLite media/job/timeline tables from native commands;
+   canonical snapshot JSON remains the aggregate recovery record.
+3. Replace seeded demo data with command-backed state after native media/project
+   selection exists, keeping the seed only for empty projects.
 4. Replace browser GPX parsing with Tauri-backed GPX persistence and local
    Valhalla map matching, with OSRM Match wired as the simpler fallback.
 5. Wire official GIS imports and reprojection behind real local configuration
    slots.
 6. Replace browser GeoJSON projection with Turf.js MVP helpers and production
    PostGIS/CRS-normalization import.
-7. Replace browser-local storage/download fallback with SQLite and native export
-   once Tauri command-backed storage is available.
+7. Replace browser data-URL downloads with native export files; SQLite project
+   save/load is now available.
 
 ## Boundaries To Preserve
 

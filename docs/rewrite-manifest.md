@@ -55,8 +55,17 @@ Build a Windows-first, local-first evidence workstation:
   project metadata, and foundational media/job/timeline/geo/audit tables.
 - Replaced the placeholder Rust manifest command with the registered
   `project_create` Tauri handler and camel-case response DTO. Runtime command
-  slots now mark this command implemented while keeping all other handlers
-  explicitly planned.
+  slots mark implemented commands separately from planned handlers.
+- Added SQLite database schema version 2 with idempotent version-1 migration and
+  a canonical transactional project snapshot record. Rust rejects invalid JSON,
+  project-ID mismatches, missing/non-project files, and unsupported future
+  database versions without silently creating replacement files.
+- Registered `project_save` and `project_load`, added a typed asynchronous native
+  repository, and validates every loaded snapshot with the existing TypeScript
+  migration/aggregate parser before reducer restoration.
+- Added a shell-local last-project locator. Tauri startup reopens the last SQLite
+  project after the invoke bridge resolves; create/save/import refresh SQLite and
+  the browser recovery copy, while clear only forgets the locator.
 - Added project-bound PNG/ICO RoadWatcher icon assets so Tauri's Windows resource
   generation can proceed; generated `src-tauri/gen/` schemas remain ignored.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
@@ -215,9 +224,9 @@ Fresh check on 2026-07-08 after Rustup install:
 - `uv --version`: `uv 0.11.23 (3cdf50e09 2026-06-19 x86_64-pc-windows-msvc)`
 - `cargo --version`: `cargo 1.96.1 (356927216 2026-06-26)`
 - `rustc --version`: `rustc 1.96.1 (31fca3adb 2026-06-26)`
-- `pnpm test`: 17 files / 118 tests passed when run elevated.
+- `pnpm test`: 19 files / 128 tests passed when run elevated.
 - `pnpm build`: TypeScript and Vite production build passed when run elevated.
-- `cargo test --offline --all-targets` passes all four Rust tests with a temp
+- `cargo test --offline --all-targets` passes all eight Rust tests with a temp
   target directory.
 - `pnpm tauri:build -- --debug` completes with `CARGO_TARGET_DIR` set to
   `%TEMP%\roadwatcher-tauri-build`, producing the native EXE, an x64 MSI, and an
@@ -337,19 +346,17 @@ network/DNS access.
 
 ## Known Gaps
 
-- Rust/Cargo and the application lockfile are available, but Tauri remains
-  unverified because generated build processes cannot write under this managed
-  checkout.
-- SQLite project storage is not implemented yet.
-- Browser-local project snapshots and data-URL downloads are implemented only as
-  a fallback; Tauri should replace this with SQLite-backed project folders and
-  native export files while preserving the portable snapshot schema.
+- SQLite create/save/load and Windows debug bundles are verified. Native export
+  files are not implemented, so packet downloads still use browser data URLs.
+- Canonical snapshot JSON is durable, but the normalized media/job/timeline/geo
+  tables are not populated yet; their owning native workflow commands remain the
+  next implementation slices.
 - The native setup checklist is informational and slot-backed. It records saved
   references and verification commands, but it does not execute toolchain or data
   checks until Tauri commands are available.
-- The native runtime boundary detects Tauri shell globals and lists planned
-  command names and DTO fields, but the Rust commands themselves are not
-  implemented or invoked yet.
+- The native runtime boundary detects Tauri shell globals and lists implemented
+  versus planned DTOs. Project create/save/load are implemented; media, GPX, GIS,
+  FFmpeg, and CV handlers remain planned.
 - The native command bridge is dependency-injected and tested. The app now calls
   project-store and CV-scan probe paths through the bridge, but media/GPX/GIS/
   FFmpeg workflow commands and all Rust/Python handlers still need
@@ -403,8 +410,8 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement `project_save`/`project_load` against the SQLite schema and add a
-   native repository adapter for atomic workstation snapshots.
+1. Implement native media import by reference: file selection/path handling,
+   SHA-256 metadata, ffprobe inspection, and durable media/job records.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -416,11 +423,11 @@ network/DNS access.
    - `pnpm build`
 4. Run Tauri commands with a temp target in this managed workspace; debug MSI
    and NSIS bundling is verified.
-5. Replace browser-local project save/download fallback with Tauri
-   command-backed SQLite save and native file export.
+5. Replace browser data-URL downloads with native file export; command-backed
+   SQLite project save/load is complete.
 6. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
    demo fallback only for empty projects.
-7. Replace browser import fallback with real media import by reference and
+7. Replace browser media import fallback with real import by reference and
    hash/metadata jobs.
 8. Replace browser GPX parsing with persisted GPX import and local Valhalla map
    matching.
