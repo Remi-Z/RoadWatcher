@@ -37,4 +37,4 @@ streaming SHA-256 metadata and an atomic durable proxy job.
   `git diff --check`.
 - [x] Update README, rewrite manifest, and project handoff with the durable media
   boundary and FFmpeg worker follow-on.
-- [ ] Commit `docs: hand off native media import` and close this plan.
+- [x] Commit `docs: hand off native media import` and close this plan.
