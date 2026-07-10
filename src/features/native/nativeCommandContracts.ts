@@ -6,6 +6,8 @@ export type NativeCommandName =
   | "gpx_match"
   | "gis_project"
   | "ffmpeg_proxy"
+  | "job_status"
+  | "job_cancel"
   | "cv_scan";
 export type NativeCommandImplementation = "implemented" | "planned";
 
@@ -14,6 +16,7 @@ export interface NativeCommandContract {
   label: string;
   command: NativeCommandName;
   implementation: NativeCommandImplementation;
+  readinessRequired: boolean;
   requestFields: string[];
   responseFields: string[];
   fallback: string;
@@ -26,6 +29,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     label: "Project creation",
     command: "project_create",
     implementation: "implemented",
+    readinessRequired: true,
     requestFields: ["projectName", "rootDirectory"],
     responseFields: ["projectId", "projectDirectory", "sqlitePath"],
     fallback: "browser-local project snapshots",
@@ -36,6 +40,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     label: "Project save",
     command: "project_save",
     implementation: "implemented",
+    readinessRequired: true,
     requestFields: ["sqlitePath", "snapshotJson"],
     responseFields: ["projectId", "schemaVersion", "savedAtIso"],
     fallback: "browser-local project snapshots",
@@ -46,6 +51,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     label: "Project load",
     command: "project_load",
     implementation: "implemented",
+    readinessRequired: true,
     requestFields: ["sqlitePath"],
     responseFields: ["projectId", "schemaVersion", "savedAtIso", "snapshotJson"],
     fallback: "browser-local project snapshots",
@@ -56,6 +62,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     label: "Media import",
     command: "media_import",
     implementation: "implemented",
+    readinessRequired: true,
     requestFields: ["sqlitePath", "projectId", "sourcePath"],
     responseFields: [
       "mediaId",
@@ -76,6 +83,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     label: "GPX matching",
     command: "gpx_match",
     implementation: "planned",
+    readinessRequired: true,
     requestFields: ["projectId", "gpxPath", "matcher"],
     responseFields: ["routeId", "matchedPointCount", "projectedFeatureCount"],
     fallback: "browser GPX parsing and queued Valhalla job",
@@ -86,6 +94,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     label: "Official GIS projection",
     command: "gis_project",
     implementation: "planned",
+    readinessRequired: true,
     requestFields: ["projectId", "sourcePath", "layerKind"],
     responseFields: ["featureSourceId", "importedFeatureCount", "projectedFeatureCount"],
     fallback: "browser GeoJSON projection",
@@ -95,17 +104,53 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "proxy-render",
     label: "Proxy and reel render",
     command: "ffmpeg_proxy",
-    implementation: "planned",
-    requestFields: ["projectId", "mediaId", "profile"],
-    responseFields: ["jobId", "proxyPath", "thumbnailDirectory"],
+    implementation: "implemented",
+    readinessRequired: true,
+    requestFields: ["sqlitePath", "projectId", "mediaId", "jobId", "profile", "binaryDirectory"],
+    responseFields: ["jobId", "status"],
     fallback: "browser preview and packet metadata export",
     ownerAction: "Run FFmpeg/ffprobe jobs for proxies, thumbnails, and rendered evidence reels."
+  },
+  {
+    id: "proxy-job-status",
+    label: "Proxy job status",
+    command: "job_status",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["sqlitePath", "projectId", "jobId"],
+    responseFields: [
+      "jobId",
+      "mediaId",
+      "status",
+      "progress",
+      "detail",
+      "durationSeconds",
+      "detectedStart",
+      "proxyStatus",
+      "proxyPath",
+      "thumbnailDirectory",
+      "videoCodec"
+    ],
+    fallback: "browser job status display",
+    ownerAction: "Poll durable native proxy progress and terminal media metadata."
+  },
+  {
+    id: "proxy-job-cancel",
+    label: "Proxy job cancellation",
+    command: "job_cancel",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["sqlitePath", "projectId", "mediaId", "jobId"],
+    responseFields: ["jobId", "mediaId", "status", "progress", "detail"],
+    fallback: "leave browser fallback jobs unchanged",
+    ownerAction: "Signal and persist cancellation for an active native proxy process."
   },
   {
     id: "cv-scan",
     label: "Local CV scan",
     command: "cv_scan",
     implementation: "planned",
+    readinessRequired: false,
     requestFields: ["projectId", "mediaId", "modelPath", "labelsPath"],
     responseFields: ["jobId", "findingCount", "reviewRequired"],
     fallback: "editable reviewer notes only",

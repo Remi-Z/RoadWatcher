@@ -111,6 +111,10 @@ describe("review readiness", () => {
       required: false,
       evidence: "unverified"
     });
+    expect(readiness.native.capabilities.find((capability) => capability.command === "job_status")).toMatchObject({
+      required: false,
+      evidence: "unverified"
+    });
   });
 
   it("uses the latest command attempt and blocks native readiness on a failed required capability", () => {

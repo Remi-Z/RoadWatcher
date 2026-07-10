@@ -207,7 +207,7 @@ function buildNativeCapabilities(runtime: NativeRuntimeStatus, attempts: NativeC
       id: contract.id,
       command: contract.command,
       label: contract.label,
-      required: contract.command !== "cv_scan",
+      required: contract.readinessRequired,
       evidence: capabilityEvidence(runtime, latestAttempt),
       ...(latestAttempt
         ? { lastAttemptStatus: latestAttempt.status, lastAttemptAtIso: latestAttempt.requestedAtIso }

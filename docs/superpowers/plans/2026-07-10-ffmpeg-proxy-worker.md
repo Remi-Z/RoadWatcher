@@ -231,7 +231,7 @@ git commit -m "feat: execute durable proxy jobs"
 - Produces: registered `ffmpeg_proxy`, `job_status`, `job_cancel` commands and
   TypeScript contracts with `readinessRequired`.
 
-- [ ] **Step 1: Add failing Rust command and TypeScript contract tests**
+- [x] **Step 1: Add failing Rust command and TypeScript contract tests**
 
 Assert exact requests/responses and that operational commands are not required:
 
@@ -246,7 +246,7 @@ expect(contract("job_status").readinessRequired).toBe(false);
 expect(contract("job_cancel").readinessRequired).toBe(false);
 ```
 
-- [ ] **Step 2: Run focused tests and confirm RED**
+- [x] **Step 2: Run focused tests and confirm RED**
 
 ```powershell
 pnpm test -- src/features/native/nativeCommandContracts.test.ts src/features/project/reviewReadiness.test.ts
@@ -254,14 +254,14 @@ pnpm test -- src/features/native/nativeCommandContracts.test.ts src/features/pro
 
 Expected: missing job command contracts/readiness flag.
 
-- [ ] **Step 3: Register managed state and thin commands**
+- [x] **Step 3: Register managed state and thin commands**
 
 Use `tauri::Builder::default().manage(ProxyWorkerManager::default())`. Command
 wrappers translate camel-case Tauri arguments into `ProxyJobRequest`, call
 manager/store interfaces, and map typed errors to strings. Register all three
 commands in `generate_handler!`.
 
-- [ ] **Step 4: Implement explicit readiness semantics**
+- [x] **Step 4: Implement explicit readiness semantics**
 
 Add `readinessRequired: boolean` to every command contract. Set it true for
 project create/save/load, media import, GPX, GIS, and FFmpeg proxy; false for job

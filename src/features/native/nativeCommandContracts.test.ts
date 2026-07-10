@@ -12,6 +12,8 @@ describe("native command contracts", () => {
       "gpx_match",
       "gis_project",
       "ffmpeg_proxy",
+      "job_status",
+      "job_cancel",
       "cv_scan"
     ]);
 
@@ -46,6 +48,32 @@ describe("native command contracts", () => {
         "proxyJobId"
       ]
     });
+    expect(nativeCommandContracts.find((contract) => contract.command === "ffmpeg_proxy")).toMatchObject({
+      implementation: "implemented",
+      readinessRequired: true,
+      requestFields: ["sqlitePath", "projectId", "mediaId", "jobId", "profile", "binaryDirectory"],
+      responseFields: ["jobId", "status"]
+    });
+    expect(nativeCommandContracts.find((contract) => contract.command === "job_status")).toMatchObject({
+      implementation: "implemented",
+      readinessRequired: false,
+      requestFields: ["sqlitePath", "projectId", "jobId"]
+    });
+    expect(nativeCommandContracts.find((contract) => contract.command === "job_cancel")).toMatchObject({
+      implementation: "implemented",
+      readinessRequired: false,
+      requestFields: ["sqlitePath", "projectId", "mediaId", "jobId"]
+    });
+
+    expect(nativeCommandContracts.filter((contract) => contract.readinessRequired).map((contract) => contract.command)).toEqual([
+      "project_create",
+      "project_save",
+      "project_load",
+      "media_import",
+      "gpx_match",
+      "gis_project",
+      "ffmpeg_proxy"
+    ]);
   });
 
   it("keeps runtime command slots backed by contract definitions", () => {

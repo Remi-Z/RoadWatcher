@@ -1,8 +1,10 @@
 use project_store::{
     create_project, import_media as store_import_media, load_project_snapshot,
-    save_project_snapshot, MediaImportRequest, MediaImportResponse, ProjectCreateRequest,
-    ProjectCreateResponse, ProjectLoadResponse, ProjectSaveRequest, ProjectSaveResponse,
+    read_proxy_job_status, save_project_snapshot, MediaImportRequest, MediaImportResponse,
+    ProjectCreateRequest, ProjectCreateResponse, ProjectLoadResponse, ProjectSaveRequest,
+    ProjectSaveResponse, ProxyJobRequest, ProxyJobStatus,
 };
+use proxy_worker::{ProxyStartResponse, ProxyWorkerManager};
 use std::path::PathBuf;
 
 mod project_store;
@@ -48,13 +50,69 @@ fn media_import(
     .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn ffmpeg_proxy(
+    state: tauri::State<'_, ProxyWorkerManager>,
+    sqlite_path: String,
+    project_id: String,
+    media_id: String,
+    job_id: String,
+    profile: String,
+    binary_directory: String,
+) -> Result<ProxyStartResponse, String> {
+    state
+        .start(ProxyJobRequest {
+            sqlite_path: PathBuf::from(sqlite_path),
+            project_id,
+            media_id,
+            job_id,
+            profile,
+            binary_directory,
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn job_status(
+    sqlite_path: String,
+    project_id: String,
+    job_id: String,
+) -> Result<ProxyJobStatus, String> {
+    read_proxy_job_status(&PathBuf::from(sqlite_path), &project_id, &job_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn job_cancel(
+    state: tauri::State<'_, ProxyWorkerManager>,
+    sqlite_path: String,
+    project_id: String,
+    media_id: String,
+    job_id: String,
+) -> Result<ProxyJobStatus, String> {
+    state
+        .cancel(&ProxyJobRequest {
+            sqlite_path: PathBuf::from(sqlite_path),
+            project_id,
+            media_id,
+            job_id,
+            profile: "review-proxy".to_string(),
+            binary_directory: String::new(),
+        })
+        .map_err(|error| error.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
+        .manage(ProxyWorkerManager::default())
         .invoke_handler(tauri::generate_handler![
             project_create,
             project_save,
             project_load,
-            media_import
+            media_import,
+            ffmpeg_proxy,
+            job_status,
+            job_cancel
         ])
         .run(tauri::generate_context!())
         .expect("error while running RoadWatcher Tauri app");
@@ -62,7 +120,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{media_import, project_create, project_load, project_save};
+    use super::{job_status, media_import, project_create, project_load, project_save};
 
     #[test]
     fn project_create_surfaces_store_validation_errors() {
@@ -85,6 +143,17 @@ mod tests {
             "missing.sqlite".to_string(),
             "project-1".to_string(),
             "missing.mp4".to_string(),
+        )
+        .unwrap_err();
+        assert!(error.starts_with("The selected file is not a RoadWatcher SQLite project:"));
+    }
+
+    #[test]
+    fn job_status_surfaces_missing_project_errors() {
+        let error = job_status(
+            "missing.sqlite".to_string(),
+            "project-1".to_string(),
+            "job-1".to_string(),
         )
         .unwrap_err();
         assert!(error.starts_with("The selected file is not a RoadWatcher SQLite project:"));

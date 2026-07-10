@@ -51,6 +51,8 @@ const NATIVE_COMMANDS = [
   "gpx_match",
   "gis_project",
   "ffmpeg_proxy",
+  "job_status",
+  "job_cancel",
   "cv_scan"
 ] as const;
 const NATIVE_ATTEMPT_STATUSES = [
