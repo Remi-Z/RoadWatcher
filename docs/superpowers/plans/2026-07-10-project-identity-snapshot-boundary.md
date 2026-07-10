@@ -412,7 +412,7 @@ Run: `pnpm test -- src/features/project/browserProjectRepository.test.ts src/App
 
 Expected: all selected tests pass and each load failure has distinct UI/repository evidence.
 
-- [ ] **Step 6: Commit repository recovery behavior**
+- [x] **Step 6: Commit repository recovery behavior**
 
 ```powershell
 git add src/features/project/browserProjectRepository.ts src/features/project/browserProjectRepository.test.ts src/App.tsx src/App.test.tsx
