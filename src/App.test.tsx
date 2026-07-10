@@ -928,6 +928,48 @@ describe("RoadWatcher workstation", () => {
     expect(within(featurePanel as HTMLElement).getByText("Imported cycling network")).toBeInTheDocument();
   });
 
+  it("projects a mixed GPX and GIS import against the newly imported route", async () => {
+    const repository = createMemoryProjectRepository();
+    render(<App projectRepository={repository} />);
+    const gpxFile = new File(
+      [
+        `<?xml version="1.0"?>
+        <gpx version="1.1"><trk><trkseg>
+          <trkpt lat="44.000000" lon="-79.500000"><time>2026-07-06T18:00:00Z</time></trkpt>
+          <trkpt lat="44.000500" lon="-79.500500"><time>2026-07-06T18:00:20Z</time></trkpt>
+        </trkseg></trk></gpx>`
+      ],
+      "new-route.gpx",
+      { type: "application/gpx+xml" }
+    );
+    const geoJsonFile = new File(
+      [
+        JSON.stringify({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: { id: "new-route-signal", kind: "traffic_light", sourceLayer: "New route signals" },
+              geometry: { type: "Point", coordinates: [-79.50025, 44.00025] }
+            }
+          ]
+        })
+      ],
+      "new-route-signals.geojson",
+      { type: "application/geo+json" }
+    );
+
+    fireEvent.change(screen.getByLabelText("Import media files"), { target: { files: [gpxFile, geoJsonFile] } });
+
+    expect(await screen.findByText("Official GIS projection: new-route-signals.geojson")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(repository.snapshot?.route[0]).toMatchObject({ latitude: 44, longitude: -79.5 });
+    expect(repository.snapshot?.projectedFeatures).toEqual(
+      expect.arrayContaining([expect.objectContaining({ featureId: "new-route-signal" })])
+    );
+  });
+
   it("records browser GIS projection fallbacks in drafts and export packets", async () => {
     const repository = createMemoryProjectRepository();
     render(<App projectRepository={repository} />);

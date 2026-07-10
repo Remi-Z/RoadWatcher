@@ -8,7 +8,6 @@ import {
   useSensors
 } from "@dnd-kit/core";
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
@@ -39,7 +38,7 @@ import {
   Upload,
   Video
 } from "lucide-react";
-import { type ChangeEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type RefObject, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   incidentDraft,
   initialClips,
@@ -51,18 +50,14 @@ import {
   routePoints
 } from "./data/demoProject";
 import type { ComponentSlot, ComponentSlotStatus, IncidentDraft, MediaAsset, ProjectId } from "./domain/projectModels";
-import { createGisProjectionJob, parseOfficialFeaturesFromGeoJson } from "./features/geo/geoJsonImport";
-import { createValhallaMatchJob, parseGpxTrack } from "./features/geo/gpxImport";
+import { parseOfficialFeaturesFromGeoJson } from "./features/geo/geoJsonImport";
+import { parseGpxTrack } from "./features/geo/gpxImport";
 import {
-  normalizeProjectedFeatureReview,
-  projectFeaturesOntoRoute,
-  type OfficialRoadFeature,
   type ProjectedFeatureReviewStatus,
   type ProjectedRoadFeature,
   type TimedRoutePoint
 } from "./features/geo/projection";
 import type { WorkstationJob } from "./features/jobs/jobModel";
-import { createImportedMediaAssets, createProxyJobsForImportedMedia, createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
 import {
   createBrowserProjectRepository,
   type ProjectLoadResult,
@@ -93,15 +88,12 @@ import { createNativeCommandBridge, type NativeInvoke } from "./features/native/
 import { detectNativeRuntime, type NativeRuntimeHost, type NativeRuntimeStatus } from "./features/native/runtimeEnvironment";
 import { resolveTauriInvoke } from "./features/native/tauriInvokeAdapter";
 import type { TimelineClip } from "./features/timeline/timelineModel";
+import { clipDurationSeconds, timelineDurationSeconds } from "./features/timeline/timelineModel";
 import {
-  clipDurationSeconds,
-  duplicateClip,
-  removeClip,
-  reseatReelStarts,
-  splitClipInTimeline,
-  timelineDurationSeconds,
-  trimClipSourceRange
-} from "./features/timeline/timelineModel";
+  createInitialWorkstationState,
+  workstationReducer,
+  type WorkstationSeed
+} from "./features/workstation/workstationState";
 
 const defaultProjectRepository = createBrowserProjectRepository();
 const NATIVE_MEDIA_SOURCE_PATH_SLOT = "slot: native media source path from file picker";
@@ -122,29 +114,31 @@ export function App({
 }) {
   const [initialLoad] = useState(() => projectRepository.load());
   const restoredSnapshot = initialLoad.status === "loaded" ? initialLoad.snapshot : null;
-  const [projectId, setProjectId] = useState<ProjectId>(() => restoredSnapshot?.projectId ?? projectIdFactory());
+  const [initialSeed] = useState(() => createWorkstationSeed(restoredSnapshot?.projectId ?? projectIdFactory()));
+  const [workstation, dispatchWorkstation] = useReducer(
+    workstationReducer,
+    { seed: initialSeed, snapshot: restoredSnapshot },
+    createInitialWorkstationState
+  );
+  const {
+    clips,
+    componentSlots,
+    incident: draft,
+    jobs,
+    latestPacket,
+    latestProjectSnapshot,
+    media,
+    nativeCommandAttempts,
+    nativeProjectRoot,
+    officialFeatures,
+    projectId,
+    projectedFeatures: projectedRoadFeatures,
+    route,
+    selectedClipId
+  } = workstation;
   const [detectedNativeRuntimeStatus, setDetectedNativeRuntimeStatus] = useState(() => detectNativeRuntime());
   const [detectedNativeInvoke, setDetectedNativeInvoke] = useState<NativeInvoke | undefined>();
-  const [clips, setClips] = useState<TimelineClip[]>(() => restoredSnapshot?.clips ?? initialClips);
-  const [draft, setDraft] = useState<IncidentDraft>(() => restoredSnapshot?.incident ?? incidentDraft);
-  const [media, setMedia] = useState<MediaAsset[]>(() => restoredSnapshot?.media ?? mediaAssets);
-  const [jobs, setJobs] = useState<WorkstationJob[]>(() => restoredSnapshot?.jobs ?? initialJobs);
-  const [nativeProjectRoot, setNativeProjectRoot] = useState(() => restoredSnapshot?.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT);
-  const [nativeCommandAttempts, setNativeCommandAttempts] = useState<NativeCommandAttempt[]>(
-    () => restoredSnapshot?.nativeCommandAttempts ?? []
-  );
-  const [componentSlots, setComponentSlots] = useState<ComponentSlot[]>(() => componentSlotsOrDefaults(restoredSnapshot?.componentSlots));
-  const [route, setRoute] = useState<TimedRoutePoint[]>(() => restoredSnapshot?.route ?? routePoints);
-  const [officialFeatures, setOfficialFeatures] = useState<OfficialRoadFeature[]>(
-    () => restoredSnapshot?.officialFeatures ?? officialRoadFeatures
-  );
-  const [projectedRoadFeatures, setProjectedRoadFeatures] = useState<ProjectedRoadFeature[]>(
-    () => (restoredSnapshot?.projectedFeatures ?? projectedFeatures).map(normalizeProjectedFeatureReview)
-  );
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
-  const [latestPacket, setLatestPacket] = useState<EvidencePacket | null>(null);
-  const [latestProjectSnapshot, setLatestProjectSnapshot] = useState<ProjectSnapshot | null>(null);
-  const [selectedClipId, setSelectedClipId] = useState(() => (restoredSnapshot?.clips ?? initialClips)[1]?.id ?? "");
   const firstSlotReferenceInputRef = useRef<HTMLInputElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -242,32 +236,17 @@ export function App({
       return;
     }
 
-    setClips((current) => {
-      const oldIndex = current.findIndex((clip) => clip.id === active.id);
-      const newIndex = current.findIndex((clip) => clip.id === over.id);
-      return reseatReelStarts(arrayMove(current, oldIndex, newIndex));
-    });
+    dispatchWorkstation({ type: "reorder_clips", activeClipId: String(active.id), overClipId: String(over.id) });
     invalidateLatestExport();
   }
 
   function handleDraftChange(field: keyof IncidentDraft, value: string) {
-    setDraft((current) => ({ ...current, [field]: value }));
+    dispatchWorkstation({ type: "edit_incident", field, value });
     invalidateLatestExport();
   }
 
   function selectClipForReview(clipId: string) {
-    const clip = clips.find((candidate) => candidate.id === clipId);
-    setSelectedClipId(clipId);
-
-    if (!clip) {
-      return;
-    }
-
-    setDraft((current) => ({
-      ...current,
-      start: formatSeconds(clip.sourceInSeconds),
-      end: formatSeconds(clip.sourceOutSeconds)
-    }));
+    dispatchWorkstation({ type: "select_clip", clipId });
     invalidateLatestExport();
   }
 
@@ -285,7 +264,13 @@ export function App({
     const mediaDuration = selectedMediaDuration && selectedMediaDuration > 0 ? selectedMediaDuration : selectedClip.sourceOutSeconds;
     const sourceInSeconds = field === "sourceInSeconds" ? numericValue : selectedClip.sourceInSeconds;
     const sourceOutSeconds = field === "sourceOutSeconds" ? numericValue : selectedClip.sourceOutSeconds;
-    setClips((current) => trimClipSourceRange(current, selectedClip.id, sourceInSeconds, sourceOutSeconds, mediaDuration));
+    dispatchWorkstation({
+      type: "trim_clip",
+      clipId: selectedClip.id,
+      sourceInSeconds,
+      sourceOutSeconds,
+      mediaDurationSeconds: mediaDuration
+    });
     invalidateLatestExport();
   }
 
@@ -296,8 +281,7 @@ export function App({
 
     const rightClipId = `${selectedClip.id}-tail-${Date.now().toString(36)}`;
     const splitPoint = selectedClip.sourceInSeconds + clipDurationSeconds(selectedClip) / 2;
-    setClips((current) => splitClipInTimeline(current, selectedClip.id, splitPoint, rightClipId));
-    setSelectedClipId(rightClipId);
+    dispatchWorkstation({ type: "split_clip", clipId: selectedClip.id, sourceTimeSeconds: splitPoint, rightClipId });
     invalidateLatestExport();
   }
 
@@ -307,8 +291,7 @@ export function App({
     }
 
     const duplicateClipId = `${selectedClip.id}-copy-${Date.now().toString(36)}`;
-    setClips((current) => duplicateClip(current, selectedClip.id, duplicateClipId));
-    setSelectedClipId(duplicateClipId);
+    dispatchWorkstation({ type: "duplicate_clip", clipId: selectedClip.id, duplicateClipId });
     invalidateLatestExport();
   }
 
@@ -317,22 +300,17 @@ export function App({
       return;
     }
 
-    const selectedIndex = clips.findIndex((clip) => clip.id === selectedClip.id);
-    const fallbackClip = clips[selectedIndex + 1] ?? clips[selectedIndex - 1] ?? clips[0];
-    setClips((current) => removeClip(current, selectedClip.id));
-    setSelectedClipId(fallbackClip.id);
+    dispatchWorkstation({ type: "remove_clip", clipId: selectedClip.id });
     invalidateLatestExport();
   }
 
   function handleComponentSlotChange(id: string, field: keyof Pick<ComponentSlot, "status" | "reference" | "notes">, value: string) {
-    setComponentSlots((current) =>
-      current.map((slot) => (slot.id === id ? { ...slot, [field]: field === "status" ? (value as ComponentSlotStatus) : value } : slot))
-    );
+    dispatchWorkstation({ type: "edit_component_slot", id, field, value });
     invalidateLatestExport();
   }
 
   function handleNativeProjectRootChange(value: string) {
-    setNativeProjectRoot(value);
+    dispatchWorkstation({ type: "set_native_project_root", value });
     invalidateLatestExport();
   }
 
@@ -346,16 +324,7 @@ export function App({
     field: keyof Pick<ProjectedRoadFeature, "reviewStatus" | "reviewNote">,
     value: string
   ) {
-    setProjectedRoadFeatures((current) =>
-      current.map((feature) =>
-        feature.featureId === featureId
-          ? {
-              ...feature,
-              [field]: field === "reviewStatus" ? (value as ProjectedFeatureReviewStatus) : value
-            }
-          : feature
-      )
-    );
+    dispatchWorkstation({ type: "edit_projected_feature", featureId, field, value });
     invalidateLatestExport();
   }
 
@@ -372,27 +341,13 @@ export function App({
   function handleExportPacket() {
     const snapshot = createProjectSnapshot(currentSnapshotInput);
     const packet = buildEvidencePacket(snapshot, { runtimeStatus: activeNativeRuntimeStatus });
-    setLatestProjectSnapshot(snapshot);
-    setLatestPacket(packet);
+    dispatchWorkstation({ type: "set_export", snapshot, packet });
     setAppStatus(`Export packet preview ready: ${packet.fileBaseName}.json`);
   }
 
   function handleClearLocalDraft() {
     const cleared = projectRepository.clear();
-    setClips(initialClips);
-    setDraft(incidentDraft);
-    setMedia(mediaAssets);
-    setJobs(initialJobs);
-    setNativeCommandAttempts([]);
-    setNativeProjectRoot(DEFAULT_NATIVE_PROJECT_ROOT);
-    setProjectId(projectIdFactory());
-    setComponentSlots(missingSlots);
-    setRoute(routePoints);
-    setOfficialFeatures(officialRoadFeatures);
-    setProjectedRoadFeatures(projectedFeatures.map(normalizeProjectedFeatureReview));
-    setSelectedClipId(initialClips[1]?.id ?? initialClips[0]?.id ?? "");
-    setLatestProjectSnapshot(null);
-    setLatestPacket(null);
+    dispatchWorkstation({ type: "reset_project", seed: createWorkstationSeed(projectIdFactory()) });
     setAppStatus(
       cleared
         ? "Local draft cleared; seeded review state restored."
@@ -420,7 +375,7 @@ export function App({
       resultSummary
     };
 
-    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
     invalidateLatestExport();
 
     if (result.ok) {
@@ -453,7 +408,7 @@ export function App({
       resultSummary
     };
 
-    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
     invalidateLatestExport();
 
     if (result.ok) {
@@ -485,7 +440,7 @@ export function App({
         : `${result.status}; fallback: ${result.fallback}`
     };
 
-    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
     invalidateLatestExport();
 
     if (result.ok) {
@@ -518,7 +473,7 @@ export function App({
       resultSummary
     };
 
-    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
     invalidateLatestExport();
 
     if (result.ok) {
@@ -551,7 +506,7 @@ export function App({
       resultSummary
     };
 
-    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
     invalidateLatestExport();
 
     if (result.ok) {
@@ -584,7 +539,7 @@ export function App({
       resultSummary
     };
 
-    setNativeCommandAttempts((current) => [attempt, ...current].slice(0, 8));
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
     invalidateLatestExport();
 
     if (result.ok) {
@@ -614,28 +569,18 @@ export function App({
     }
 
     if (mediaFiles.length > 0) {
-      setMedia((current) => {
-        const importedAssets = createImportedMediaAssets(mediaFiles, current.length);
-        const importedClips = createTimelineClipsForImportedMedia(importedAssets, clips);
-        const requestedAtIso = new Date().toISOString();
-        const nativeAttempts = importedAssets.flatMap((asset, index) => [
-          createBrowserMediaImportAttempt(asset, requestedAtIso, index),
-          ...(isVideoMediaAsset(asset) ? [createBrowserFfmpegProxyAttempt(asset, requestedAtIso, index)] : [])
-        ]);
-        setJobs((currentJobs) => [...currentJobs, ...createProxyJobsForImportedMedia(importedAssets)]);
-        setClips((currentClips) => [...currentClips, ...createTimelineClipsForImportedMedia(importedAssets, currentClips)]);
-        setNativeCommandAttempts((currentAttempts) => [...nativeAttempts, ...currentAttempts].slice(0, 8));
-        if (importedClips[0]) {
-          setSelectedClipId(importedClips[0].id);
-        }
-        invalidateLatestExport(undefined);
-        setAppStatus(
-          `Imported ${importedAssets.length} media ${importedAssets.length === 1 ? "file" : "files"} by reference and added ${importedClips.length} reel ${
-            importedClips.length === 1 ? "clip" : "clips"
-          }`
-        );
-        return [...current, ...importedAssets];
+      const importedClipCount = mediaFiles.filter(isVideoImportFile).length;
+      dispatchWorkstation({
+        type: "import_media",
+        files: mediaFiles,
+        requestedAtIso: new Date().toISOString(),
+        operationId: Date.now().toString(36)
       });
+      setAppStatus(
+        `Imported ${mediaFiles.length} media ${mediaFiles.length === 1 ? "file" : "files"} by reference and added ${importedClipCount} reel ${
+          importedClipCount === 1 ? "clip" : "clips"
+        }`
+      );
     }
 
     event.target.value = "";
@@ -646,14 +591,12 @@ export function App({
       try {
         const importedRoute = parseGpxTrack(await readBrowserFileText(file));
         const requestedAtIso = new Date().toISOString();
-        setRoute(importedRoute);
-        setProjectedRoadFeatures(projectFeaturesOntoRoute(importedRoute, officialFeatures, 90).map(normalizeProjectedFeatureReview));
-        setJobs((currentJobs) => [...currentJobs, createValhallaMatchJob(file.name, currentJobs.length)]);
-        setNativeCommandAttempts((currentAttempts) => [
-          createBrowserGpxMatchAttempt(file.name, importedRoute.length, requestedAtIso),
-          ...currentAttempts
-        ].slice(0, 8));
-        invalidateLatestExport(undefined);
+        dispatchWorkstation({
+          type: "import_route",
+          fileName: file.name,
+          route: importedRoute,
+          attempt: createBrowserGpxMatchAttempt(file.name, importedRoute.length, requestedAtIso)
+        });
         setAppStatus(`Imported GPX route with ${importedRoute.length} timed points from ${file.name}`);
       } catch (error) {
         setAppStatus(error instanceof Error ? error.message : `Could not import GPX route from ${file.name}`);
@@ -688,35 +631,17 @@ export function App({
   function importGeoJsonText(text: string, fileName: string) {
     const importedFeatures = parseOfficialFeaturesFromGeoJson(text, fileName);
     const requestedAtIso = new Date().toISOString();
-    setOfficialFeatures((currentFeatures) => {
-      const nextFeatures = [...currentFeatures, ...importedFeatures];
-      setProjectedRoadFeatures(projectFeaturesOntoRoute(route, nextFeatures, 90).map(normalizeProjectedFeatureReview));
-      return nextFeatures;
+    dispatchWorkstation({
+      type: "import_official_features",
+      fileName,
+      features: importedFeatures,
+      attempt: createBrowserGisProjectionAttempt(fileName, importedFeatures.length, requestedAtIso)
     });
-    setJobs((currentJobs) => [...currentJobs, createGisProjectionJob(fileName, importedFeatures.length, currentJobs.length)]);
-    setNativeCommandAttempts((currentAttempts) => [
-      createBrowserGisProjectionAttempt(fileName, importedFeatures.length, requestedAtIso),
-      ...currentAttempts
-    ].slice(0, 8));
-    invalidateLatestExport(undefined);
     setAppStatus(`Imported ${importedFeatures.length} official GIS features from ${fileName}`);
   }
 
   function applyProjectSnapshot(snapshot: ProjectSnapshot) {
-    setClips(snapshot.clips);
-    setDraft(snapshot.incident);
-    setMedia(snapshot.media);
-    setJobs(snapshot.jobs);
-    setNativeCommandAttempts(snapshot.nativeCommandAttempts ?? []);
-    setNativeProjectRoot(snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT);
-    setProjectId(snapshot.projectId);
-    setComponentSlots(componentSlotsOrDefaults(snapshot.componentSlots));
-    setRoute(snapshot.route);
-    setOfficialFeatures(snapshot.officialFeatures);
-    setProjectedRoadFeatures(snapshot.projectedFeatures.map(normalizeProjectedFeatureReview));
-    setSelectedClipId(snapshot.clips[1]?.id ?? snapshot.clips[0]?.id ?? "");
-    setLatestProjectSnapshot(null);
-    setLatestPacket(null);
+    dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: missingSlots });
   }
 
   function invalidateLatestExport(statusMessage = "Draft changed since last export; regenerate packet to refresh downloads.") {
@@ -724,8 +649,6 @@ export function App({
       setAppStatus(statusMessage);
     }
 
-    setLatestProjectSnapshot(null);
-    setLatestPacket(null);
   }
 
   return (
@@ -1602,8 +1525,20 @@ function componentSlotPillStatus(status: ComponentSlotStatus): string {
   return "queued";
 }
 
-function componentSlotsOrDefaults(slots?: ComponentSlot[]): ComponentSlot[] {
-  return slots && slots.length > 0 ? slots : missingSlots;
+function createWorkstationSeed(projectId: ProjectId): WorkstationSeed {
+  return {
+    clips: initialClips,
+    componentSlots: missingSlots,
+    incident: incidentDraft,
+    jobs: initialJobs,
+    media: mediaAssets,
+    nativeCommandAttempts: [],
+    nativeProjectRoot: DEFAULT_NATIVE_PROJECT_ROOT,
+    officialFeatures: officialRoadFeatures,
+    projectId,
+    projectedFeatures,
+    route: routePoints
+  };
 }
 
 function isGpxFile(file: File): boolean {
@@ -1612,6 +1547,10 @@ function isGpxFile(file: File): boolean {
 
 function isJsonImportFile(file: File): boolean {
   return file.type === "application/geo+json" || /\.(geojson|json)$/i.test(file.name);
+}
+
+function isVideoImportFile(file: File): boolean {
+  return file.type.startsWith("video/") || /\.(mp4|mov|m4v|mkv|avi|webm)$/i.test(file.name);
 }
 
 function declaresProjectSchemaVersion(text: string): boolean {
@@ -1787,32 +1726,6 @@ function cvReviewRequired(response: unknown): string {
   }
 
   return "(review status unavailable)";
-}
-
-function createBrowserMediaImportAttempt(asset: MediaAsset, requestedAtIso: string, index: number): NativeCommandAttempt {
-  return {
-    id: `media-import-${asset.id}-${Date.now().toString(36)}-${index}`,
-    command: "media_import",
-    status: "browser_fallback",
-    requestedAtIso,
-    requestSummary: `sourcePath: ${asset.originalPath}`,
-    resultSummary: "Tauri media file picker and native path import pending; browser reference retained."
-  };
-}
-
-function isVideoMediaAsset(asset: MediaAsset): boolean {
-  return asset.proxyStatus === "queued" || /\.(mp4|mov|m4v|mkv|avi|webm)$/i.test(asset.fileName);
-}
-
-function createBrowserFfmpegProxyAttempt(asset: MediaAsset, requestedAtIso: string, index: number): NativeCommandAttempt {
-  return {
-    id: `ffmpeg-proxy-${asset.id}-${Date.now().toString(36)}-${index}`,
-    command: "ffmpeg_proxy",
-    status: "browser_fallback",
-    requestedAtIso,
-    requestSummary: `mediaId: ${asset.id}; profile: review-proxy`,
-    resultSummary: "native FFmpeg proxy and thumbnail generation pending; browser preview uses referenced media metadata."
-  };
 }
 
 function createBrowserGpxMatchAttempt(fileName: string, routePointCount: number, requestedAtIso: string): NativeCommandAttempt {

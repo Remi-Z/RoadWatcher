@@ -39,6 +39,10 @@ Build a Windows-first, local-first evidence workstation:
 - Added atomic media import transitions that derive assets, clips, proxy jobs,
   audit attempts, and selection together, plus GPX/GIS transitions that create
   jobs and recompute projections from current reducer state.
+- Replaced thirteen project-facing `App` state hooks and nested setter callbacks
+  with one workstation reducer. Restore, clear, edits, probes, exports, and file
+  imports now dispatch complete transitions; a mixed GPX/GIS regression verifies
+  projection uses the newly imported route.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
 - Added a dense evidence workstation UI that renders and builds.
 - Added editable inspector state, browser-local draft save/restore/clear

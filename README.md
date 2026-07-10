@@ -122,7 +122,9 @@ transitions before native persistence begins. Its pure state boundary now covers
 fallback/snapshot initialization plus complete project replace/reset; edit and
 timeline transitions, native-attempt capping, and paired export invalidation are
 also implemented. Media, GPX, and GIS imports now have atomic reducer actions
-that derive against current state; App wiring is the remaining integration step.
+that derive against current state. `App` now uses that single reducer for every
+project-facing value; only runtime discovery, status text, and DOM concerns
+remain local React state.
 
 ## Slots You Need To Fill
 

@@ -65,13 +65,13 @@ outside pure transitions.
 - Modify: `src/App.test.tsx`
 - Modify: `src/features/workstation/workstationState.ts`
 
-- [ ] Add/adjust App tests that prove restore, clear, mixed imports, native
+- [x] Add/adjust App tests that prove restore, clear, mixed imports, native
   attempts, selection, and export invalidation retain existing behavior.
-- [ ] Verify the focused integration tests fail before reducer wiring.
-- [ ] Replace project-facing `useState` values with one `useReducer` instance.
-- [ ] Remove nested setter callbacks and dispatch one action per logical import,
+- [x] Verify the focused integration tests fail before reducer wiring.
+- [x] Replace project-facing `useState` values with one `useReducer` instance.
+- [x] Remove nested setter callbacks and dispatch one action per logical import,
   restore, clear, edit, native attempt, and export operation.
-- [ ] Run `pnpm test -- src/features/workstation/workstationState.test.ts src/App.test.tsx` and `pnpm build`.
+- [x] Run `pnpm test -- src/features/workstation/workstationState.test.ts src/App.test.tsx` and `pnpm build`.
 - [ ] Update handoff documents and commit `refactor: integrate atomic workstation transitions`.
 
 ### Task 5: Full Verification and Handoff
