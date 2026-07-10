@@ -98,6 +98,11 @@ Build a Windows-first, local-first evidence workstation:
 - Added browser FFmpeg-proxy fallback audit entries so imported videos leave
   `ffmpeg_proxy: browser_fallback` records in readiness, saved drafts, and
   packet exports until native FFmpeg proxy and thumbnail generation is wired.
+- Implemented native media import by reference for active SQLite projects. Rust
+  validates project identity and regular-file paths, hashes originals in bounded
+  chunks, and transactionally inserts media plus a queued proxy job. The reducer
+  adds the returned media/job/clip/attempt atomically and invalidates stale
+  exports; native failures add no partial workstation rows.
 - Added browser-native GPX import fallback that parses timed track points,
   updates the route preview, persists route points in snapshots, and queues
   Valhalla matching.
@@ -173,11 +178,9 @@ Build a Windows-first, local-first evidence workstation:
   browser fallback and ready-bridge `project_create` attempts are visible in the
   readiness panel, saved in portable snapshots, and included in evidence packet
   Markdown/JSON exports.
-- Added a readiness-panel media import probe that routes an explicit native
-  media source path slot through the planned `media_import` bridge path,
-  recording browser fallback attempts in readiness, saved drafts, and evidence
-  packet exports until Tauri file handles/native path import, hashing, metadata
-  probing, and proxy queuing are wired.
+- Replaced the media probe with active-project import by reference. An editable
+  source path is sent with `sqlitePath` and `projectId`; typed native metadata is
+  applied through one atomic reducer transition.
 - Added a readiness-panel local CV scan probe that routes the selected media and
   editable CV model slot through the planned `cv_scan` bridge path, recording
   browser fallback attempts in readiness, saved drafts, and evidence packet
@@ -224,9 +227,9 @@ Fresh check on 2026-07-08 after Rustup install:
 - `uv --version`: `uv 0.11.23 (3cdf50e09 2026-06-19 x86_64-pc-windows-msvc)`
 - `cargo --version`: `cargo 1.96.1 (356927216 2026-06-26)`
 - `rustc --version`: `rustc 1.96.1 (31fca3adb 2026-06-26)`
-- `pnpm test`: 19 files / 128 tests passed when run elevated.
+- `pnpm test`: 19 files / 130 tests passed when run elevated.
 - `pnpm build`: TypeScript and Vite production build passed when run elevated.
-- `cargo test --offline --all-targets` passes all eight Rust tests with a temp
+- `cargo test --offline --all-targets` passes all eleven Rust tests with a temp
   target directory.
 - `pnpm tauri:build -- --debug` completes with `CARGO_TARGET_DIR` set to
   `%TEMP%\roadwatcher-tauri-build`, producing the native EXE, an x64 MSI, and an
@@ -283,11 +286,10 @@ project-store probes, saved in drafts, rendered in the readiness panel, and
 exported in evidence packet Markdown/JSON.
 App tests verify failed project-store probe invokes keep the app alive, update
 the status banner, and render a `project_create: failed` audit row.
-App tests verify the media import probe does not call native code in browser
-fallback mode, records a `media_import: browser_fallback` audit row with an
-explicit native media source path slot, carries that row into saved drafts and
-packet exports, and calls `media_import` with `projectId` and `sourcePath` when
-a ready invoke bridge is injected.
+App tests verify native media import requires an active SQLite project, calls
+`media_import` with `sqlitePath`, `projectId`, and `sourcePath`, renders returned
+audit metadata/proxy work, invalidates stale exports, and contains failures
+without adding partial rows.
 App tests verify the GPX matcher probe does not call native code in browser
 fallback mode, records a `gpx_match: browser_fallback` audit row with an
 explicit persisted GPX path slot, carries that row into saved drafts and packet
@@ -348,15 +350,14 @@ network/DNS access.
 
 - SQLite create/save/load and Windows debug bundles are verified. Native export
   files are not implemented, so packet downloads still use browser data URLs.
-- Canonical snapshot JSON is durable, but the normalized media/job/timeline/geo
-  tables are not populated yet; their owning native workflow commands remain the
-  next implementation slices.
+- Canonical snapshot JSON is durable, and native media import populates normalized
+  media/job rows. Timeline/geo normalization and proxy completion updates remain.
 - The native setup checklist is informational and slot-backed. It records saved
   references and verification commands, but it does not execute toolchain or data
   checks until Tauri commands are available.
 - The native runtime boundary detects Tauri shell globals and lists implemented
-  versus planned DTOs. Project create/save/load are implemented; media, GPX, GIS,
-  FFmpeg, and CV handlers remain planned.
+  versus planned DTOs. Project create/save/load and media import are implemented;
+  GPX, GIS, FFmpeg, and CV handlers remain planned.
 - The native command bridge is dependency-injected and tested. The app now calls
   project-store and CV-scan probe paths through the bridge, but media/GPX/GIS/
   FFmpeg workflow commands and all Rust/Python handlers still need
@@ -370,11 +371,10 @@ network/DNS access.
   flow exists. Project-store and CV probe attempts are logged in browser state
   and portable snapshots, but no native command log file exists until the Rust
   project store is implemented.
-- Browser media import is a fallback only. It now adds placeholder reel clips for
-  imported videos plus `media_import` and `ffmpeg_proxy` browser-fallback audit
-  entries, but Tauri still needs real file handles or paths, hashing, metadata
-  probing, duration detection, FFmpeg proxy/thumbnail generation, and render
-  jobs.
+- Browser media import remains available as fallback. Native import accepts an
+  explicit path and persists its hash/size/proxy job, but still needs a native
+  picker, ffprobe duration/start detection, proxy/thumbnail generation, and
+  durable worker progress.
 - Browser GPX import is a fallback only. It now records `gpx_match`
   browser-fallback audit entries, but Tauri still needs persisted GPX assets,
   Valhalla map matching, OSRM fallback, and official-feature reprojection
@@ -410,8 +410,8 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement native media import by reference: file selection/path handling,
-   SHA-256 metadata, ffprobe inspection, and durable media/job records.
+1. Implement the ffprobe/FFmpeg worker for queued native proxy jobs, with durable
+   metadata/progress/failure updates and GPU-to-CPU fallback.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -427,8 +427,7 @@ network/DNS access.
    SQLite project save/load is complete.
 6. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
    demo fallback only for empty projects.
-7. Replace browser media import fallback with real import by reference and
-   hash/metadata jobs.
+7. Add a native file picker for the implemented import-by-reference command.
 8. Replace browser GPX parsing with persisted GPX import and local Valhalla map
    matching.
 9. Replace browser GeoJSON projection with Turf.js MVP geometry and production

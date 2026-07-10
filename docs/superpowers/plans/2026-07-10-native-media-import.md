@@ -29,12 +29,12 @@ streaming SHA-256 metadata and an atomic durable proxy job.
   reducer transition; keep browser file import as fallback.
 - [x] Add App tests for unavailable store, successful metadata rendering,
   failure recovery, and export invalidation.
-- [ ] Run focused App tests and commit `feat: import referenced native media`.
+- [x] Run focused App tests and commit `feat: import referenced native media`.
 
 ### Task 4: Verification and Handoff
 
-- [ ] Run full frontend tests/build, Rust all-target tests, formatting, and
+- [x] Run full frontend tests/build, Rust all-target tests, formatting, and
   `git diff --check`.
-- [ ] Update README, rewrite manifest, and project handoff with the durable media
+- [x] Update README, rewrite manifest, and project handoff with the durable media
   boundary and FFmpeg worker follow-on.
 - [ ] Commit `docs: hand off native media import` and close this plan.

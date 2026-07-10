@@ -137,11 +137,10 @@ The runnable app today is the React/Vite evidence workstation:
 - Native command attempt audit trail for the project-store probe; browser
   fallback and ready-bridge `project_create` attempts are visible in readiness,
   saved in portable snapshots, and exported with evidence packet Markdown/JSON.
-- Readiness-panel media import probe that routes an explicit native media
-  source path slot through the planned `media_import` bridge path, recording
-  browser fallback attempts in readiness, saved drafts, and packet exports until
-  Tauri file handles/native path import, hashing, metadata probing, and proxy
-  queuing are wired.
+- Active-project native media import accepts an explicit source path, streams
+  SHA-256 in Rust, persists the referenced original and queued proxy job in one
+  SQLite transaction, and atomically adds media/job/clip/audit state. Browser
+  file import remains the fallback when no native project is open.
 - Readiness-panel GPX matcher probe that routes an explicit persisted GPX path
   slot through the planned `gpx_match` bridge path, recording browser fallback
   attempts in readiness, saved drafts, and packet exports until Valhalla/OSRM
@@ -413,10 +412,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - Latest native invoke failure coverage verified rejected project-store probes
   are converted to explicit failed results and visible audit rows instead of
   unhandled UI errors.
-- Latest media import probe coverage verified browser-mode probes do not invoke
-  native code, add `media_import: browser_fallback` rows with the native media
-  source path slot, persist/export those rows, and call `media_import` when a
-  ready invoke bridge is injected.
+- Latest native media coverage verifies import is refused without an active
+  SQLite project, successful import renders the durable path/hash/size and queued
+  proxy job, failures add no partial rows, and imports invalidate stale exports.
 - Latest GPX matcher probe coverage verified browser-mode probes do not invoke
   native code, add `gpx_match: browser_fallback` rows with the persisted GPX
   path slot, persist/export those rows, and call `gpx_match` when a ready invoke
@@ -463,7 +461,7 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   normalization and GIS-job fallback.
 - `src/features/jobs/jobModel.ts` - tested processing job state helpers.
 - `src/features/media/mediaImport.ts` - tested browser media import fallback and
-  proxy-job / placeholder timeline clip generation.
+  shared proxy-job / placeholder timeline clip generation.
 - `src/features/project/projectState.ts` - tested project snapshot and evidence
   packet model, including component slot export state and native command
   attempt audit entries.
@@ -493,18 +491,20 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   and agree with native response metadata.
 - `src/features/project/nativeProjectLocator.ts` - stores only the last SQLite
   path for startup hydration; clearing it never deletes the project directory.
-- `src-tauri/` - Tauri 2 shell with implemented create/save/load commands and
-  SQLite database migration through schema version 2.
+- `src-tauri/` - Tauri 2 shell with implemented create/save/load/media-import
+  commands, schema version 2 migration, streaming SHA-256, and transactional
+  media/proxy-job persistence.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
 
 ## Next Best Implementation Slice
 
-1. Replace browser media import fallback with Tauri file handles/real paths,
-   metadata probing, hash records, and native FFmpeg proxy workers.
-2. Populate the normalized SQLite media/job/timeline tables from native commands;
-   canonical snapshot JSON remains the aggregate recovery record.
+1. Implement the FFmpeg/ffprobe proxy worker for durable queued media jobs,
+   including progress, failures, duration/start metadata, thumbnails, and GPU to
+   CPU fallback.
+2. Add a native file picker that populates the implemented import-by-reference
+   path without changing the store contract.
 3. Replace seeded demo data with command-backed state after native media/project
    selection exists, keeping the seed only for empty projects.
 4. Replace browser GPX parsing with Tauri-backed GPX persistence and local

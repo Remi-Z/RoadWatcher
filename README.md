@@ -24,8 +24,10 @@ browser-local storage when available, imported media is referenced by filename
 with queued proxy jobs, Session media surfaces duration, detected start, file
 size, and hash/provenance slots for referenced originals, and video imports add
 conservative placeholder clips to the editable reel, browser
-media imports add `media_import` fallback audit entries until Tauri can provide
-native source paths/file handles, imported videos also add `ffmpeg_proxy`
+media imports add `media_import` fallback audit entries in browser mode; an
+active Tauri project can instead import an explicit native path by reference,
+stream SHA-256, persist media/proxy-job rows, and append the result atomically to
+the workstation. Imported videos also add `ffmpeg_proxy`
 fallback audit entries until native proxy and thumbnail generation is wired,
 imported GPX tracks update the route preview, keep the map legend marked as
 Valhalla/OSRM pending, surface first/last timed route-point provenance, and
@@ -54,9 +56,9 @@ browser-safe Tauri invoke adapter is resolved only inside a detected Tauri shell
 and that bridge status is carried into the readiness panel and exported packets.
 Rejected native invokes are converted into explicit failed command results so
 the app can keep running and record the failed attempt.
-The readiness panel also includes tested project-store, media import, GPX
-matcher, GIS projection, FFmpeg proxy, and local CV scan probes that exercise
-the planned `project_create`, `media_import`, `gpx_match`, `gis_project`,
+The readiness panel also includes tested project-store, native media import, GPX
+matcher, GIS projection, FFmpeg proxy, and local CV actions. Project
+create/save/load and `media_import` are implemented; `gpx_match`, `gis_project`,
 `ffmpeg_proxy`, and `cv_scan` bridge paths when invoke is available and report
 the browser fallback otherwise; the native project root and CV model slot remain
 editable, saved in portable project snapshots, and included in exports/setup
@@ -147,8 +149,8 @@ media import by reference with metadata/hash records and FFmpeg proxy jobs.
 - Optionally provide OSRM Match endpoint/config as the simpler fallback.
 - Provide official GIS files for traffic signals, stop signs, and bike lanes.
 - Provide FFmpeg/ffprobe binaries for native metadata probing and proxy jobs.
-- Wire Tauri media import so hashes, real paths/file handles, metadata probing,
-  and FFmpeg proxy jobs replace the browser fallback.
+- Add a Tauri file picker and ffprobe/FFmpeg worker so typed native media paths,
+  known hashes, and durable proxy jobs advance to probed metadata and proxies.
 - Wire Tauri GPX import and Valhalla so the browser-parsed raw route is replaced
   with a persisted map-matched route and official-feature reprojection.
 - Replace browser GeoJSON projection with the intended Turf.js MVP path and the
