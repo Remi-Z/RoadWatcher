@@ -17,7 +17,7 @@ dimensions and derive per-command evidence from native attempt history. Preserve
   ready independently.
 - [x] Verify RED.
 - [x] Add packet/native status models and rigorous native preconditions.
-- [ ] Verify focused GREEN and commit `fix: separate packet and native readiness`.
+- [x] Verify focused GREEN and commit `fix: separate packet and native readiness`.
 
 ### Task 2: Capability Evidence, UI, and Packet Export
 
