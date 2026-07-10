@@ -339,7 +339,7 @@ Run: `pnpm test -- src/features/project/projectSnapshotSchema.test.ts src/featur
 
 Expected: all tests pass, including version-1 migration and invalid aggregate rejection.
 
-- [ ] **Step 6: Commit snapshot validation**
+- [x] **Step 6: Commit snapshot validation**
 
 ```powershell
 git add src/features/project/projectSnapshotSchema.ts src/features/project/projectSnapshotSchema.test.ts src/features/project/projectState.ts src/features/project/projectState.test.ts
