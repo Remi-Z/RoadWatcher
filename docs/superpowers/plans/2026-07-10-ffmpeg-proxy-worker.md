@@ -127,7 +127,7 @@ cargo fmt --check
 
 Expected: all project-store tests pass.
 
-- [ ] **Step 5: Commit the store boundary**
+- [x] **Step 5: Commit the store boundary**
 
 ```powershell
 git add src-tauri/src/project_store.rs docs/superpowers/plans/2026-07-10-ffmpeg-proxy-worker.md
