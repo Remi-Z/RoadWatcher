@@ -19,15 +19,15 @@ streaming SHA-256 metadata and an atomic durable proxy job.
 - [x] Add bridge/contract tests for exact request and response fields.
 - [x] Add a reducer action that atomically appends native media, proxy job,
   default clip, and command attempt.
-- [ ] Run focused Rust/frontend tests and commit `feat: wire native media import`.
+- [x] Run focused Rust/frontend tests and commit `feat: wire native media import`.
 
 ### Task 3: Application Integration
 
-- [ ] Add an editable native source-path field and require an active SQLite
+- [x] Add an editable native source-path field and require an active SQLite
   project before invoking import.
-- [ ] Replace the probe handler with typed response validation and the atomic
+- [x] Replace the probe handler with typed response validation and the atomic
   reducer transition; keep browser file import as fallback.
-- [ ] Add App tests for unavailable store, successful metadata rendering,
+- [x] Add App tests for unavailable store, successful metadata rendering,
   failure recovery, and export invalidation.
 - [ ] Run focused App tests and commit `feat: import referenced native media`.
 

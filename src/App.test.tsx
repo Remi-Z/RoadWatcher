@@ -780,56 +780,122 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByText(/proxyPath: D:\/RoadWatcherProjects\/review\/proxies\/front\.mp4/)).toBeInTheDocument();
   });
 
-  it("records browser media import probe fallbacks in drafts and export packets", async () => {
-    const repository = createMemoryProjectRepository();
+  it("requires an active native project before importing a native media path", async () => {
     const nativeInvoke = vi.fn<NativeInvoke>();
-    render(<App nativeInvoke={nativeInvoke} projectRepository={repository} />);
+    render(<App nativeInvoke={nativeInvoke} projectRepository={createMemoryProjectRepository()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Probe media import" }));
+    fireEvent.click(screen.getByRole("button", { name: "Import native media" }));
 
     expect(nativeInvoke).not.toHaveBeenCalled();
-    expect(await screen.findByText(/media_import: browser_fallback/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
-
-    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
-      command: "media_import",
-      status: "browser_fallback",
-      requestSummary: "sourcePath: slot: native media source path from file picker"
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
-
-    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
-    expect(exportPanel).not.toBeNull();
-    expect(exportPanel as HTMLElement).toHaveTextContent("media_import: browser_fallback");
-    expect(exportPanel as HTMLElement).toHaveTextContent("browser file references and placeholder clips");
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent(
+      "Native media import requires an active SQLite project"
+    );
   });
 
-  it("probes the native media import through the command bridge when invoke is available", async () => {
-    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
-      mediaId: "native-media-front",
-      hash: "sha256:abc123",
-      durationSeconds: 91,
-      proxyJobId: "proxy-job-front"
+  it("imports referenced native media into the active SQLite workstation", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/native-media/project.sqlite";
+    const snapshot = createProjectSnapshot({
+      clips: initialClips,
+      incident: incidentDraft,
+      jobs: initialJobs,
+      media: mediaAssets,
+      projectId: "native-media-project" as ProjectId,
+      projectedFeatures
+    });
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+      if (command === "project_load") {
+        return {
+          projectId: snapshot.projectId,
+          schemaVersion: snapshot.schemaVersion,
+          savedAtIso: snapshot.savedAtIso,
+          snapshotJson: serializeSnapshot(snapshot)
+        };
+      }
+      if (command === "media_import") {
+        return {
+          mediaId: "native-media-front",
+          fileName: "front-native.mp4",
+          originalPath: "D:/Evidence/front-native.mp4",
+          hash: "ba7816bf8f01cfea",
+          fileSizeBytes: 4096,
+          durationSeconds: 0,
+          detectedStart: "",
+          proxyStatus: "queued",
+          proxyJobId: "proxy-job-front"
+        };
+      }
+      throw new Error(`Unexpected command ${command}`);
     });
 
     render(
       <App
         nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
         nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
       />
     );
+    await screen.findByText(/Restored native SQLite project/);
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+    expect(screen.getByRole("heading", { name: "Latest export packet" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Native media source path"), {
+      target: { value: "D:/Evidence/front-native.mp4" }
+    });
 
-    fireEvent.click(screen.getByRole("button", { name: "Probe media import" }));
+    fireEvent.click(screen.getByRole("button", { name: "Import native media" }));
 
-    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native media import ready");
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native media imported by reference");
     expect(nativeInvoke).toHaveBeenCalledWith("media_import", {
-      projectId: expect.stringMatching(/^local-/),
-      sourcePath: "slot: native media source path from file picker"
+      sqlitePath,
+      projectId: "native-media-project",
+      sourcePath: "D:/Evidence/front-native.mp4"
     });
     expect(screen.getByText(/media_import: invoked/)).toBeInTheDocument();
-    expect(screen.getByText(/hash: sha256:abc123/)).toBeInTheDocument();
+    expect(screen.getByText("front-native.mp4")).toBeInTheDocument();
+    expect(screen.getByText("D:/Evidence/front-native.mp4")).toBeInTheDocument();
+    expect(screen.getByText(/Hash ba7816bf8f01cfea/)).toBeInTheDocument();
+    expect(screen.getByText("Auto proxy: front-native.mp4")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Latest export packet" })).not.toBeInTheDocument();
+  });
+
+  it("records native media import failure without adding partial workstation rows", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/native-media/project.sqlite";
+    const snapshot = createProjectSnapshot({
+      clips: initialClips,
+      incident: incidentDraft,
+      jobs: initialJobs,
+      media: mediaAssets,
+      projectId: "native-media-project" as ProjectId,
+      projectedFeatures
+    });
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+      if (command === "project_load") {
+        return {
+          projectId: snapshot.projectId,
+          schemaVersion: snapshot.schemaVersion,
+          savedAtIso: snapshot.savedAtIso,
+          snapshotJson: serializeSnapshot(snapshot)
+        };
+      }
+      throw new Error("source file is unavailable");
+    });
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+    await screen.findByText(/Restored native SQLite project/);
+    fireEvent.change(screen.getByLabelText("Native media source path"), {
+      target: { value: "D:/Evidence/missing.mp4" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Import native media" }));
+
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("media_import failed");
+    expect(screen.getByText(/media_import: failed/)).toBeInTheDocument();
+    expect(screen.queryByText("missing.mp4", { selector: "strong" })).not.toBeInTheDocument();
   });
 
   it("imports browser-selected media as referenced assets with queued proxy jobs", () => {

@@ -58,6 +58,7 @@ import {
   type TimedRoutePoint
 } from "./features/geo/projection";
 import type { WorkstationJob } from "./features/jobs/jobModel";
+import { createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
 import {
   createBrowserProjectRepository,
   type ProjectLoadResult,
@@ -147,6 +148,7 @@ export function App({
   const [detectedNativeRuntimeStatus, setDetectedNativeRuntimeStatus] = useState(() => detectNativeRuntime());
   const [detectedNativeInvoke, setDetectedNativeInvoke] = useState<NativeInvoke | undefined>();
   const [activeNativeSqlitePath, setActiveNativeSqlitePath] = useState(() => nativeProjectLocator.load());
+  const [nativeMediaSourcePath, setNativeMediaSourcePath] = useState(NATIVE_MEDIA_SOURCE_PATH_SLOT);
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
   const nativeHydrationPathRef = useRef<string | null>(null);
   const firstSlotReferenceInputRef = useRef<HTMLInputElement>(null);
@@ -505,36 +507,63 @@ export function App({
   }
 
   async function handleProbeMediaImport() {
+    if (!activeNativeSqlitePath) {
+      setAppStatus("Native media import requires an active SQLite project. Create or reopen a native project first.");
+      return;
+    }
     const requestedAtIso = new Date().toISOString();
     const result = await nativeCommandBridge.invoke("media_import", {
       projectId: createProjectSnapshot(currentSnapshotInput).projectId,
-      sourcePath: NATIVE_MEDIA_SOURCE_PATH_SLOT
+      sourcePath: nativeMediaSourcePath,
+      sqlitePath: activeNativeSqlitePath
     });
+    const imported = result.ok ? nativeMediaImportResponse(result.response) : null;
     const resultSummary = result.ok
-      ? `mediaId: ${mediaImportMediaId(result.response)}; hash: ${mediaImportHash(
-          result.response
-        )}; durationSeconds: ${mediaImportDurationSeconds(result.response)}; proxyJobId: ${mediaImportProxyJobId(
-          result.response
-        )}`
+      ? imported
+        ? `mediaId: ${imported.mediaId}; hash: ${imported.hash}; durationSeconds: ${imported.durationSeconds}; proxyJobId: ${imported.proxyJobId}`
+        : "invalid_response; native media fields have invalid types"
       : `${result.status}; fallback: ${result.fallback}; browser media references: ${media.length}`;
     const attempt: NativeCommandAttempt = {
       id: `media-import-probe-${Date.now().toString(36)}`,
       command: result.command,
-      status: result.status,
+      status: result.ok && !imported ? "invalid_response" : result.status,
       requestedAtIso,
-      requestSummary: `sourcePath: ${NATIVE_MEDIA_SOURCE_PATH_SLOT}`,
+      requestSummary: `sqlitePath: ${activeNativeSqlitePath}; sourcePath: ${nativeMediaSourcePath}`,
       resultSummary
     };
 
-    dispatchWorkstation({ type: "record_native_attempt", attempt });
-    invalidateLatestExport();
-
-    if (result.ok) {
-      setAppStatus(`Native media import ready: ${mediaImportMediaId(result.response)}`);
+    if (result.ok && imported) {
+      const asset: MediaAsset = {
+        id: imported.mediaId,
+        fileName: imported.fileName,
+        originalPath: imported.originalPath,
+        durationSeconds: imported.durationSeconds,
+        detectedStart: imported.detectedStart,
+        proxyStatus: imported.proxyStatus,
+        hash: imported.hash,
+        fileSizeBytes: imported.fileSizeBytes
+      };
+      const job: WorkstationJob = {
+        id: imported.proxyJobId,
+        type: "proxy",
+        label: `Auto proxy: ${imported.fileName}`,
+        status: "queued",
+        progress: 0,
+        detail: "Original referenced and hashed; ffprobe/FFmpeg pending"
+      };
+      const [clip] = createTimelineClipsForImportedMedia([asset], clips);
+      dispatchWorkstation({ type: "import_native_media", media: asset, job, clip, attempt });
+      setAppStatus(`Native media imported by reference: ${imported.fileName}`);
       return;
     }
 
-    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
+    invalidateLatestExport();
+    setAppStatus(
+      result.ok
+        ? "media_import invalid_response: Native media response fields have invalid types."
+        : `${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`
+    );
   }
 
   async function handleProbeCvScan() {
@@ -938,7 +967,9 @@ export function App({
           />
           <ReviewReadinessPanel
             nativeCommandAttempts={nativeCommandAttempts}
+            nativeMediaSourcePath={nativeMediaSourcePath}
             nativeProjectRoot={nativeProjectRoot}
+            onNativeMediaSourcePathChange={setNativeMediaSourcePath}
             readiness={reviewReadiness}
             onNativeProjectRootChange={handleNativeProjectRootChange}
             onProbeFfmpegProxy={handleProbeFfmpegProxy}
@@ -1051,7 +1082,9 @@ function buildGeneratedArtifactManifest({
 
 function ReviewReadinessPanel({
   nativeCommandAttempts,
+  nativeMediaSourcePath,
   nativeProjectRoot,
+  onNativeMediaSourcePathChange,
   onNativeProjectRootChange,
   onProbeCvScan,
   onProbeFfmpegProxy,
@@ -1062,7 +1095,9 @@ function ReviewReadinessPanel({
   readiness
 }: {
   nativeCommandAttempts: NativeCommandAttempt[];
+  nativeMediaSourcePath: string;
   nativeProjectRoot: string;
+  onNativeMediaSourcePathChange: (value: string) => void;
   onNativeProjectRootChange: (value: string) => void;
   onProbeCvScan: () => void;
   onProbeFfmpegProxy: () => void;
@@ -1123,9 +1158,17 @@ function ReviewReadinessPanel({
           <Settings size={15} />
           Probe native project store
         </button>
+        <label className="native-root-field">
+          <span>Native media source path</span>
+          <input
+            aria-label="Native media source path"
+            value={nativeMediaSourcePath}
+            onChange={(event) => onNativeMediaSourcePathChange(event.target.value)}
+          />
+        </label>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeMediaImport}>
           <Upload size={15} />
-          Probe media import
+          Import native media
         </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeGpxMatch}>
           <Route size={15} />
@@ -1784,36 +1827,41 @@ function nativeProjectCreateResponse(
     : null;
 }
 
-function mediaImportMediaId(response: unknown): string {
-  if (response && typeof response === "object" && "mediaId" in response) {
-    return String((response as { mediaId: unknown }).mediaId);
-  }
-
-  return "(media id unavailable)";
+interface NativeMediaImportResponse {
+  mediaId: string;
+  fileName: string;
+  originalPath: string;
+  hash: string;
+  fileSizeBytes: number;
+  durationSeconds: number;
+  detectedStart: string;
+  proxyStatus: MediaAsset["proxyStatus"];
+  proxyJobId: string;
 }
 
-function mediaImportHash(response: unknown): string {
-  if (response && typeof response === "object" && "hash" in response) {
-    return String((response as { hash: unknown }).hash);
+function nativeMediaImportResponse(response: unknown): NativeMediaImportResponse | null {
+  if (!response || typeof response !== "object") {
+    return null;
   }
-
-  return "(hash unavailable)";
-}
-
-function mediaImportDurationSeconds(response: unknown): string {
-  if (response && typeof response === "object" && "durationSeconds" in response) {
-    return String((response as { durationSeconds: unknown }).durationSeconds);
+  const value = response as Record<string, unknown>;
+  const proxyStatuses: MediaAsset["proxyStatus"][] = ["ready", "running", "queued", "blocked"];
+  if (
+    typeof value.mediaId !== "string" ||
+    typeof value.fileName !== "string" ||
+    typeof value.originalPath !== "string" ||
+    typeof value.hash !== "string" ||
+    typeof value.fileSizeBytes !== "number" ||
+    !Number.isFinite(value.fileSizeBytes) ||
+    typeof value.durationSeconds !== "number" ||
+    !Number.isFinite(value.durationSeconds) ||
+    typeof value.detectedStart !== "string" ||
+    typeof value.proxyStatus !== "string" ||
+    !proxyStatuses.includes(value.proxyStatus as MediaAsset["proxyStatus"]) ||
+    typeof value.proxyJobId !== "string"
+  ) {
+    return null;
   }
-
-  return "(duration unavailable)";
-}
-
-function mediaImportProxyJobId(response: unknown): string {
-  if (response && typeof response === "object" && "proxyJobId" in response) {
-    return String((response as { proxyJobId: unknown }).proxyJobId);
-  }
-
-  return "(proxy job id unavailable)";
+  return value as unknown as NativeMediaImportResponse;
 }
 
 function gpxRouteId(response: unknown): string {
