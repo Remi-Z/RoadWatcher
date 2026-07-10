@@ -40,4 +40,4 @@ active Tauri SQLite project while retaining browser fallback behavior.
   `git diff --check`.
 - [x] Update README, rewrite manifest, and project handoff with the durable
   persistence boundary and remaining normalized-table work.
-- [ ] Commit `docs: hand off native project persistence` and close this plan.
+- [x] Commit `docs: hand off native project persistence` and close this plan.
