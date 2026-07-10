@@ -72,7 +72,7 @@ outside pure transitions.
 - [x] Remove nested setter callbacks and dispatch one action per logical import,
   restore, clear, edit, native attempt, and export operation.
 - [x] Run `pnpm test -- src/features/workstation/workstationState.test.ts src/App.test.tsx` and `pnpm build`.
-- [ ] Update handoff documents and commit `refactor: integrate atomic workstation transitions`.
+- [x] Update handoff documents and commit `refactor: integrate atomic workstation transitions`.
 
 ### Task 5: Full Verification and Handoff
 
