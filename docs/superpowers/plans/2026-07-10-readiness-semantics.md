@@ -31,8 +31,8 @@ dimensions and derive per-command evidence from native attempt history. Preserve
 
 ### Task 3: Full Verification and Handoff
 
-- [ ] Run `pnpm test`, `pnpm build`, and `git diff --check`.
-- [ ] Confirm no module files are dirty.
-- [ ] Record readiness semantics and the next Tauri/SQLite module in README,
+- [x] Run `pnpm test`, `pnpm build`, and `git diff --check`.
+- [x] Confirm no module files are dirty.
+- [x] Record readiness semantics and the next Tauri/SQLite module in README,
   handoff, and rewrite manifest.
 - [ ] Commit `docs: hand off readiness semantics` and mark completed checkpoints.

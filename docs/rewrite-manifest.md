@@ -394,9 +394,8 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Split browser packet-export readiness from native workflow readiness, with
-   explicit capability evidence for project storage, media import, map matching,
-   GIS projection, FFmpeg, and CV.
+1. Implement and verify Tauri `project_create` as the first native capability,
+   creating a SQLite-backed project folder and returning the registered DTO.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
