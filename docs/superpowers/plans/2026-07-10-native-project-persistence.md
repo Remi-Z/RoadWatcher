@@ -12,7 +12,7 @@ active Tauri SQLite project while retaining browser fallback behavior.
 - [x] Add schema version 2 and idempotent project-open migration.
 - [x] Implement typed `save_project_snapshot` and `load_project_snapshot` store
   operations with transactional upsert and envelope validation.
-- [ ] Run focused Rust tests and commit `feat: persist project snapshots in SQLite`.
+- [x] Run focused Rust tests and commit `feat: persist project snapshots in SQLite`.
 
 ### Task 2: Tauri Commands and Frontend Adapter
 
