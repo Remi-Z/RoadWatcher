@@ -1,6 +1,6 @@
 # RoadWatcher Rewrite Handoff
 
-Last updated: 2026-07-08
+Last updated: 2026-07-10
 
 ## Current State
 
@@ -260,7 +260,17 @@ Follow-up Bash/WSL check on 2026-07-07:
   the required `esbuild` postinstall used by Vite. The previous verification
   used pnpm successfully; the follow-up Bash/WSL shell saw only a failing
   Windows-side pnpm shim.
-- Rust/Cargo was not on PATH, so Tauri Rust code is scaffolded but not built.
+- Rust/Cargo was installed with Rustup on 2026-07-08. `cargo --version`
+  returned `cargo 1.96.1 (356927216 2026-06-26)` and `rustc --version`
+  returned `rustc 1.96.1 (31fca3adb 2026-06-26)` when run outside the sandbox
+  with `%USERPROFILE%\.cargo\bin` on PATH.
+- `src-tauri\Cargo.lock` now exists and is tracked for reproducible application
+  builds. Direct builds under this managed `Documents` checkout still fail when
+  dependency build scripts write to `src-tauri\target`. Moving Cargo's target
+  directory to `%TEMP%` lets dependencies compile, then Tauri fails when its
+  build script must generate permissions back under `src-tauri\`. The remaining
+  blocker is therefore generated-process write access to the checkout, not the
+  Rust toolchain or lockfile.
 - Vitest/Vite needed elevated execution in the sandbox because esbuild was
   denied parent-directory access while resolving config files.
 - `uv run --project sidecars\roadwatcher-cv roadwatcher-cv` was blocked by
@@ -448,7 +458,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 
 ## Next Best Implementation Slice
 
-1. Install Rust/Cargo and verify `pnpm tauri:dev`.
+1. Build from a workspace where Cargo/Tauri build scripts can write, or adjust
+   the managed-workspace policy, and verify `pnpm tauri:dev`.
 2. Add SQLite project creation in Rust, including a project folder with
    `project.sqlite`, `assets/`, `proxies/`, `exports/`, and `logs/`.
 3. Replace seeded demo data with Tauri command-backed project state.

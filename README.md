@@ -62,9 +62,13 @@ tracked as editable slot records with status, reference, and notes so the
 handoff remains durable; the editable install/data panel shows each slot's
 verification command, and the top Slots action focuses the first install/data
 slot so those references are quick to fill before export. The Tauri and Python
-sidecar slots are scaffolded, but Rust/Cargo and the GPStitch, Valhalla,
+sidecar slots are scaffolded, but the Tauri dev path, GPStitch, Valhalla,
 production GIS, FFmpeg proxy, hashing, and CV model data still need to be filled
-before the native workflow can be wired end to end.
+before the native workflow can be wired end to end. Rust/Cargo is installed and
+the application lockfile is tracked. Native builds in this checkout remain
+blocked because generated Cargo/Tauri build processes cannot write back under
+the managed `Documents` workspace; using a temporary Cargo target lets dependency
+compilation advance until Tauri needs to generate permissions in `src-tauri/`.
 
 ## Run The Current Web App
 
@@ -97,14 +101,17 @@ ordinary Vite once dependencies are installed.
   upgrade once thumbnail lanes, waveforms, zoom, and dense markers outgrow the
   current tested HTML/dnd-kit track.
 - Shell: Tauri 2 scaffold under `src-tauri/`.
-- Local orchestration: Rust/Tauri commands, pending Rust/Cargo install.
+- Local orchestration: Rust/Tauri commands; Rust/Cargo is installed, with Tauri
+  verification blocked by generated-process writes in this managed workspace.
 - Sidecars: `uv` Python packages under `sidecars/`.
 - Package manager: pnpm 11.7.0. `pnpm-workspace.yaml` explicitly approves the
   required `esbuild` postinstall for Vite.
 
 ## Slots You Need To Fill
 
-- Install Rust/Cargo so `pnpm tauri:dev` and `pnpm tauri:build` can work.
+- Move the native build to a workspace where Cargo/Tauri build scripts can write,
+  or adjust the managed-workspace policy, then verify `pnpm tauri:dev` and
+  `pnpm tauri:build`.
 - Vendor or submodule the GPL-compatible GPStitch fork into
   `sidecars/roadwatcher-gpstitch/`.
 - Provide York/GTA Valhalla data/config for local map matching.

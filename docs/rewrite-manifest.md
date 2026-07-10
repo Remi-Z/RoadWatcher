@@ -165,6 +165,24 @@ pnpm build
 
 Both passed on 2026-07-08. Current test count is 15 files / 89 tests.
 
+Fresh check on 2026-07-08 after Rustup install:
+
+- `node --version`: `v25.9.0`
+- `npm --version`: `11.12.1`
+- `pnpm --version`: `11.7.0`
+- `uv --version`: `uv 0.11.23 (3cdf50e09 2026-06-19 x86_64-pc-windows-msvc)`
+- `cargo --version`: `cargo 1.96.1 (356927216 2026-06-26)`
+- `rustc --version`: `rustc 1.96.1 (31fca3adb 2026-06-26)`
+- `pnpm test`: 15 files / 89 tests passed when run elevated.
+- `pnpm build`: TypeScript and Vite production build passed when run elevated.
+- `pnpm tauri:dev`: Vite started on `http://127.0.0.1:5174/` and Cargo fetched
+  crates. `src-tauri\Cargo.lock` now exists and is tracked. Direct builds still
+  fail when generated dependency build scripts write under `src-tauri\target`.
+  A temporary Cargo target lets dependencies compile, after which Tauri fails
+  when it generates permissions under `src-tauri\`. Native verification is
+  therefore blocked by generated-process write access to this managed checkout,
+  not by the Rust toolchain or lockfile.
+
 Rendered browser QA previously passed for load, console health, timeline clip
 selection, editable draft save, export packet preview, and a mobile-width smoke
 check. The latest slice added automated UI coverage for restored drafts,
@@ -277,7 +295,9 @@ network/DNS access.
 
 ## Known Gaps
 
-- Rust/Cargo is not installed on this machine, so Tauri is unverified.
+- Rust/Cargo and the application lockfile are available, but Tauri remains
+  unverified because generated build processes cannot write under this managed
+  checkout.
 - SQLite project storage is not implemented yet.
 - Browser-local project snapshots and data-URL downloads are implemented only as
   a fallback; Tauri should replace this with SQLite-backed project folders and
@@ -350,7 +370,7 @@ network/DNS access.
    - `pnpm install`
    - `pnpm test`
    - `pnpm build`
-3. If Cargo exists, run:
+3. From a workspace where generated Cargo/Tauri processes can write, run:
    - `pnpm tauri:dev`
 4. Add Rust tests for project folder creation and command DTOs before
    implementing SQLite storage.

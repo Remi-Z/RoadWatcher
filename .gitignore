@@ -11,3 +11,4 @@ dist/
 .uv-cache/
 __pycache__/
 *.tsbuildinfo
+src-tauri/target/
