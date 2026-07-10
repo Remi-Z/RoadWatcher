@@ -181,7 +181,7 @@ Run: `pnpm test -- src/features/project/projectState.test.ts src/features/projec
 
 Expected: all selected files pass; changing incident fields does not change `projectId`.
 
-- [ ] **Step 6: Commit stable identity**
+- [x] **Step 6: Commit stable identity**
 
 ```powershell
 git add src/domain/projectModels.ts src/features/project/projectState.ts src/features/project/projectState.test.ts src/features/project/browserProjectRepository.test.ts src/features/project/downloadArtifacts.test.ts src/App.tsx src/App.test.tsx
