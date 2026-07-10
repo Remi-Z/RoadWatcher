@@ -377,8 +377,9 @@ describe("RoadWatcher workstation", () => {
 
     const readinessPanel = screen.getByRole("heading", { name: "Review readiness" }).closest("section");
     expect(readinessPanel).not.toBeNull();
-    expect(readinessPanel as HTMLElement).toHaveTextContent("Browser fallback can export packets");
-    expect(readinessPanel as HTMLElement).toHaveTextContent("Packet export available");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("Browser packet export is available");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("Packet readiness ready");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("Native workflow unavailable");
     expect(readinessPanel as HTMLElement).toHaveTextContent("5 native slots need attention");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Valhalla map match");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Native setup checklist");
@@ -394,7 +395,8 @@ describe("RoadWatcher workstation", () => {
 
     const readinessPanel = screen.getByRole("heading", { name: "Review readiness" }).closest("section");
     expect(readinessPanel).not.toBeNull();
-    expect(readinessPanel as HTMLElement).toHaveTextContent("ready");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("Native workflow blocked");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("project_create unverified");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Tauri invoke bridge is available");
   });
 

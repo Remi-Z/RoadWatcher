@@ -124,7 +124,9 @@ value; only runtime discovery, status text, and DOM concerns remain local React
 state. The next correctness module will split browser packet-export readiness
 from true native workflow readiness. The core domain split is now in place:
 browser packet export can be ready while native workflow is independently
-unavailable, blocked, or unverified; command evidence is the next slice.
+unavailable, blocked, or unverified. Native command attempt history now produces
+per-capability verified/failed/fallback/unverified evidence; all required command
+paths must be invoked successfully before native-ready is claimed.
 
 ## Slots You Need To Fill
 

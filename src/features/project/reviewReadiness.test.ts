@@ -87,4 +87,88 @@ describe("review readiness", () => {
     expect(readiness.mode).toBe("browser_fallback");
     expect(readiness.summary).toContain("native command capability is unverified");
   });
+
+  it("marks native workflow ready only when every required command has invoked evidence", () => {
+    const readiness = summarizeReviewReadiness({
+      clips: initialClips,
+      componentSlots: configuredRequiredSlots(),
+      jobs: clearBlockingJobs(),
+      media: mediaAssets,
+      nativeCommandAttempts: requiredCommandAttempts(),
+      projectedFeatures,
+      runtimeStatus: detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })
+    });
+
+    expect(readiness.native).toMatchObject({ status: "ready", evidenceGaps: [] });
+    expect(readiness.mode).toBe("native_ready");
+    expect(readiness.native.capabilities.filter((capability) => capability.required)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ command: "project_create", evidence: "verified" }),
+        expect.objectContaining({ command: "ffmpeg_proxy", evidence: "verified" })
+      ])
+    );
+    expect(readiness.native.capabilities.find((capability) => capability.command === "cv_scan")).toMatchObject({
+      required: false,
+      evidence: "unverified"
+    });
+  });
+
+  it("uses the latest command attempt and blocks native readiness on a failed required capability", () => {
+    const attempts = [
+      {
+        id: "project-new-failure",
+        command: "project_create" as const,
+        status: "failed" as const,
+        requestedAtIso: "2026-07-10T13:00:00.000Z",
+        requestSummary: "new",
+        resultSummary: "failed"
+      },
+      ...requiredCommandAttempts(),
+      {
+        id: "project-old-success",
+        command: "project_create" as const,
+        status: "invoked" as const,
+        requestedAtIso: "2026-07-09T13:00:00.000Z",
+        requestSummary: "old",
+        resultSummary: "ready"
+      }
+    ];
+    const readiness = summarizeReviewReadiness({
+      clips: initialClips,
+      componentSlots: configuredRequiredSlots(),
+      jobs: clearBlockingJobs(),
+      media: mediaAssets,
+      nativeCommandAttempts: attempts,
+      projectedFeatures,
+      runtimeStatus: detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })
+    });
+
+    expect(readiness.native.status).toBe("blocked");
+    expect(readiness.native.capabilities.find((capability) => capability.command === "project_create")).toMatchObject({
+      evidence: "failed",
+      lastAttemptStatus: "failed"
+    });
+    expect(readiness.native.evidenceGaps).toEqual(expect.arrayContaining([expect.stringContaining("project_create")]));
+  });
 });
+
+function configuredRequiredSlots() {
+  return missingSlots.map((slot) => ({ ...slot, status: slot.status === "needed" ? ("configured" as const) : slot.status }));
+}
+
+function clearBlockingJobs() {
+  return initialJobs.map((job) =>
+    job.status === "blocked" || job.status === "failed" ? { ...job, status: "queued" as const, detail: "ready" } : job
+  );
+}
+
+function requiredCommandAttempts() {
+  return (["project_create", "media_import", "gpx_match", "gis_project", "ffmpeg_proxy"] as const).map((command, index) => ({
+    id: `required-${command}`,
+    command,
+    status: "invoked" as const,
+    requestedAtIso: `2026-07-10T12:0${index}:00.000Z`,
+    requestSummary: command,
+    resultSummary: "verified"
+  }));
+}

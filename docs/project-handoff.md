@@ -23,6 +23,10 @@ The runnable app today is the React/Vite evidence workstation:
 - Review readiness now models browser packet readiness independently from native
   workflow readiness. Browser runtime can never be labeled native-ready, and a
   ready Tauri bridge remains unverified until command capability is evidenced.
+- Native command attempt history now drives per-command capability evidence in
+  the readiness panel and evidence packet. Project/media/GPX/GIS/FFmpeg commands
+  are required; optional CV evidence does not block the native workflow, while a
+  latest failed required attempt does.
 - `src/features/workstation/workstationState.ts` now defines the pure atomic
   workstation boundary and tested fallback/snapshot initialization plus complete
   project replace/reset transitions. It also owns tested inspector, timeline,

@@ -179,6 +179,7 @@ export function App({
     componentSlots,
     jobs,
     media,
+    nativeCommandAttempts,
     projectedFeatures: projectedRoadFeatures,
     runtimeStatus: activeNativeRuntimeStatus
   });
@@ -789,7 +790,11 @@ export function App({
 
       <section className="lower-grid">
         <section className="panel">
-          <PanelHeader icon={<ShieldCheck size={18} />} title="Review readiness" meta={reviewReadiness.mode === "native_ready" ? "Native path clear" : "Browser fallback active"} />
+          <PanelHeader
+            icon={<ShieldCheck size={18} />}
+            title="Review readiness"
+            meta={reviewReadiness.native.status === "ready" ? "Native workflow verified" : reviewReadiness.packet.status === "ready" ? "Browser packet ready" : "Packet blocked"}
+          />
           <ReviewReadinessPanel
             nativeCommandAttempts={nativeCommandAttempts}
             nativeProjectRoot={nativeProjectRoot}
@@ -931,8 +936,15 @@ function ReviewReadinessPanel({
       <p>{readiness.summary}</p>
       <div className="readiness-metrics">
         <span>
-          <StatusPill status={readiness.canExportPacket ? "ready" : "blocked"} label={readiness.canExportPacket ? "ready" : "blocked"} />
-          Packet export {readiness.canExportPacket ? "available" : "needs media"}
+          <StatusPill status={readiness.packet.status === "ready" ? "ready" : "blocked"} label={readiness.packet.status} />
+          Packet readiness {readiness.packet.status}
+        </span>
+        <span>
+          <StatusPill
+            status={readiness.native.status === "ready" ? "ready" : readiness.native.status === "unverified" ? "queued" : "blocked"}
+            label={readiness.native.status}
+          />
+          Native workflow {readiness.native.status}
         </span>
         <span>
           <StatusPill status={readiness.openComponentSlots.length === 0 ? "ready" : "blocked"} label={readiness.openComponentSlots.length === 0 ? "clear" : "open"} />
@@ -990,6 +1002,20 @@ function ReviewReadinessPanel({
           <Gauge size={15} />
           Probe local CV scan
         </button>
+        <div className="native-attempt-list">
+          <strong>Native capability evidence</strong>
+          {readiness.native.capabilities.map((capability) => (
+            <article className="native-attempt-row" key={capability.id}>
+              <strong>{`${capability.command} ${capability.evidence}`}</strong>
+              <span>{capability.required ? "required" : "optional"}</span>
+              <span>
+                {capability.lastAttemptStatus
+                  ? `latest attempt: ${capability.lastAttemptStatus} at ${capability.lastAttemptAtIso}`
+                  : "no native attempt recorded"}
+              </span>
+            </article>
+          ))}
+        </div>
         <div className="native-attempt-list">
           <strong>Native command attempts</strong>
           {nativeCommandAttempts.length === 0 ? (

@@ -46,6 +46,10 @@ Build a Windows-first, local-first evidence workstation:
 - Split packet-export readiness from native workflow readiness in the domain
   summary. Packet export remains independently useful, while runtime, bridge,
   dependency, and job conditions prevent false native-ready claims.
+- Added latest-attempt native capability evidence for every command contract,
+  with required/optional semantics, UI rows, evidence gaps, and exported
+  JSON/Markdown. Native-ready now requires successful invoked evidence for
+  project, media, GPX, GIS, and FFmpeg paths.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
 - Added a dense evidence workstation UI that renders and builds.
 - Added editable inspector state, browser-local draft save/restore/clear

@@ -124,6 +124,7 @@ export function buildEvidencePacket(snapshot: ProjectSnapshot, options: Evidence
     componentSlots: snapshot.componentSlots ?? [],
     jobs: snapshot.jobs,
     media: snapshot.media,
+    nativeCommandAttempts: snapshot.nativeCommandAttempts,
     projectedFeatures: snapshot.projectedFeatures,
     runtimeStatus: options.runtimeStatus
   });
@@ -198,6 +199,14 @@ function buildMarkdown(packet: EvidencePacket["summaryJson"]): string {
   const nativeCommandAttemptLines = packet.nativeCommandAttempts
     .map((attempt) => `- ${attempt.command}: ${attempt.status}; ${attempt.requestSummary}; ${attempt.resultSummary}`)
     .join("\n");
+  const nativeCapabilityLines = packet.reviewReadiness.native.capabilities
+    .map(
+      (capability) =>
+        `- ${capability.command}: ${capability.evidence}; ${capability.required ? "required" : "optional"}; latest attempt: ${
+          capability.lastAttemptStatus ?? "none"
+        }`
+    )
+    .join("\n");
 
   return `# RoadWatcher Evidence Summary
 
@@ -220,13 +229,18 @@ ${clipLines || "- No clips saved."}
 - Bridge status: ${packet.reviewReadiness.runtime.bridgeStatus}
 - Bridge summary: ${packet.reviewReadiness.runtime.bridgeSummary}
 - Native project root: ${blank(packet.nativeProjectRoot)}
-- Packet export: ${packet.reviewReadiness.canExportPacket ? "available" : "needs media and clips"}
+- Packet readiness: ${packet.reviewReadiness.packet.status}
+- Native workflow: ${packet.reviewReadiness.native.status}
+- Native evidence gaps: ${packet.reviewReadiness.native.evidenceGaps.join(", ") || "none"}
 - Summary: ${packet.reviewReadiness.summary}
 - Open component slots: ${packet.reviewReadiness.openComponentSlots.join(", ") || "none"}
 - Blocked jobs: ${packet.reviewReadiness.blockedJobs.join(", ") || "none"}
 
 ## Native Command Attempts
 ${nativeCommandAttemptLines || "- No native command attempts saved."}
+
+## Native Capability Evidence
+${nativeCapabilityLines || "- No native capabilities registered."}
 
 ## Native Setup Checklist
 ${nativeChecklistLines || "- No native setup slots saved."}

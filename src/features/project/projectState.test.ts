@@ -154,7 +154,7 @@ describe("project state", () => {
     expect(packet.summaryMarkdown).toContain("## Native Command Attempts");
     expect(packet.summaryMarkdown).toContain("project_create: invoked");
     expect(packet.summaryMarkdown).toContain("projectDirectory: C:/RoadWatcher/native-projects/review-1");
-    expect(packet.summaryMarkdown).toContain("Browser fallback can export packets");
+    expect(packet.summaryMarkdown).toContain("Browser packet export is available");
     expect(packet.summaryMarkdown).toContain("## Native Setup Checklist");
     expect(packet.summaryMarkdown).toContain("York/GTA Valhalla data: blocked");
     expect(packet.summaryMarkdown).toContain("verify: valhalla_service <path-to-valhalla.json>");
@@ -168,9 +168,16 @@ describe("project state", () => {
     const packet = buildEvidencePacket(
       createProjectSnapshot({
         clips: initialClips,
+        componentSlots: missingSlots.map((slot) => ({
+          ...slot,
+          status: slot.status === "needed" ? ("configured" as const) : slot.status
+        })),
         incident: { ...incidentDraft, plate: "NATIVE7" },
-        jobs: initialJobs,
+        jobs: initialJobs.map((job) =>
+          job.status === "blocked" || job.status === "failed" ? { ...job, status: "queued" as const } : job
+        ),
         media: mediaAssets,
+        nativeCommandAttempts: requiredNativeCommandAttempts(),
         projectId: TEST_PROJECT_ID,
         projectedFeatures
       }),
@@ -181,7 +188,25 @@ describe("project state", () => {
       mode: "tauri_shell",
       bridgeStatus: "ready"
     });
+    expect(packet.summaryJson.reviewReadiness).toMatchObject({
+      mode: "native_ready",
+      packet: { status: "ready" },
+      native: { status: "ready", evidenceGaps: [] }
+    });
     expect(packet.summaryMarkdown).toContain("Bridge status: ready");
     expect(packet.summaryMarkdown).toContain("Tauri invoke bridge is available");
+    expect(packet.summaryMarkdown).toContain("Native workflow: ready");
+    expect(packet.summaryMarkdown).toContain("project_create: verified");
   });
 });
+
+function requiredNativeCommandAttempts() {
+  return (["project_create", "media_import", "gpx_match", "gis_project", "ffmpeg_proxy"] as const).map((command, index) => ({
+    id: `native-${command}`,
+    command,
+    status: "invoked" as const,
+    requestedAtIso: `2026-07-10T12:0${index}:00.000Z`,
+    requestSummary: command,
+    resultSummary: "verified"
+  }));
+}

@@ -1,13 +1,16 @@
 import type { ComponentSlot, ComponentSlotStatus, MediaAsset } from "../../domain/projectModels";
 import type { ProjectedRoadFeature } from "../geo/projection";
 import type { WorkstationJob } from "../jobs/jobModel";
+import { nativeCommandContracts, type NativeCommandName } from "../native/nativeCommandContracts";
 import { detectNativeRuntime, type NativeRuntimeStatus } from "../native/runtimeEnvironment";
 import type { TimelineClip } from "../timeline/timelineModel";
+import type { NativeCommandAttempt } from "./projectState";
 
 export type ReviewReadinessMode = "browser_fallback" | "native_ready";
 export type NativeChecklistState = "ready" | "blocked" | "optional" | "later";
 export type PacketReadinessStatus = "ready" | "blocked";
 export type NativeWorkflowStatus = "ready" | "blocked" | "unavailable" | "unverified";
+export type NativeCapabilityEvidence = "verified" | "failed" | "browser_fallback" | "unverified";
 
 export interface PacketReadiness {
   status: PacketReadinessStatus;
@@ -18,7 +21,19 @@ export interface PacketReadiness {
 export interface NativeWorkflowReadiness {
   status: NativeWorkflowStatus;
   blockers: string[];
+  capabilities: NativeCapabilityReadiness[];
+  evidenceGaps: string[];
   summary: string;
+}
+
+export interface NativeCapabilityReadiness {
+  id: string;
+  command: NativeCommandName;
+  label: string;
+  required: boolean;
+  evidence: NativeCapabilityEvidence;
+  lastAttemptStatus?: NativeCommandAttempt["status"];
+  lastAttemptAtIso?: string;
 }
 
 export interface ReviewReadinessInput {
@@ -26,6 +41,7 @@ export interface ReviewReadinessInput {
   componentSlots: ComponentSlot[];
   jobs: WorkstationJob[];
   media: MediaAsset[];
+  nativeCommandAttempts?: NativeCommandAttempt[];
   projectedFeatures: ProjectedRoadFeature[];
   runtimeStatus?: NativeRuntimeStatus;
 }
@@ -65,7 +81,8 @@ export function summarizeReviewReadiness(input: ReviewReadinessInput): ReviewRea
   const nativeChecklist = input.componentSlots.map((slot) => buildNativeChecklistItem(slot, input.jobs));
   const runtime = input.runtimeStatus ?? detectNativeRuntime();
   const packet = buildPacketReadiness(input);
-  const native = buildNativeWorkflowReadiness(runtime, openComponentSlots, blockedJobs);
+  const capabilities = buildNativeCapabilities(runtime, input.nativeCommandAttempts ?? []);
+  const native = buildNativeWorkflowReadiness(runtime, openComponentSlots, blockedJobs, capabilities);
   const canExportPacket = packet.status === "ready";
   const mode: ReviewReadinessMode = native.status === "ready" ? "native_ready" : "browser_fallback";
 
@@ -133,13 +150,20 @@ function buildPacketReadiness(input: ReviewReadinessInput): PacketReadiness {
 function buildNativeWorkflowReadiness(
   runtime: NativeRuntimeStatus,
   openComponentSlots: string[],
-  blockedJobs: string[]
+  blockedJobs: string[],
+  capabilities: NativeCapabilityReadiness[]
 ): NativeWorkflowReadiness {
   const blockers = [...openComponentSlots, ...blockedJobs];
+  const requiredCapabilities = capabilities.filter((capability) => capability.required);
+  const evidenceGaps = requiredCapabilities
+    .filter((capability) => capability.evidence !== "verified")
+    .map((capability) => `${capability.label} (${capability.command}): ${capability.evidence}`);
   if (runtime.mode === "browser_fallback") {
     return {
       status: "unavailable",
       blockers,
+      capabilities,
+      evidenceGaps,
       summary: "native workflow is unavailable because Tauri runtime is not detected"
     };
   }
@@ -147,21 +171,79 @@ function buildNativeWorkflowReadiness(
     return {
       status: "unavailable",
       blockers,
+      capabilities,
+      evidenceGaps,
       summary: "native workflow is unavailable because the invoke bridge is not ready"
     };
   }
-  if (blockers.length > 0) {
+  const failedRequiredCapability = requiredCapabilities.some((capability) => capability.evidence === "failed");
+  if (blockers.length > 0 || failedRequiredCapability) {
     return {
       status: "blocked",
       blockers,
-      summary: `native workflow is blocked by ${blockers.length} recorded ${blockers.length === 1 ? "condition" : "conditions"}`
+      capabilities,
+      evidenceGaps,
+      summary: `native workflow is blocked by ${blockers.length + (failedRequiredCapability ? 1 : 0)} recorded ${
+        blockers.length + (failedRequiredCapability ? 1 : 0) === 1 ? "condition" : "conditions"
+      }`
     };
   }
-  return {
-    status: "unverified",
-    blockers,
-    summary: "native command capability is unverified"
-  };
+  if (evidenceGaps.length > 0) {
+    return {
+      status: "unverified",
+      blockers,
+      capabilities,
+      evidenceGaps,
+      summary: "native command capability is unverified"
+    };
+  }
+  return { status: "ready", blockers, capabilities, evidenceGaps, summary: "native workflow is verified" };
+}
+
+function buildNativeCapabilities(runtime: NativeRuntimeStatus, attempts: NativeCommandAttempt[]): NativeCapabilityReadiness[] {
+  return nativeCommandContracts.map((contract) => {
+    const latestAttempt = latestCommandAttempt(attempts, contract.command);
+    return {
+      id: contract.id,
+      command: contract.command,
+      label: contract.label,
+      required: contract.command !== "cv_scan",
+      evidence: capabilityEvidence(runtime, latestAttempt),
+      ...(latestAttempt
+        ? { lastAttemptStatus: latestAttempt.status, lastAttemptAtIso: latestAttempt.requestedAtIso }
+        : {})
+    };
+  });
+}
+
+function latestCommandAttempt(attempts: NativeCommandAttempt[], command: NativeCommandName): NativeCommandAttempt | undefined {
+  return attempts
+    .filter((attempt) => attempt.command === command)
+    .reduce<NativeCommandAttempt | undefined>((latest, attempt) => {
+      if (!latest) {
+        return attempt;
+      }
+      return Date.parse(attempt.requestedAtIso) > Date.parse(latest.requestedAtIso) ? attempt : latest;
+    }, undefined);
+}
+
+function capabilityEvidence(
+  runtime: NativeRuntimeStatus,
+  attempt: NativeCommandAttempt | undefined
+): NativeCapabilityEvidence {
+  if (!attempt) {
+    return runtime.mode === "browser_fallback" ? "browser_fallback" : "unverified";
+  }
+  if (attempt.status === "invoked") {
+    return "verified";
+  }
+  if (attempt.status === "browser_fallback") {
+    return "browser_fallback";
+  }
+  if (attempt.status === "failed" || attempt.status === "invalid_request" || attempt.status === "invalid_response") {
+    return "failed";
+  }
+  return "unverified";
 }
 
 const verifyCommands: Record<string, string> = {

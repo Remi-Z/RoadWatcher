@@ -21,12 +21,12 @@ dimensions and derive per-command evidence from native attempt history. Preserve
 
 ### Task 2: Capability Evidence, UI, and Packet Export
 
-- [ ] Write failing tests for latest-attempt capability evidence, required vs
+- [x] Write failing tests for latest-attempt capability evidence, required vs
   optional commands, readiness panel language, and exported JSON/Markdown.
-- [ ] Verify RED.
-- [ ] Pass native attempts into readiness summarization, render separate status
+- [x] Verify RED.
+- [x] Pass native attempts into readiness summarization, render separate status
   rows/evidence gaps, and export the new dimensions.
-- [ ] Run focused readiness/project/App tests and `pnpm build`.
+- [x] Run focused readiness/project/App tests and `pnpm build`.
 - [ ] Update handoff documents and commit `feat: expose native capability evidence`.
 
 ### Task 3: Full Verification and Handoff
