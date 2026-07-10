@@ -7,10 +7,10 @@ SQLite-backed RoadWatcher project folder.
 
 ### Task 1: Rust Store and Schema
 
-- [ ] Add failing Rust tests for input validation, sanitized UUID layout,
+- [x] Add failing Rust tests for input validation, sanitized UUID layout,
   required directories, SQLite metadata/schema version, and foundational tables.
-- [ ] Add cached `rusqlite` bundled dependency and verify RED/compile baseline.
-- [ ] Implement `project_store.rs` with typed request/response/error models,
+- [x] Add cached `rusqlite` bundled dependency and verify RED/compile baseline.
+- [x] Implement `project_store.rs` with typed request/response/error models,
   cleanup-on-failure, and schema initialization.
 - [ ] Run `cargo test --offline --lib` and commit `feat: create SQLite project store`.
 

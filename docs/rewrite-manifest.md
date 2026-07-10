@@ -50,6 +50,11 @@ Build a Windows-first, local-first evidence workstation:
   with required/optional semantics, UI rows, evidence gaps, and exported
   JSON/Markdown. Native-ready now requires successful invoked evidence for
   project, media, GPX, GIS, and FFmpeg paths.
+- Added a tested Rust SQLite project-store foundation with safe name slugging,
+  UUID identity, partial-failure cleanup, durable folder layout, schema version,
+  project metadata, and foundational media/job/timeline/geo/audit tables.
+- Added project-bound PNG/ICO RoadWatcher icon assets so Tauri's Windows resource
+  generation can proceed; generated `src-tauri/gen/` schemas remain ignored.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
 - Added a dense evidence workstation UI that renders and builds.
 - Added editable inspector state, browser-local draft save/restore/clear

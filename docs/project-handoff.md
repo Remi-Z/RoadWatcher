@@ -27,6 +27,12 @@ The runnable app today is the React/Vite evidence workstation:
   the readiness panel and evidence packet. Project/media/GPX/GIS/FFmpeg commands
   are required; optional CV evidence does not block the native workflow, while a
   latest failed required attempt does.
+- The pure Rust project store now creates a sanitized UUID project directory,
+  `project.sqlite`, `assets/`, `proxies/`, `exports/`, and `logs/`, and initializes
+  schema-version/project metadata plus foundational tables. Offline Rust tests
+  pass; the `project_create` Tauri wrapper is not wired yet.
+- Added final RoadWatcher PNG/ICO app icon assets, removing Tauri's missing
+  Windows resource blocker; generated Tauri schemas are ignored.
 - `src/features/workstation/workstationState.ts` now defines the pure atomic
   workstation boundary and tested fallback/snapshot initialization plus complete
   project replace/reset transitions. It also owns tested inspector, timeline,

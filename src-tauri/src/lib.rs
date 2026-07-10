@@ -1,6 +1,8 @@
 use serde::Serialize;
 use uuid::Uuid;
 
+mod project_store;
+
 #[derive(Serialize)]
 struct ProjectSlot {
     id: String,

@@ -128,7 +128,9 @@ unavailable, blocked, or unverified. Native command attempt history now produces
 per-capability verified/failed/fallback/unverified evidence; all required command
 paths must be invoked successfully before native-ready is claimed. The next
 module is the first real native capability: Tauri `project_create` backed by a
-SQLite project folder and durable project metadata.
+SQLite project folder and durable project metadata. Its pure Rust store now
+creates the UUID layout, required directories, schema version, project metadata,
+and foundational tables under test; the Tauri command wrapper is next.
 
 ## Slots You Need To Fill
 
