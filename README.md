@@ -121,7 +121,8 @@ replace the remaining cross-coupled `App` setters with reducer-level state
 transitions before native persistence begins. Its pure state boundary now covers
 fallback/snapshot initialization plus complete project replace/reset; edit and
 timeline transitions, native-attempt capping, and paired export invalidation are
-also implemented. Atomic import actions and App wiring are next.
+also implemented. Media, GPX, and GIS imports now have atomic reducer actions
+that derive against current state; App wiring is the remaining integration step.
 
 ## Slots You Need To Fill
 

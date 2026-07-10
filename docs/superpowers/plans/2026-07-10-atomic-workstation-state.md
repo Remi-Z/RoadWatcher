@@ -51,10 +51,10 @@ outside pure transitions.
 - Modify: `src/features/workstation/workstationState.ts`
 - Modify: `src/features/workstation/workstationState.test.ts`
 
-- [ ] Write failing tests proving media assets/clips/jobs/attempts/selection update
+- [x] Write failing tests proving media assets/clips/jobs/attempts/selection update
   together and GPX/GIS projection uses the current reducer state.
-- [ ] Verify RED.
-- [ ] Implement `import_media`, `import_route`, and
+- [x] Verify RED.
+- [x] Implement `import_media`, `import_route`, and
   `import_official_features` actions with export invalidation.
 - [ ] Verify focused GREEN and commit `feat: apply workstation imports atomically`.
 

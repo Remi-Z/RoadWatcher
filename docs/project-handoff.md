@@ -24,7 +24,8 @@ The runnable app today is the React/Vite evidence workstation:
   workstation boundary and tested fallback/snapshot initialization plus complete
   project replace/reset transitions. It also owns tested inspector, timeline,
   setup-slot, projected-review, native-attempt, and paired export transitions;
-  atomic imports and App integration remain next.
+  media/GPX/GIS import actions now update all related records together and
+  project against current reducer state. App integration remains next.
 - Video preview panel with transport controls and referenced-media posture.
 - Route/map review panel showing raw GPX, matched route, and projected official
   feature markers.

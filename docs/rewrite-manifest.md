@@ -36,6 +36,9 @@ Build a Windows-first, local-first evidence workstation:
 - Added pure workstation edit transitions for incident and setup fields, clip
   selection/reorder/trim/split/duplicate/remove, projected-feature review,
   capped native attempts, and matching export-pair invalidation.
+- Added atomic media import transitions that derive assets, clips, proxy jobs,
+  audit attempts, and selection together, plus GPX/GIS transitions that create
+  jobs and recompute projections from current reducer state.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
 - Added a dense evidence workstation UI that renders and builds.
 - Added editable inspector state, browser-local draft save/restore/clear

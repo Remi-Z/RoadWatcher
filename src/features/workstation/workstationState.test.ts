@@ -10,6 +10,7 @@ import {
   projectedFeatures,
   routePoints
 } from "../../data/demoProject";
+import { projectFeaturesOntoRoute } from "../geo/projection";
 import { buildEvidencePacket, createProjectSnapshot } from "../project/projectState";
 import {
   createInitialWorkstationState,
@@ -215,6 +216,79 @@ describe("workstation state", () => {
     expect(state.nativeCommandAttempts[0].id).toBe("attempt-8");
     expect(state.nativeCommandAttempts.at(-1)?.id).toBe("attempt-1");
   });
+
+  it("imports media, derived clips/jobs, attempts, and selection in one transition", () => {
+    const seed = createSeed(FIRST_PROJECT_ID);
+    const snapshot = createProjectSnapshot(seed);
+    const exported = workstationReducer(createInitialWorkstationState({ seed }), {
+      type: "set_export",
+      snapshot,
+      packet: buildEvidencePacket(snapshot)
+    });
+
+    const next = workstationReducer(exported, {
+      type: "import_media",
+      files: [
+        { name: "new-front.mp4", size: 1200, type: "video/mp4", lastModified: 1_788_000_000_000 },
+        { name: "scene.jpg", size: 300, type: "image/jpeg", lastModified: 1_788_000_000_000 }
+      ],
+      operationId: "batch-7",
+      requestedAtIso: "2026-07-10T12:00:00.000Z"
+    });
+
+    const importedVideo = next.media.find((asset) => asset.fileName === "new-front.mp4");
+    const importedClip = next.clips.find((clip) => clip.mediaId === importedVideo?.id);
+    expect(next.media).toHaveLength(seed.media.length + 2);
+    expect(next.clips).toHaveLength(seed.clips.length + 1);
+    expect(next.jobs).toHaveLength(seed.jobs.length + 1);
+    expect(next.nativeCommandAttempts.slice(0, 3).map((attempt) => attempt.command)).toEqual([
+      "media_import",
+      "ffmpeg_proxy",
+      "media_import"
+    ]);
+    expect(next.selectedClipId).toBe(importedClip?.id);
+    expect(next.latestPacket).toBeNull();
+    expect(next.latestProjectSnapshot).toBeNull();
+  });
+
+  it("projects GPX and GIS imports against the current counterpart state", () => {
+    const state = createInitialWorkstationState({ seed: createSeed(FIRST_PROJECT_ID) });
+    const importedRoute = routePoints.map((point) => ({ ...point, timeSeconds: point.timeSeconds + 10 }));
+    const routeAttempt = nativeAttempt("route-attempt", "gpx_match");
+    const withRoute = workstationReducer(state, {
+      type: "import_route",
+      fileName: "updated.gpx",
+      route: importedRoute,
+      attempt: routeAttempt
+    });
+
+    expect(withRoute.route).toEqual(importedRoute);
+    expect(withRoute.projectedFeatures).toEqual(projectFeaturesOntoRoute(importedRoute, state.officialFeatures, 90));
+    expect(withRoute.jobs.at(-1)).toMatchObject({ type: "valhalla", label: "Valhalla match: updated.gpx" });
+    expect(withRoute.nativeCommandAttempts[0]).toBe(routeAttempt);
+
+    const importedFeature = {
+      id: "imported-crosswalk",
+      kind: "crosswalk" as const,
+      latitude: routePoints[1].latitude,
+      longitude: routePoints[1].longitude,
+      sourceLayer: "current-crosswalks.geojson"
+    };
+    const gisAttempt = nativeAttempt("gis-attempt", "gis_project");
+    const withGis = workstationReducer(withRoute, {
+      type: "import_official_features",
+      fileName: "current-crosswalks.geojson",
+      features: [importedFeature],
+      attempt: gisAttempt
+    });
+
+    expect(withGis.officialFeatures.at(-1)).toEqual(importedFeature);
+    expect(withGis.projectedFeatures).toEqual(
+      projectFeaturesOntoRoute(withRoute.route, [...withRoute.officialFeatures, importedFeature], 90)
+    );
+    expect(withGis.jobs.at(-1)).toMatchObject({ type: "gis", label: "Official GIS projection: current-crosswalks.geojson" });
+    expect(withGis.nativeCommandAttempts[0]).toBe(gisAttempt);
+  });
 });
 
 function createSeed(projectId: ProjectId): WorkstationSeed {
@@ -230,5 +304,16 @@ function createSeed(projectId: ProjectId): WorkstationSeed {
     projectId,
     projectedFeatures,
     route: routePoints
+  };
+}
+
+function nativeAttempt(id: string, command: "gpx_match" | "gis_project") {
+  return {
+    id,
+    command,
+    status: "browser_fallback" as const,
+    requestedAtIso: "2026-07-10T12:00:00.000Z",
+    requestSummary: id,
+    resultSummary: "fallback"
   };
 }

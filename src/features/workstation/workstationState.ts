@@ -5,7 +5,16 @@ import type {
   ProjectedRoadFeature,
   TimedRoutePoint
 } from "../geo/projection";
+import { normalizeProjectedFeatureReview, projectFeaturesOntoRoute } from "../geo/projection";
+import { createGisProjectionJob } from "../geo/geoJsonImport";
+import { createValhallaMatchJob } from "../geo/gpxImport";
 import type { WorkstationJob } from "../jobs/jobModel";
+import {
+  createImportedMediaAssets,
+  createProxyJobsForImportedMedia,
+  createTimelineClipsForImportedMedia,
+  type BrowserMediaFile
+} from "../media/mediaImport";
 import type {
   EvidencePacket,
   NativeCommandAttempt,
@@ -79,7 +88,25 @@ export type WorkstationAction =
       field: keyof Pick<ProjectedRoadFeature, "reviewStatus" | "reviewNote">;
       value: string;
     }
-  | { type: "record_native_attempt"; attempt: NativeCommandAttempt };
+  | { type: "record_native_attempt"; attempt: NativeCommandAttempt }
+  | {
+      type: "import_media";
+      files: BrowserMediaFile[];
+      operationId: string;
+      requestedAtIso: string;
+    }
+  | {
+      type: "import_route";
+      fileName: string;
+      route: TimedRoutePoint[];
+      attempt: NativeCommandAttempt;
+    }
+  | {
+      type: "import_official_features";
+      fileName: string;
+      features: OfficialRoadFeature[];
+      attempt: NativeCommandAttempt;
+    };
 
 export function createInitialWorkstationState({ seed, snapshot }: WorkstationInitialization): WorkstationState {
   if (!snapshot) {
@@ -197,6 +224,43 @@ export function workstationReducer(state: WorkstationState, action: WorkstationA
       return withInvalidatedExport(state, {
         nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
       });
+    case "import_media": {
+      const importedAssets = createImportedMediaAssets(action.files, state.media.length);
+      const importedClips = createTimelineClipsForImportedMedia(importedAssets, state.clips);
+      const attempts = importedAssets.flatMap((asset, index) => [
+        createBrowserMediaImportAttempt(asset, action.requestedAtIso, action.operationId, index),
+        ...(isVideoMediaAsset(asset)
+          ? [createBrowserFfmpegProxyAttempt(asset, action.requestedAtIso, action.operationId, index)]
+          : [])
+      ]);
+      return withInvalidatedExport(state, {
+        media: [...state.media, ...importedAssets],
+        clips: [...state.clips, ...importedClips],
+        jobs: [...state.jobs, ...createProxyJobsForImportedMedia(importedAssets)],
+        nativeCommandAttempts: [...attempts, ...state.nativeCommandAttempts].slice(0, 8),
+        selectedClipId: importedClips[0]?.id ?? state.selectedClipId
+      });
+    }
+    case "import_route":
+      return withInvalidatedExport(state, {
+        route: structuredClone(action.route),
+        projectedFeatures: projectFeaturesOntoRoute(action.route, state.officialFeatures, 90).map(
+          normalizeProjectedFeatureReview
+        ),
+        jobs: [...state.jobs, createValhallaMatchJob(action.fileName, state.jobs.length)],
+        nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+      });
+    case "import_official_features": {
+      const officialFeatures = [...state.officialFeatures, ...structuredClone(action.features)];
+      return withInvalidatedExport(state, {
+        officialFeatures,
+        projectedFeatures: projectFeaturesOntoRoute(state.route, officialFeatures, 90).map(
+          normalizeProjectedFeatureReview
+        ),
+        jobs: [...state.jobs, createGisProjectionJob(action.fileName, action.features.length, state.jobs.length)],
+        nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+      });
+    }
   }
 }
 
@@ -249,4 +313,40 @@ function formatSeconds(seconds: number): string {
     .toString()
     .padStart(2, "0");
   return `${minutes}:${remainder}`;
+}
+
+function createBrowserMediaImportAttempt(
+  asset: MediaAsset,
+  requestedAtIso: string,
+  operationId: string,
+  index: number
+): NativeCommandAttempt {
+  return {
+    id: `media-import-${asset.id}-${operationId}-${index}`,
+    command: "media_import",
+    status: "browser_fallback",
+    requestedAtIso,
+    requestSummary: `sourcePath: ${asset.originalPath}`,
+    resultSummary: "Tauri media file picker and native path import pending; browser reference retained."
+  };
+}
+
+function createBrowserFfmpegProxyAttempt(
+  asset: MediaAsset,
+  requestedAtIso: string,
+  operationId: string,
+  index: number
+): NativeCommandAttempt {
+  return {
+    id: `ffmpeg-proxy-${asset.id}-${operationId}-${index}`,
+    command: "ffmpeg_proxy",
+    status: "browser_fallback",
+    requestedAtIso,
+    requestSummary: `mediaId: ${asset.id}; profile: review-proxy`,
+    resultSummary: "native FFmpeg proxy and thumbnail generation pending; browser preview uses referenced media metadata."
+  };
+}
+
+function isVideoMediaAsset(asset: MediaAsset): boolean {
+  return asset.proxyStatus === "queued" || /\.(mp4|mov|m4v|mkv|avi|webm)$/i.test(asset.fileName);
 }
