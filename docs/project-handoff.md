@@ -20,6 +20,10 @@ The runnable app today is the React/Vite evidence workstation:
   `unsupported`, or `unavailable`; startup keeps seeded state usable while
   showing the precise recovery condition. Schema-declaring project imports no
   longer fall through to GeoJSON parsing when snapshot validation fails.
+- `src/features/workstation/workstationState.ts` now defines the pure atomic
+  workstation boundary and tested fallback/snapshot initialization plus complete
+  project replace/reset transitions. App integration follows after edit/import
+  actions land.
 - Video preview panel with transport controls and referenced-media posture.
 - Route/map review panel showing raw GPX, matched route, and projected official
   feature markers.

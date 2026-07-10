@@ -118,7 +118,9 @@ ordinary Vite once dependencies are installed.
 
 The next internal refactor is atomic workstation state/import orchestration:
 replace the remaining cross-coupled `App` setters with reducer-level state
-transitions before native persistence begins.
+transitions before native persistence begins. Its pure state boundary now covers
+fallback/snapshot initialization plus complete project replace/reset; edit and
+import transitions are the next reducer slices.
 
 ## Slots You Need To Fill
 

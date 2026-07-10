@@ -30,6 +30,9 @@ Build a Windows-first, local-first evidence workstation:
   corrupt, unsupported, and unavailable drafts. The App reports each failure
   while retaining seeded state and keeps invalid project JSON out of GeoJSON
   fallback handling.
+- Added the first pure atomic workstation-state slice with cloned fallback or
+  validated-snapshot initialization, deterministic selection, complete project
+  replace/reset, and paired export clearing.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
 - Added a dense evidence workstation UI that renders and builds.
 - Added editable inspector state, browser-local draft save/restore/clear

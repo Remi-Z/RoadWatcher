@@ -23,13 +23,13 @@ outside pure transitions.
 - Create: `src/features/workstation/workstationState.ts`
 - Create: `src/features/workstation/workstationState.test.ts`
 
-- [ ] Write failing tests for fallback initialization, validated snapshot
+- [x] Write failing tests for fallback initialization, validated snapshot
   initialization, full `replace_project`, full `reset_project`, deterministic
   selection, and paired export clearing.
-- [ ] Verify RED with `pnpm test -- src/features/workstation/workstationState.test.ts`.
-- [ ] Implement `WorkstationState`, `WorkstationSeed`, initialization helpers,
+- [x] Verify RED with `pnpm test -- src/features/workstation/workstationState.test.ts`.
+- [x] Implement `WorkstationState`, `WorkstationSeed`, initialization helpers,
   `replace_project`, and `reset_project` as pure cloned transitions.
-- [ ] Verify focused GREEN and `pnpm build`.
+- [x] Verify focused GREEN and `pnpm build`.
 - [ ] Update handoff documents and commit `refactor: add atomic workstation state boundary`.
 
 ### Task 2: Editing, Timeline, Attempts, and Export Transitions
