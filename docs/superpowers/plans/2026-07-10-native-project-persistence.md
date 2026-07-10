@@ -26,11 +26,11 @@ active Tauri SQLite project while retaining browser fallback behavior.
 
 ### Task 3: Application Integration
 
-- [ ] Add failing App tests for create-then-save identity adoption, native save,
+- [x] Add failing App tests for create-then-save identity adoption, native save,
   startup hydration, load failure recovery, and clear-locator behavior.
-- [ ] Integrate native persistence without adding transport state to the
+- [x] Integrate native persistence without adding transport state to the
   workstation reducer.
-- [ ] Keep browser save/import behavior as fallback and record truthful native
+- [x] Keep browser save/import behavior as fallback and record truthful native
   command attempts/status messages.
 - [ ] Run focused App tests and commit `feat: persist Tauri workstation state`.
 

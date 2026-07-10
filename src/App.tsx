@@ -64,6 +64,11 @@ import {
   type ProjectRepository
 } from "./features/project/browserProjectRepository";
 import {
+  createNativeProjectLocator,
+  type NativeProjectLocator
+} from "./features/project/nativeProjectLocator";
+import { createNativeProjectRepository } from "./features/project/nativeProjectRepository";
+import {
   createNativeSetupChecklistArtifact,
   createPacketArtifacts,
   createProjectSnapshotArtifact,
@@ -96,6 +101,7 @@ import {
 } from "./features/workstation/workstationState";
 
 const defaultProjectRepository = createBrowserProjectRepository();
+const defaultNativeProjectLocator = createNativeProjectLocator();
 const NATIVE_MEDIA_SOURCE_PATH_SLOT = "slot: native media source path from file picker";
 const NATIVE_GPX_PATH_SLOT = "slot: persisted GPX path from native import";
 const NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT = "slot: official GIS source path from native import";
@@ -103,11 +109,13 @@ const REVIEW_PROXY_PROFILE = "review-proxy";
 
 export function App({
   nativeInvoke,
+  nativeProjectLocator = defaultNativeProjectLocator,
   nativeRuntimeStatus,
   projectIdFactory = createProjectId,
   projectRepository = defaultProjectRepository
 }: {
   nativeInvoke?: NativeInvoke;
+  nativeProjectLocator?: NativeProjectLocator;
   nativeRuntimeStatus?: NativeRuntimeStatus;
   projectIdFactory?: () => ProjectId;
   projectRepository?: ProjectRepository;
@@ -138,7 +146,9 @@ export function App({
   } = workstation;
   const [detectedNativeRuntimeStatus, setDetectedNativeRuntimeStatus] = useState(() => detectNativeRuntime());
   const [detectedNativeInvoke, setDetectedNativeInvoke] = useState<NativeInvoke | undefined>();
+  const [activeNativeSqlitePath, setActiveNativeSqlitePath] = useState(() => nativeProjectLocator.load());
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
+  const nativeHydrationPathRef = useRef<string | null>(null);
   const firstSlotReferenceInputRef = useRef<HTMLInputElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -230,6 +240,56 @@ export function App({
       active = false;
     };
   }, [nativeRuntimeStatus]);
+
+  useEffect(() => {
+    if (
+      !activeNativeSqlitePath ||
+      nativeCommandBridge.status !== "ready" ||
+      nativeHydrationPathRef.current === activeNativeSqlitePath
+    ) {
+      return;
+    }
+
+    const sqlitePath = activeNativeSqlitePath;
+    nativeHydrationPathRef.current = sqlitePath;
+    let active = true;
+    const requestedAtIso = new Date().toISOString();
+    void createNativeProjectRepository(nativeCommandBridge, sqlitePath)
+      .load()
+      .then((result) => {
+        if (!active) {
+          return;
+        }
+        const loadAttempt: NativeCommandAttempt = {
+          id: `project-load-${Date.now().toString(36)}`,
+          command: "project_load",
+          status: result.status === "loaded" ? "invoked" : result.status === "unavailable" ? result.commandStatus : "invalid_response",
+          requestedAtIso,
+          requestSummary: `sqlitePath: ${sqlitePath}`,
+          resultSummary:
+            result.status === "loaded"
+              ? `savedAtIso: ${result.snapshot.savedAtIso}`
+              : result.status === "unavailable"
+                ? result.message
+                : result.issue.message
+        };
+        if (result.status === "loaded") {
+          dispatchWorkstation({ type: "replace_project", snapshot: result.snapshot, fallbackComponentSlots: missingSlots });
+          dispatchWorkstation({ type: "record_native_attempt", attempt: loadAttempt });
+          projectRepository.save(result.snapshot);
+          setAppStatus(`Restored native SQLite project: ${sqlitePath}`);
+          return;
+        }
+
+        const detail = result.status === "unavailable" ? result.message : result.issue.message;
+        dispatchWorkstation({ type: "record_native_attempt", attempt: loadAttempt });
+        setAppStatus(`Could not restore native SQLite project: ${detail}`);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeNativeSqlitePath, nativeCommandBridge, projectRepository]);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -329,8 +389,31 @@ export function App({
     invalidateLatestExport();
   }
 
-  function handleSaveDraft() {
+  async function handleSaveDraft() {
     const snapshot = createProjectSnapshot(currentSnapshotInput);
+    if (activeNativeSqlitePath && nativeCommandBridge.status === "ready") {
+      const requestedAtIso = new Date().toISOString();
+      const result = await createNativeProjectRepository(nativeCommandBridge, activeNativeSqlitePath).save(snapshot);
+      dispatchWorkstation({
+        type: "record_native_attempt",
+        attempt: {
+          id: `project-save-${Date.now().toString(36)}`,
+          command: "project_save",
+          status: result.status === "saved" ? "invoked" : result.commandStatus,
+          requestedAtIso,
+          requestSummary: `sqlitePath: ${activeNativeSqlitePath}`,
+          resultSummary: result.status === "saved" ? `savedAtIso: ${result.savedAtIso}` : result.message
+        }
+      });
+      const browserStored = projectRepository.save(snapshot);
+      setAppStatus(
+        result.status === "saved"
+          ? `Draft saved to native SQLite at ${new Date(snapshot.savedAtIso).toLocaleTimeString()}`
+          : `Native save failed; draft ${browserStored ? "saved to browser fallback" : "kept in this session"}: ${result.message}`
+      );
+      return;
+    }
+
     const stored = projectRepository.save(snapshot);
     setAppStatus(
       stored
@@ -348,6 +431,9 @@ export function App({
 
   function handleClearLocalDraft() {
     const cleared = projectRepository.clear();
+    nativeProjectLocator.clear();
+    setActiveNativeSqlitePath(null);
+    nativeHydrationPathRef.current = null;
     dispatchWorkstation({ type: "reset_project", seed: createWorkstationSeed(projectIdFactory()) });
     setAppStatus(
       cleared
@@ -380,7 +466,38 @@ export function App({
     invalidateLatestExport();
 
     if (result.ok) {
-      setAppStatus(`Native project store ready: ${nativeProjectDirectory(result.response)}`);
+      const project = nativeProjectCreateResponse(result.response);
+      if (!project) {
+        setAppStatus("project_create invalid_response: Native project response fields have invalid types.");
+        return;
+      }
+      const snapshot = createProjectSnapshot({
+        ...currentSnapshotInput,
+        projectId: project.projectId as ProjectId,
+        nativeCommandAttempts: [...nativeCommandAttempts, attempt]
+      });
+      const saved = await createNativeProjectRepository(nativeCommandBridge, project.sqlitePath).save(snapshot);
+      const saveAttempt: NativeCommandAttempt = {
+        id: `project-save-${Date.now().toString(36)}`,
+        command: "project_save",
+        status: saved.status === "saved" ? "invoked" : saved.commandStatus,
+        requestedAtIso: new Date().toISOString(),
+        requestSummary: `sqlitePath: ${project.sqlitePath}`,
+        resultSummary: saved.status === "saved" ? `savedAtIso: ${saved.savedAtIso}` : saved.message
+      };
+      if (saved.status !== "saved") {
+        dispatchWorkstation({ type: "record_native_attempt", attempt: saveAttempt });
+        setAppStatus(`Native project was created, but its initial snapshot could not be saved: ${saved.message}`);
+        return;
+      }
+
+      nativeHydrationPathRef.current = project.sqlitePath;
+      nativeProjectLocator.save(project.sqlitePath);
+      setActiveNativeSqlitePath(project.sqlitePath);
+      dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: missingSlots });
+      dispatchWorkstation({ type: "record_native_attempt", attempt: saveAttempt });
+      projectRepository.save(snapshot);
+      setAppStatus(`Native project store ready: ${project.projectDirectory}`);
       return;
     }
 
@@ -611,6 +728,30 @@ export function App({
       const snapshotResult = tryParseSnapshot(text);
       if (snapshotResult.ok) {
         applyProjectSnapshot(snapshotResult.snapshot);
+        if (activeNativeSqlitePath && nativeCommandBridge.status === "ready") {
+          const requestedAtIso = new Date().toISOString();
+          const saved = await createNativeProjectRepository(nativeCommandBridge, activeNativeSqlitePath).save(
+            snapshotResult.snapshot
+          );
+          dispatchWorkstation({
+            type: "record_native_attempt",
+            attempt: {
+              id: `project-save-${Date.now().toString(36)}`,
+              command: "project_save",
+              status: saved.status === "saved" ? "invoked" : saved.commandStatus,
+              requestedAtIso,
+              requestSummary: `sqlitePath: ${activeNativeSqlitePath}; import: ${file.name}`,
+              resultSummary: saved.status === "saved" ? `savedAtIso: ${saved.savedAtIso}` : saved.message
+            }
+          });
+          projectRepository.save(snapshotResult.snapshot);
+          setAppStatus(
+            saved.status === "saved"
+              ? `Imported RoadWatcher project from ${file.name} into native SQLite`
+              : `Imported RoadWatcher project from ${file.name}; native save failed: ${saved.message}`
+          );
+          continue;
+        }
         projectRepository.save(snapshotResult.snapshot);
         setAppStatus(`Imported RoadWatcher project from ${file.name}`);
         continue;
@@ -1627,6 +1768,20 @@ function nativeProjectDirectory(response: unknown): string {
   }
 
   return "(native project directory unavailable)";
+}
+
+function nativeProjectCreateResponse(
+  response: unknown
+): { projectId: string; projectDirectory: string; sqlitePath: string } | null {
+  if (!response || typeof response !== "object") {
+    return null;
+  }
+  const value = response as Record<string, unknown>;
+  return typeof value.projectId === "string" &&
+    typeof value.projectDirectory === "string" &&
+    typeof value.sqlitePath === "string"
+    ? { projectId: value.projectId, projectDirectory: value.projectDirectory, sqlitePath: value.sqlitePath }
+    : null;
 }
 
 function mediaImportMediaId(response: unknown): string {

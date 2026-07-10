@@ -201,7 +201,7 @@ describe("project state", () => {
 });
 
 function requiredNativeCommandAttempts() {
-  return (["project_create", "media_import", "gpx_match", "gis_project", "ffmpeg_proxy"] as const).map((command, index) => ({
+  return (["project_create", "project_save", "project_load", "media_import", "gpx_match", "gis_project", "ffmpeg_proxy"] as const).map((command, index) => ({
     id: `native-${command}`,
     command,
     status: "invoked" as const,

@@ -15,6 +15,7 @@ import { createProjectSnapshot, parseSnapshot, serializeSnapshot, type ProjectSn
 import { detectNativeRuntime } from "./features/native/runtimeEnvironment";
 import type { NativeInvoke } from "./features/native/nativeCommandBridge";
 import type { ProjectId } from "./domain/projectModels";
+import type { NativeProjectLocator } from "./features/project/nativeProjectLocator";
 
 const TEST_PROJECT_ID = "local-app-test-project" as ProjectId;
 
@@ -224,6 +225,16 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByLabelText("Narrative")).toHaveValue("Evidence note draft stays neutral until manual review.");
   });
 
+  it("clears the native last-project locator without deleting the on-disk project", () => {
+    const locator = createMemoryNativeProjectLocator("C:/RoadWatcher/native/project.sqlite");
+    render(<App nativeProjectLocator={locator} projectRepository={createMemoryProjectRepository()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear local draft" }));
+
+    expect(locator.path).toBeNull();
+    expect(locator.clearCount).toBe(1);
+  });
+
   it("keeps component slots visible when restoring an older snapshot without slot records", () => {
     const snapshot = createProjectSnapshot({
       clips: initialClips,
@@ -413,13 +424,18 @@ describe("RoadWatcher workstation", () => {
   });
 
   it("probes the native project store through the command bridge when invoke is available", async () => {
-    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
-      projectId: "native-roadwatcher",
-      projectDirectory: "C:/RoadWatcher/native-roadwatcher",
-      sqlitePath: "C:/RoadWatcher/native-roadwatcher/project.sqlite"
-    });
+    const nativeInvoke = createNativePersistenceInvoke();
+    const locator = createMemoryNativeProjectLocator();
+    const repository = createMemoryProjectRepository();
 
-    render(<App nativeInvoke={nativeInvoke} nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })} />);
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeProjectLocator={locator}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={repository}
+      />
+    );
 
     fireEvent.change(screen.getByLabelText("Native project root"), { target: { value: "C:/RoadWatcher/native-projects" } });
     fireEvent.click(screen.getByRole("button", { name: "Probe native project store" }));
@@ -430,8 +446,91 @@ describe("RoadWatcher workstation", () => {
       projectName: "RoadWatcher local review",
       rootDirectory: "C:/RoadWatcher/native-projects"
     });
+    expect(nativeInvoke).toHaveBeenCalledWith(
+      "project_save",
+      expect.objectContaining({
+        sqlitePath: "C:/RoadWatcher/native-roadwatcher/project.sqlite",
+        snapshotJson: expect.stringContaining('"projectId": "native-roadwatcher"')
+      })
+    );
+    expect(locator.path).toBe("C:/RoadWatcher/native-roadwatcher/project.sqlite");
+    expect(repository.snapshot?.projectId).toBe("native-roadwatcher");
     expect(screen.getByText("Native command attempts")).toBeInTheDocument();
     expect(screen.getByText(/project_create: invoked/)).toBeInTheDocument();
+  });
+
+  it("hydrates the last native SQLite project after the Tauri bridge is ready", async () => {
+    const nativeSnapshot = createProjectSnapshot({
+      clips: initialClips,
+      incident: { ...incidentDraft, plate: "NATIVE77", narrative: "Restored from SQLite." },
+      jobs: initialJobs,
+      media: mediaAssets,
+      projectId: "native-hydrated" as ProjectId,
+      projectedFeatures
+    });
+    const sqlitePath = "C:/RoadWatcher/native-hydrated/project.sqlite";
+    const nativeInvoke = createNativePersistenceInvoke({ loadSnapshot: nativeSnapshot, sqlitePath });
+
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+
+    expect(await screen.findByDisplayValue("NATIVE77")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Restored native SQLite project");
+    expect(nativeInvoke).toHaveBeenCalledWith("project_load", { sqlitePath });
+  });
+
+  it("keeps seeded state when native startup hydration fails", async () => {
+    const sqlitePath = "C:/RoadWatcher/missing/project.sqlite";
+    const nativeInvoke = vi.fn<NativeInvoke>().mockRejectedValue(new Error("project file is unavailable"));
+
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Could not restore native SQLite project");
+    expect(screen.getByLabelText("Plate")).toHaveValue("manual entry needed");
+  });
+
+  it("saves subsequent drafts to the active native SQLite project", async () => {
+    const nativeSnapshot = createProjectSnapshot({
+      clips: initialClips,
+      incident: incidentDraft,
+      jobs: initialJobs,
+      media: mediaAssets,
+      projectId: "native-save" as ProjectId,
+      projectedFeatures
+    });
+    const sqlitePath = "C:/RoadWatcher/native-save/project.sqlite";
+    const nativeInvoke = createNativePersistenceInvoke({ loadSnapshot: nativeSnapshot, sqlitePath });
+
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+    await screen.findByText(/Restored native SQLite project/);
+    fireEvent.change(screen.getByLabelText("Plate"), { target: { value: "SQLITE88" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Draft saved to native SQLite");
+    expect(nativeInvoke).toHaveBeenLastCalledWith(
+      "project_save",
+      expect.objectContaining({ sqlitePath, snapshotJson: expect.stringContaining('"plate": "SQLITE88"') })
+    );
   });
 
   it("records failed native project-store probes without crashing the app", async () => {
@@ -466,14 +565,11 @@ describe("RoadWatcher workstation", () => {
 
   it("persists native project-store probe attempts in drafts and export packets", async () => {
     const repository = createMemoryProjectRepository();
-    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
-      projectId: "native-roadwatcher",
-      projectDirectory: "D:/RoadWatcherProjects/native-roadwatcher",
-      sqlitePath: "D:/RoadWatcherProjects/native-roadwatcher/project.sqlite"
-    });
+    const nativeInvoke = createNativePersistenceInvoke({ root: "D:/RoadWatcherProjects" });
     render(
       <App
         nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator()}
         nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
         projectRepository={repository}
       />
@@ -481,11 +577,13 @@ describe("RoadWatcher workstation", () => {
 
     fireEvent.change(screen.getByLabelText("Native project root"), { target: { value: "D:/RoadWatcherProjects" } });
     fireEvent.click(screen.getByRole("button", { name: "Probe native project store" }));
-    expect(await screen.findByText(/project_create: invoked/)).toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native project store ready");
+    expect(screen.getByText(/project_create: invoked/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Draft saved to native SQLite");
 
-    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
+    expect(repository.snapshot?.nativeCommandAttempts.find((attempt) => attempt.command === "project_create")).toMatchObject({
       command: "project_create",
       status: "invoked",
       requestSummary: "rootDirectory: D:/RoadWatcherProjects"
@@ -1107,4 +1205,60 @@ function createMemoryProjectRepository(
       return true;
     }
   };
+}
+
+function createMemoryNativeProjectLocator(
+  initialPath: string | null = null
+): NativeProjectLocator & { path: string | null; clearCount: number } {
+  return {
+    path: initialPath,
+    clearCount: 0,
+    load() {
+      return this.path;
+    },
+    save(sqlitePath) {
+      this.path = sqlitePath;
+      return true;
+    },
+    clear() {
+      this.path = null;
+      this.clearCount += 1;
+      return true;
+    }
+  };
+}
+
+function createNativePersistenceInvoke(options: {
+  loadSnapshot?: ProjectSnapshot;
+  root?: string;
+  sqlitePath?: string;
+} = {}): ReturnType<typeof vi.fn<NativeInvoke>> {
+  const projectId = options.loadSnapshot?.projectId ?? "native-roadwatcher";
+  const root = options.root ?? "C:/RoadWatcher";
+  const sqlitePath = options.sqlitePath ?? `${root}/native-roadwatcher/project.sqlite`;
+  return vi.fn<NativeInvoke>().mockImplementation(async (command, request) => {
+    if (command === "project_create") {
+      return { projectId, projectDirectory: sqlitePath.replace(/\/project\.sqlite$/, ""), sqlitePath };
+    }
+    if (command === "project_load") {
+      if (!options.loadSnapshot) {
+        throw new Error("no saved snapshot");
+      }
+      return {
+        projectId: options.loadSnapshot.projectId,
+        schemaVersion: options.loadSnapshot.schemaVersion,
+        savedAtIso: options.loadSnapshot.savedAtIso,
+        snapshotJson: serializeSnapshot(options.loadSnapshot)
+      };
+    }
+    if (command === "project_save") {
+      const snapshot = parseSnapshot(String(request.snapshotJson));
+      return {
+        projectId: snapshot.projectId,
+        schemaVersion: snapshot.schemaVersion,
+        savedAtIso: snapshot.savedAtIso
+      };
+    }
+    throw new Error(`Unexpected command ${command}`);
+  });
 }

@@ -8,7 +8,7 @@ describe("native runtime environment", () => {
     expect(runtime.mode).toBe("browser_fallback");
     expect(runtime.tauriDetected).toBe(false);
     expect(runtime.summary).toContain("Tauri runtime not detected");
-    expect(runtime.commandSlots.find((slot) => slot.id === "project-store")).toMatchObject({
+    expect(runtime.commandSlots.find((slot) => slot.id === "project-store-create")).toMatchObject({
       state: "browser_fallback",
       tauriCommand: "project_create",
       fallback: "browser-local project snapshots"
