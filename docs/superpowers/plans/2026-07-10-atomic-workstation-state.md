@@ -30,7 +30,7 @@ outside pure transitions.
 - [x] Implement `WorkstationState`, `WorkstationSeed`, initialization helpers,
   `replace_project`, and `reset_project` as pure cloned transitions.
 - [x] Verify focused GREEN and `pnpm build`.
-- [ ] Update handoff documents and commit `refactor: add atomic workstation state boundary`.
+- [x] Update handoff documents and commit `refactor: add atomic workstation state boundary`.
 
 ### Task 2: Editing, Timeline, Attempts, and Export Transitions
 
