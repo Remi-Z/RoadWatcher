@@ -81,4 +81,4 @@ outside pure transitions.
 - [x] Run `git diff --check` and confirm no module files remain dirty.
 - [x] Record the reducer boundary and the next readiness module in README,
   `docs/project-handoff.md`, and `docs/rewrite-manifest.md`.
-- [ ] Mark only completed checkboxes and commit `docs: hand off atomic workstation state`.
+- [x] Mark only completed checkboxes and commit `docs: hand off atomic workstation state`.
