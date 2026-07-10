@@ -358,7 +358,7 @@ git commit -m "feat: validate and migrate project snapshots"
 - Changes: `ProjectRepository.load()` returns `ProjectLoadResult`.
 - Produces: missing, loaded, corrupt, unsupported, and unavailable outcomes.
 
-- [ ] **Step 1: Write failing repository result tests**
+- [x] **Step 1: Write failing repository result tests**
 
 ```ts
 it("distinguishes missing, corrupt, unsupported, and unavailable project data", () => {
@@ -376,13 +376,13 @@ it("distinguishes missing, corrupt, unsupported, and unavailable project data", 
 });
 ```
 
-- [ ] **Step 2: Run repository tests and verify RED**
+- [x] **Step 2: Run repository tests and verify RED**
 
 Run: `pnpm test -- src/features/project/browserProjectRepository.test.ts`
 
 Expected: FAIL because `load()` currently collapses every outcome to a snapshot or null.
 
-- [ ] **Step 3: Implement repository load outcomes**
+- [x] **Step 3: Implement repository load outcomes**
 
 ```ts
 export type ProjectLoadResult =
@@ -395,7 +395,7 @@ export type ProjectLoadResult =
 
 `load()` returns `unavailable` when storage is absent or throws, `missing` when the key is empty, `loaded` on valid/migrated data, and maps `unsupported_version` separately from other parse issues.
 
-- [ ] **Step 4: Update App initialization and import feedback**
+- [x] **Step 4: Update App initialization and import feedback**
 
 Resolve the initial result once:
 
@@ -406,7 +406,7 @@ const restoredSnapshot = initialLoad.status === "loaded" ? initialLoad.snapshot 
 
 Set status text for corrupt, unsupported, and unavailable storage without discarding the seeded fallback. Project JSON imports report their structured snapshot issue and are not retried as GeoJSON when the root declares a `schemaVersion`.
 
-- [ ] **Step 5: Run repository/App tests and verify GREEN**
+- [x] **Step 5: Run repository/App tests and verify GREEN**
 
 Run: `pnpm test -- src/features/project/browserProjectRepository.test.ts src/App.test.tsx`
 

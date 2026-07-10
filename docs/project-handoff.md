@@ -16,6 +16,10 @@ The runnable app today is the React/Vite evidence workstation:
 - Portable snapshots now emit schema version 2. A dedicated parser validates
   every persisted field and aggregate clip/media invariants, migrates version-1
   snapshots with safe defaults, and returns structured recovery issues.
+- Browser repository loads now report `loaded`, `missing`, `corrupt`,
+  `unsupported`, or `unavailable`; startup keeps seeded state usable while
+  showing the precise recovery condition. Schema-declaring project imports no
+  longer fall through to GeoJSON parsing when snapshot validation fails.
 - Video preview panel with transport controls and referenced-media posture.
 - Route/map review panel showing raw GPX, matched route, and projected official
   feature markers.

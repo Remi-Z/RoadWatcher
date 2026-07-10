@@ -63,7 +63,11 @@ import {
 } from "./features/geo/projection";
 import type { WorkstationJob } from "./features/jobs/jobModel";
 import { createImportedMediaAssets, createProxyJobsForImportedMedia, createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
-import { createBrowserProjectRepository, type ProjectRepository } from "./features/project/browserProjectRepository";
+import {
+  createBrowserProjectRepository,
+  type ProjectLoadResult,
+  type ProjectRepository
+} from "./features/project/browserProjectRepository";
 import {
   createNativeSetupChecklistArtifact,
   createPacketArtifacts,
@@ -75,7 +79,7 @@ import {
   createProjectId,
   createProjectSnapshot,
   DEFAULT_NATIVE_PROJECT_ROOT,
-  parseSnapshot,
+  tryParseSnapshot,
   type EvidencePacket,
   type NativeCommandAttempt,
   type ProjectSnapshot
@@ -116,7 +120,8 @@ export function App({
   projectIdFactory?: () => ProjectId;
   projectRepository?: ProjectRepository;
 }) {
-  const [restoredSnapshot] = useState(() => projectRepository.load());
+  const [initialLoad] = useState(() => projectRepository.load());
+  const restoredSnapshot = initialLoad.status === "loaded" ? initialLoad.snapshot : null;
   const [projectId, setProjectId] = useState<ProjectId>(() => restoredSnapshot?.projectId ?? projectIdFactory());
   const [detectedNativeRuntimeStatus, setDetectedNativeRuntimeStatus] = useState(() => detectNativeRuntime());
   const [detectedNativeInvoke, setDetectedNativeInvoke] = useState<NativeInvoke | undefined>();
@@ -136,9 +141,7 @@ export function App({
   const [projectedRoadFeatures, setProjectedRoadFeatures] = useState<ProjectedRoadFeature[]>(
     () => (restoredSnapshot?.projectedFeatures ?? projectedFeatures).map(normalizeProjectedFeatureReview)
   );
-  const [appStatus, setAppStatus] = useState(() =>
-    restoredSnapshot ? `Restored browser-local draft from ${new Date(restoredSnapshot.savedAtIso).toLocaleString()}` : "Ready"
-  );
+  const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
   const [latestPacket, setLatestPacket] = useState<EvidencePacket | null>(null);
   const [latestProjectSnapshot, setLatestProjectSnapshot] = useState<ProjectSnapshot | null>(null);
   const [selectedClipId, setSelectedClipId] = useState(() => (restoredSnapshot?.clips ?? initialClips)[1]?.id ?? "");
@@ -661,11 +664,16 @@ export function App({
   async function importJsonFiles(files: File[]) {
     for (const file of files) {
       const text = await readBrowserFileText(file);
-      const snapshot = tryParseProjectSnapshot(text);
-      if (snapshot) {
-        applyProjectSnapshot(snapshot);
-        projectRepository.save(snapshot);
+      const snapshotResult = tryParseSnapshot(text);
+      if (snapshotResult.ok) {
+        applyProjectSnapshot(snapshotResult.snapshot);
+        projectRepository.save(snapshotResult.snapshot);
         setAppStatus(`Imported RoadWatcher project from ${file.name}`);
+        continue;
+      }
+
+      if (declaresProjectSchemaVersion(text)) {
+        setAppStatus(`Could not import RoadWatcher project ${file.name}: ${snapshotResult.issue.message}`);
         continue;
       }
 
@@ -1606,11 +1614,29 @@ function isJsonImportFile(file: File): boolean {
   return file.type === "application/geo+json" || /\.(geojson|json)$/i.test(file.name);
 }
 
-function tryParseProjectSnapshot(text: string): ProjectSnapshot | null {
+function declaresProjectSchemaVersion(text: string): boolean {
   try {
-    return parseSnapshot(text);
+    const value: unknown = JSON.parse(text);
+    return Boolean(value && typeof value === "object" && !Array.isArray(value) && "schemaVersion" in value);
   } catch {
-    return null;
+    return false;
+  }
+}
+
+function initialProjectLoadStatus(result: ProjectLoadResult): string {
+  switch (result.status) {
+    case "loaded":
+      return `Restored browser-local draft from ${new Date(result.snapshot.savedAtIso).toLocaleString()}`;
+    case "corrupt":
+      return `Browser draft is corrupt: ${result.issue.message}`;
+    case "unsupported":
+      return `Browser draft version is unsupported: ${result.issue.message}`;
+    case "unavailable":
+      return result.message
+        ? `Browser project storage is unavailable: ${result.message}`
+        : "Browser project storage is unavailable.";
+    case "missing":
+      return "Ready";
   }
 }
 

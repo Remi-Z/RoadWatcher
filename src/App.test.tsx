@@ -10,7 +10,7 @@ import {
   projectedFeatures,
   routePoints
 } from "./data/demoProject";
-import type { ProjectRepository } from "./features/project/browserProjectRepository";
+import type { ProjectLoadResult, ProjectRepository } from "./features/project/browserProjectRepository";
 import { createProjectSnapshot, parseSnapshot, serializeSnapshot, type ProjectSnapshot } from "./features/project/projectState";
 import { detectNativeRuntime } from "./features/native/runtimeEnvironment";
 import type { NativeInvoke } from "./features/native/nativeCommandBridge";
@@ -168,6 +168,33 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Restored browser-local draft");
     expect(screen.getByLabelText("Plate")).toHaveValue("RESTORED7");
     expect(screen.getByLabelText("Narrative")).toHaveValue("Loaded from a previous review session.");
+  });
+
+  it.each([
+    [
+      {
+        status: "corrupt",
+        issue: { code: "invalid_json", path: "$", message: "Project snapshot is not valid JSON." }
+      } satisfies ProjectLoadResult,
+      "Browser draft is corrupt: Project snapshot is not valid JSON."
+    ],
+    [
+      {
+        status: "unsupported",
+        issue: { code: "unsupported_version", path: "schemaVersion", message: "Unsupported project schema version 99." }
+      } satisfies ProjectLoadResult,
+      "Browser draft version is unsupported: Unsupported project schema version 99."
+    ],
+    [
+      { status: "unavailable", message: "Browser project storage could not be read." } satisfies ProjectLoadResult,
+      "Browser project storage is unavailable: Browser project storage could not be read."
+    ]
+  ])("reports %s startup recovery without discarding the seeded fallback", (loadResult, expectedStatus) => {
+    render(<App projectRepository={createMemoryProjectRepository(null, loadResult)} />);
+
+    expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent(expectedStatus);
+    expect(screen.getByLabelText("Plate")).toHaveValue("manual entry needed");
+    expect(screen.getByLabelText("Evidence reel timeline")).toHaveTextContent("Approach");
   });
 
   it("clears a browser-local draft and returns to the seeded review state", () => {
@@ -973,6 +1000,22 @@ describe("RoadWatcher workstation", () => {
     expect(screen.queryByText("GeoJSON import needs a FeatureCollection.")).not.toBeInTheDocument();
   });
 
+  it("reports invalid schema-declaring project imports without retrying them as GeoJSON", async () => {
+    render(<App projectRepository={createMemoryProjectRepository()} />);
+    const projectFile = new File([JSON.stringify({ schemaVersion: 99 })], "future-project.json", {
+      type: "application/json"
+    });
+
+    fireEvent.change(screen.getByLabelText("Import media files"), { target: { files: [projectFile] } });
+
+    expect(
+      await screen.findByText(
+        "Could not import RoadWatcher project future-project.json: Unsupported project schema version 99."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("GeoJSON import needs a FeatureCollection.")).not.toBeInTheDocument();
+  });
+
   it("persists editable component slot references in drafts and export packets", () => {
     const repository = createMemoryProjectRepository();
     render(<App projectRepository={repository} />);
@@ -1001,13 +1044,14 @@ describe("RoadWatcher workstation", () => {
 });
 
 function createMemoryProjectRepository(
-  snapshot: ProjectSnapshot | null = null
+  snapshot: ProjectSnapshot | null = null,
+  initialLoadResult?: ProjectLoadResult
 ): ProjectRepository & { snapshot: ProjectSnapshot | null; savedSnapshots: ProjectSnapshot[] } {
   return {
     snapshot,
     savedSnapshots: [],
     load() {
-      return this.snapshot;
+      return initialLoadResult ?? (this.snapshot ? { status: "loaded", snapshot: this.snapshot } : { status: "missing" });
     },
     save(nextSnapshot) {
       this.snapshot = nextSnapshot;

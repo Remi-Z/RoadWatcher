@@ -15,7 +15,9 @@ projects receive one opaque local ID that is preserved across saves, exports,
 imports, and incident edits; clearing the workspace creates a new identity. The
 portable snapshot boundary now emits schema version 2, migrates version-1 files,
 and rejects malformed fields, duplicate IDs, dangling media references, and
-invalid clip ranges before state is restored. The
+invalid clip ranges before state is restored. Browser draft loading distinguishes
+missing, corrupt, unsupported, and unavailable storage, and surfaces recovery
+details without discarding the seeded fallback. The
 inspector is editable, including manual incident Start/End timing after clip
 selection, drafts can be saved to, restored from, and cleared from
 browser-local storage when available, imported media is referenced by filename

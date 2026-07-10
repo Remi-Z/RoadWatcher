@@ -26,6 +26,10 @@ Build a Windows-first, local-first evidence workstation:
 - Added a schema-version-2 snapshot boundary with complete nested-field and enum
   validation, version-1 migration, duplicate-ID/dangling-reference/range checks,
   and structured parse issues while preserving the existing throwing API.
+- Added structured browser repository recovery outcomes for loaded, missing,
+  corrupt, unsupported, and unavailable drafts. The App reports each failure
+  while retaining seeded state and keeps invalid project JSON out of GeoJSON
+  fallback handling.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.
 - Added a dense evidence workstation UI that renders and builds.
 - Added editable inspector state, browser-local draft save/restore/clear
