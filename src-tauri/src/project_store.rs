@@ -344,6 +344,24 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn serializes_the_registered_camel_case_response_contract() {
+        let response = super::ProjectCreateResponse {
+            project_id: "local-native".to_string(),
+            project_directory: "C:/RoadWatcher/native".to_string(),
+            sqlite_path: "C:/RoadWatcher/native/project.sqlite".to_string(),
+        };
+
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            serde_json::json!({
+                "projectId": "local-native",
+                "projectDirectory": "C:/RoadWatcher/native",
+                "sqlitePath": "C:/RoadWatcher/native/project.sqlite"
+            })
+        );
+    }
+
     struct TestRoot(PathBuf);
 
     impl TestRoot {

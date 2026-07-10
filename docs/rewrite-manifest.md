@@ -53,6 +53,10 @@ Build a Windows-first, local-first evidence workstation:
 - Added a tested Rust SQLite project-store foundation with safe name slugging,
   UUID identity, partial-failure cleanup, durable folder layout, schema version,
   project metadata, and foundational media/job/timeline/geo/audit tables.
+- Replaced the placeholder Rust manifest command with the registered
+  `project_create` Tauri handler and camel-case response DTO. Runtime command
+  slots now mark this command implemented while keeping all other handlers
+  explicitly planned.
 - Added project-bound PNG/ICO RoadWatcher icon assets so Tauri's Windows resource
   generation can proceed; generated `src-tauri/gen/` schemas remain ignored.
 - Added tested domain helpers for timeline editing, jobs, and GIS projection.

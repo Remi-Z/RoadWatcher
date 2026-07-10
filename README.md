@@ -130,7 +130,9 @@ paths must be invoked successfully before native-ready is claimed. The next
 module is the first real native capability: Tauri `project_create` backed by a
 SQLite project folder and durable project metadata. Its pure Rust store now
 creates the UUID layout, required directories, schema version, project metadata,
-and foundational tables under test; the Tauri command wrapper is next.
+and foundational tables under test. `project_create` is now registered as a real
+Tauri command with the exact camel-case TypeScript response contract; remaining
+native commands stay explicitly planned.
 
 ## Slots You Need To Fill
 

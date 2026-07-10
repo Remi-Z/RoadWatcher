@@ -1034,7 +1034,10 @@ function ReviewReadinessPanel({
           {readiness.runtime.commandSlots.map((slot) => (
             <article className="runtime-command-row" key={slot.id}>
               <div>
-                <StatusPill status={slot.state === "planned_tauri_command" ? "queued" : "optional"} label={slot.state} />
+                <StatusPill
+                  status={slot.state === "implemented_tauri_command" ? "ready" : slot.state === "planned_tauri_command" ? "queued" : "optional"}
+                  label={slot.state}
+                />
                 <strong>{slot.label}</strong>
               </div>
               <code>{slot.tauriCommand}</code>

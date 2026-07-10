@@ -16,10 +16,10 @@ SQLite-backed RoadWatcher project folder.
 
 ### Task 2: Tauri Command and DTO Contract
 
-- [ ] Register `project_create` in `lib.rs` as a thin wrapper.
-- [ ] Add/adjust TypeScript contract and bridge/App tests for exact camel-case
+- [x] Register `project_create` in `lib.rs` as a thin wrapper.
+- [x] Add/adjust TypeScript contract and bridge/App tests for exact camel-case
   request/response fields and native attempt evidence.
-- [ ] Run Rust/frontend focused tests and builds.
+- [x] Run Rust/frontend focused tests and builds.
 - [ ] Update handoff docs and commit `feat: wire native project creation`.
 
 ### Task 3: Verification and Native Repository Follow-on

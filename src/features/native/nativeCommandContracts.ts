@@ -1,9 +1,11 @@
 export type NativeCommandName = "project_create" | "media_import" | "gpx_match" | "gis_project" | "ffmpeg_proxy" | "cv_scan";
+export type NativeCommandImplementation = "implemented" | "planned";
 
 export interface NativeCommandContract {
   id: string;
   label: string;
   command: NativeCommandName;
+  implementation: NativeCommandImplementation;
   requestFields: string[];
   responseFields: string[];
   fallback: string;
@@ -15,6 +17,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "project-store",
     label: "Project store",
     command: "project_create",
+    implementation: "implemented",
     requestFields: ["projectName", "rootDirectory"],
     responseFields: ["projectId", "projectDirectory", "sqlitePath"],
     fallback: "browser-local project snapshots",
@@ -24,6 +27,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "media-import",
     label: "Media import",
     command: "media_import",
+    implementation: "planned",
     requestFields: ["projectId", "sourcePath"],
     responseFields: ["mediaId", "hash", "durationSeconds", "proxyJobId"],
     fallback: "browser file references and placeholder clips",
@@ -33,6 +37,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "gpx-match",
     label: "GPX matching",
     command: "gpx_match",
+    implementation: "planned",
     requestFields: ["projectId", "gpxPath", "matcher"],
     responseFields: ["routeId", "matchedPointCount", "projectedFeatureCount"],
     fallback: "browser GPX parsing and queued Valhalla job",
@@ -42,6 +47,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "gis-project",
     label: "Official GIS projection",
     command: "gis_project",
+    implementation: "planned",
     requestFields: ["projectId", "sourcePath", "layerKind"],
     responseFields: ["featureSourceId", "importedFeatureCount", "projectedFeatureCount"],
     fallback: "browser GeoJSON projection",
@@ -51,6 +57,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "proxy-render",
     label: "Proxy and reel render",
     command: "ffmpeg_proxy",
+    implementation: "planned",
     requestFields: ["projectId", "mediaId", "profile"],
     responseFields: ["jobId", "proxyPath", "thumbnailDirectory"],
     fallback: "browser preview and packet metadata export",
@@ -60,6 +67,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "cv-scan",
     label: "Local CV scan",
     command: "cv_scan",
+    implementation: "planned",
     requestFields: ["projectId", "mediaId", "modelPath", "labelsPath"],
     responseFields: ["jobId", "findingCount", "reviewRequired"],
     fallback: "editable reviewer notes only",

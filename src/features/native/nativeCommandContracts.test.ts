@@ -3,7 +3,7 @@ import { nativeCommandContracts } from "./nativeCommandContracts";
 import { detectNativeRuntime } from "./runtimeEnvironment";
 
 describe("native command contracts", () => {
-  it("describes the planned Tauri command DTOs needed for the native workflow", () => {
+  it("describes registered Tauri command DTOs and implementation state", () => {
     expect(nativeCommandContracts.map((contract) => contract.command)).toEqual([
       "project_create",
       "media_import",
@@ -14,11 +14,13 @@ describe("native command contracts", () => {
     ]);
 
     expect(nativeCommandContracts.find((contract) => contract.command === "project_create")).toMatchObject({
+      implementation: "implemented",
       requestFields: ["projectName", "rootDirectory"],
       responseFields: ["projectId", "projectDirectory", "sqlitePath"],
       fallback: "browser-local project snapshots"
     });
     expect(nativeCommandContracts.find((contract) => contract.command === "media_import")).toMatchObject({
+      implementation: "planned",
       requestFields: ["projectId", "sourcePath"],
       responseFields: ["mediaId", "hash", "durationSeconds", "proxyJobId"]
     });
