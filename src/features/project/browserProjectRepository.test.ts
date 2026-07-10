@@ -60,7 +60,7 @@ describe("browser project repository", () => {
       projectId: TEST_PROJECT_ID,
       projectedFeatures
     });
-    storage.setItem("roadwatcher.currentProject", serializeSnapshot({ ...snapshot, schemaVersion: 999 }));
+    storage.setItem("roadwatcher.currentProject", JSON.stringify({ ...snapshot, schemaVersion: 999 }));
 
     const repository = createBrowserProjectRepository(storage);
 

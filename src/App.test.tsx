@@ -948,7 +948,7 @@ describe("RoadWatcher workstation", () => {
     render(<App projectRepository={repository} />);
 
     const snapshot = createProjectSnapshot({
-      clips: initialClips,
+      clips: initialClips.map((clip) => ({ ...clip, mediaId: "media-restored" })),
       incident: { ...incidentDraft, plate: "PROJECT9", narrative: "Restored from a portable project snapshot." },
       jobs: initialJobs,
       media: [{ ...mediaAssets[0], id: "media-restored", fileName: "restored-front.mp4", originalPath: "browser import: restored-front.mp4" }],

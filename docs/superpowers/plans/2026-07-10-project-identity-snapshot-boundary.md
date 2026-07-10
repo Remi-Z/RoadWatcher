@@ -201,7 +201,7 @@ git commit -m "fix: preserve stable project identity"
 - Current schema version becomes literal `2`.
 - Version-1 input migrates to version 2 while retaining its project ID and filling optional arrays.
 
-- [ ] **Step 1: Write failing migration and rejection tests**
+- [x] **Step 1: Write failing migration and rejection tests**
 
 ```ts
 it("migrates a version-1 snapshot and retains its identity", () => {
@@ -241,13 +241,13 @@ it.each([
 });
 ```
 
-- [ ] **Step 2: Run parser tests and verify RED**
+- [x] **Step 2: Run parser tests and verify RED**
 
 Run: `pnpm test -- src/features/project/projectSnapshotSchema.test.ts`
 
 Expected: FAIL because the boundary module does not exist.
 
-- [ ] **Step 3: Implement structured parsing and migration**
+- [x] **Step 3: Implement structured parsing and migration**
 
 The module exposes these exact shapes:
 
@@ -329,11 +329,11 @@ function validateAggregate(snapshot: ProjectSnapshot): void {
 
 `tryParseSnapshot` catches JSON errors and thrown issues; `parseSnapshot` unwraps the result and throws `ProjectSnapshotParseError` for compatibility.
 
-- [ ] **Step 4: Route `projectState.parseSnapshot` through the new boundary and advance schema version**
+- [x] **Step 4: Route `projectState.parseSnapshot` through the new boundary and advance schema version**
 
 Re-export `parseSnapshot` and `tryParseSnapshot` from `projectState.ts` so existing imports remain stable. `createProjectSnapshot` emits `schemaVersion: 2`.
 
-- [ ] **Step 5: Run parser/project tests and verify GREEN**
+- [x] **Step 5: Run parser/project tests and verify GREEN**
 
 Run: `pnpm test -- src/features/project/projectSnapshotSchema.test.ts src/features/project/projectState.test.ts`
 

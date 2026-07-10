@@ -4,10 +4,17 @@ import type { WorkstationJob } from "../jobs/jobModel";
 import type { NativeCommandName } from "../native/nativeCommandContracts";
 import type { NativeRuntimeStatus } from "../native/runtimeEnvironment";
 import type { TimelineClip } from "../timeline/timelineModel";
+import { DEFAULT_NATIVE_PROJECT_ROOT, PROJECT_SCHEMA_VERSION } from "./projectSnapshotSchema";
 import { summarizeReviewReadiness, type ReviewReadiness } from "./reviewReadiness";
 
-export const PROJECT_SCHEMA_VERSION = 1;
-export const DEFAULT_NATIVE_PROJECT_ROOT = "slot: native project root";
+export {
+  DEFAULT_NATIVE_PROJECT_ROOT,
+  PROJECT_SCHEMA_VERSION,
+  ProjectSnapshotParseError,
+  parseSnapshot,
+  tryParseSnapshot
+} from "./projectSnapshotSchema";
+export type { SnapshotParseIssue, SnapshotParseIssueCode, SnapshotParseResult } from "./projectSnapshotSchema";
 
 export type NativeCommandAttemptStatus =
   | "invoked"
@@ -41,7 +48,7 @@ export interface ProjectSnapshotInput {
 }
 
 export interface ProjectSnapshot extends ProjectSnapshotInput {
-  schemaVersion: number;
+  schemaVersion: typeof PROJECT_SCHEMA_VERSION;
   projectId: ProjectId;
   componentSlots: ComponentSlot[];
   nativeCommandAttempts: NativeCommandAttempt[];
@@ -144,11 +151,6 @@ export function buildEvidencePacket(snapshot: ProjectSnapshot, options: Evidence
 
 export function serializeSnapshot(snapshot: ProjectSnapshot): string {
   return JSON.stringify(snapshot, null, 2);
-}
-
-export function parseSnapshot(text: string): ProjectSnapshot {
-  const parsed = JSON.parse(text) as ProjectSnapshot;
-  return restoreProjectSnapshot(parsed);
 }
 
 function buildMarkdown(packet: EvidencePacket["summaryJson"]): string {

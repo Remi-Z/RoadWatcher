@@ -13,6 +13,9 @@ The runnable app today is the React/Vite evidence workstation:
 - Project identity is generated once as an opaque local ID, survives incident
   edits/save/export/import cycles, and is regenerated only when clearing into a
   new project.
+- Portable snapshots now emit schema version 2. A dedicated parser validates
+  every persisted field and aggregate clip/media invariants, migrates version-1
+  snapshots with safe defaults, and returns structured recovery issues.
 - Video preview panel with transport controls and referenced-media posture.
 - Route/map review panel showing raw GPX, matched route, and projected official
   feature markers.
