@@ -459,14 +459,14 @@ Run: `git diff --check`
 
 Expected: exit 0; line-ending notices are acceptable, whitespace errors are not.
 
-- [ ] **Step 4: Commit module documentation**
+- [x] **Step 4: Commit module documentation**
 
 ```powershell
 git add README.md docs/project-handoff.md docs/rewrite-manifest.md docs/superpowers/plans/2026-07-10-project-identity-snapshot-boundary.md
 git commit -m "docs: hand off validated project snapshots"
 ```
 
-- [ ] **Step 5: Confirm a clean module boundary**
+- [x] **Step 5: Confirm a clean module boundary**
 
 Run: `git status --short`
 
