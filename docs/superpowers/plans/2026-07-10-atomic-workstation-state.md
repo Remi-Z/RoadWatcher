@@ -43,7 +43,7 @@ outside pure transitions.
   native-attempt capping, `set_export`, and automatic paired invalidation.
 - [x] Verify RED.
 - [x] Implement typed actions using existing pure timeline helpers.
-- [ ] Verify focused GREEN and commit `feat: add atomic workstation edit transitions`.
+- [x] Verify focused GREEN and commit `feat: add atomic workstation edit transitions`.
 
 ### Task 3: Atomic Import Transitions
 
