@@ -116,15 +116,13 @@ ordinary Vite once dependencies are installed.
 - Package manager: pnpm 11.7.0. `pnpm-workspace.yaml` explicitly approves the
   required `esbuild` postinstall for Vite.
 
-The next internal refactor is atomic workstation state/import orchestration:
-replace the remaining cross-coupled `App` setters with reducer-level state
-transitions before native persistence begins. Its pure state boundary now covers
-fallback/snapshot initialization plus complete project replace/reset; edit and
-timeline transitions, native-attempt capping, and paired export invalidation are
-also implemented. Media, GPX, and GIS imports now have atomic reducer actions
-that derive against current state. `App` now uses that single reducer for every
-project-facing value; only runtime discovery, status text, and DOM concerns
-remain local React state.
+Atomic workstation state/import orchestration is complete. Its pure reducer owns
+fallback/snapshot initialization, replace/reset, edits, timeline operations,
+native attempts, paired export invalidation, and media/GPX/GIS imports derived
+against current state. `App` now uses that single reducer for every project-facing
+value; only runtime discovery, status text, and DOM concerns remain local React
+state. The next correctness module will split browser packet-export readiness
+from true native workflow readiness.
 
 ## Slots You Need To Fill
 

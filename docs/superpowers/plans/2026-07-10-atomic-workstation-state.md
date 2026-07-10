@@ -76,9 +76,9 @@ outside pure transitions.
 
 ### Task 5: Full Verification and Handoff
 
-- [ ] Run `pnpm test`.
-- [ ] Run `pnpm build`.
-- [ ] Run `git diff --check` and confirm no module files remain dirty.
-- [ ] Record the reducer boundary and the next readiness module in README,
+- [x] Run `pnpm test`.
+- [x] Run `pnpm build`.
+- [x] Run `git diff --check` and confirm no module files remain dirty.
+- [x] Record the reducer boundary and the next readiness module in README,
   `docs/project-handoff.md`, and `docs/rewrite-manifest.md`.
 - [ ] Mark only completed checkboxes and commit `docs: hand off atomic workstation state`.

@@ -478,9 +478,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 
 ## Next Best Implementation Slice
 
-1. Introduce atomic workstation state/import orchestration so project restore,
-   clear, and file imports update one coherent state object instead of chaining
-   nested `App` setters.
+1. Split browser packet-export readiness from native workflow readiness so the
+   UI and evidence packets never label placeholder native paths as ready.
 2. Build from a workspace where Cargo/Tauri build scripts can write, or adjust
    the managed-workspace policy, and verify `pnpm tauri:dev`.
 3. Add SQLite project creation in Rust, including a project folder with

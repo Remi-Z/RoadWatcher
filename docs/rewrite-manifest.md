@@ -387,8 +387,9 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Refactor `App` project state behind atomic reducer/import transitions so
-   restore, clear, media, GPX, and GIS operations cannot expose partial state.
+1. Split browser packet-export readiness from native workflow readiness, with
+   explicit capability evidence for project storage, media import, map matching,
+   GIS projection, FFmpeg, and CV.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
