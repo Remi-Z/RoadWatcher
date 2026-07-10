@@ -116,6 +116,10 @@ ordinary Vite once dependencies are installed.
 - Package manager: pnpm 11.7.0. `pnpm-workspace.yaml` explicitly approves the
   required `esbuild` postinstall for Vite.
 
+The next internal refactor is atomic workstation state/import orchestration:
+replace the remaining cross-coupled `App` setters with reducer-level state
+transitions before native persistence begins.
+
 ## Slots You Need To Fill
 
 - Move the native build to a workspace where Cargo/Tauri build scripts can write,

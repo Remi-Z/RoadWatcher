@@ -430,7 +430,7 @@ git commit -m "feat: report project recovery outcomes"
 **Interfaces:**
 - Documents the shipped schema version, version-1 migration, stable identity, validation rules, and structured recovery outcomes.
 
-- [ ] **Step 1: Update the three handoff documents**
+- [x] **Step 1: Update the three handoff documents**
 
 Record:
 
@@ -441,11 +441,11 @@ Record:
 - browser storage distinguishes missing, corrupt, unsupported, and unavailable states;
 - the next module is atomic workstation state/import orchestration.
 
-- [ ] **Step 2: Mark completed plan checkboxes accurately**
+- [x] **Step 2: Mark completed plan checkboxes accurately**
 
 Only change checkboxes whose commands and commits actually succeeded.
 
-- [ ] **Step 3: Run full verification**
+- [x] **Step 3: Run full verification**
 
 Run: `pnpm test`
 

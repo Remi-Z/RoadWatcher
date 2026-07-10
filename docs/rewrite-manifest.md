@@ -374,37 +374,39 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Verify toolchain:
+1. Refactor `App` project state behind atomic reducer/import transitions so
+   restore, clear, media, GPX, and GIS operations cannot expose partial state.
+2. Verify toolchain:
    - `node --version`
    - `npm --version`
    - `cargo --version`
    - `uv --version`
-2. Run:
+3. Run:
    - `pnpm install`
    - `pnpm test`
    - `pnpm build`
-3. From a workspace where generated Cargo/Tauri processes can write, run:
+4. From a workspace where generated Cargo/Tauri processes can write, run:
    - `pnpm tauri:dev`
-4. Add Rust tests for project folder creation and command DTOs before
+5. Add Rust tests for project folder creation and command DTOs before
    implementing SQLite storage.
-5. Implement a minimal SQLite-backed project:
+6. Implement a minimal SQLite-backed project:
    - project metadata
    - media asset records
    - GPX track records
    - jobs table
    - timeline clips
    - projected feature records
-6. Replace browser-local project save/download fallback with Tauri
+7. Replace browser-local project save/download fallback with Tauri
    command-backed SQLite save and native file export.
-7. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
+8. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
    demo fallback only for empty projects.
-8. Replace browser import fallback with real media import by reference and
+9. Replace browser import fallback with real media import by reference and
    hash/metadata jobs.
-9. Replace browser GPX parsing with persisted GPX import and local Valhalla map
+10. Replace browser GPX parsing with persisted GPX import and local Valhalla map
    matching.
-10. Replace browser GeoJSON projection with Turf.js MVP geometry and production
+11. Replace browser GeoJSON projection with Turf.js MVP geometry and production
    PostGIS import/indexing.
-11. Add FFmpeg proxy generation with GPU probe and CPU fallback.
+12. Add FFmpeg proxy generation with GPU probe and CPU fallback.
 
 ## Design Guardrails
 

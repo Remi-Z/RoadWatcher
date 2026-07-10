@@ -471,20 +471,23 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 
 ## Next Best Implementation Slice
 
-1. Build from a workspace where Cargo/Tauri build scripts can write, or adjust
+1. Introduce atomic workstation state/import orchestration so project restore,
+   clear, and file imports update one coherent state object instead of chaining
+   nested `App` setters.
+2. Build from a workspace where Cargo/Tauri build scripts can write, or adjust
    the managed-workspace policy, and verify `pnpm tauri:dev`.
-2. Add SQLite project creation in Rust, including a project folder with
+3. Add SQLite project creation in Rust, including a project folder with
    `project.sqlite`, `assets/`, `proxies/`, `exports/`, and `logs/`.
-3. Replace seeded demo data with Tauri command-backed project state.
-4. Replace browser media import fallback with Tauri file handles/real paths,
+4. Replace seeded demo data with Tauri command-backed project state.
+5. Replace browser media import fallback with Tauri file handles/real paths,
    metadata probing, hash records, and native FFmpeg proxy workers.
-5. Replace browser GPX parsing with Tauri-backed GPX persistence and local
+6. Replace browser GPX parsing with Tauri-backed GPX persistence and local
    Valhalla map matching, with OSRM Match wired as the simpler fallback.
-6. Wire official GIS imports and reprojection behind real local configuration
+7. Wire official GIS imports and reprojection behind real local configuration
    slots.
-7. Replace browser GeoJSON projection with Turf.js MVP helpers and production
+8. Replace browser GeoJSON projection with Turf.js MVP helpers and production
    PostGIS/CRS-normalization import.
-8. Replace browser-local storage/download fallback with SQLite and native export
+9. Replace browser-local storage/download fallback with SQLite and native export
    once Tauri command-backed storage is available.
 
 ## Boundaries To Preserve
