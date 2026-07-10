@@ -7,10 +7,10 @@ streaming SHA-256 metadata and an atomic durable proxy job.
 
 ### Task 1: Rust Media Store Operation
 
-- [ ] Add failing Rust tests for SHA-256 metadata, durable media/job rows,
+- [x] Add failing Rust tests for SHA-256 metadata, durable media/job rows,
   missing/non-file paths, project mismatch, and transaction atomicity.
-- [ ] Add direct cached SHA-256 dependencies and typed media import DTOs/errors.
-- [ ] Implement streaming hash and transactional media/job inserts.
+- [x] Add direct cached SHA-256 dependencies and typed media import DTOs/errors.
+- [x] Implement streaming hash and transactional media/job inserts.
 - [ ] Run focused Rust tests and commit `feat: persist native media imports`.
 
 ### Task 2: Command Contract and Atomic Reducer Transition

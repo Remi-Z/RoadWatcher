@@ -1,6 +1,8 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use std::fs;
+use sha2::{Digest, Sha256};
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
@@ -45,6 +47,27 @@ pub struct ProjectLoadResponse {
     pub snapshot_json: String,
 }
 
+#[derive(Debug)]
+pub struct MediaImportRequest {
+    pub sqlite_path: PathBuf,
+    pub project_id: String,
+    pub source_path: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaImportResponse {
+    pub media_id: String,
+    pub file_name: String,
+    pub original_path: String,
+    pub hash: String,
+    pub file_size_bytes: u64,
+    pub duration_seconds: f64,
+    pub detected_start: String,
+    pub proxy_status: String,
+    pub proxy_job_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SnapshotEnvelope {
@@ -78,6 +101,10 @@ pub enum ProjectStoreError {
     },
     #[error("The RoadWatcher project does not contain a saved snapshot yet.")]
     SnapshotMissing,
+    #[error("Media source must be an existing regular file: {0}")]
+    InvalidMediaSource(String),
+    #[error("Media source is too large for SQLite byte-size metadata: {0}")]
+    MediaSourceTooLarge(String),
     #[error("System clock is before the Unix epoch.")]
     InvalidSystemClock,
 }
@@ -228,6 +255,99 @@ pub fn load_project_snapshot(sqlite_path: &Path) -> Result<ProjectLoadResponse, 
         Err(rusqlite::Error::QueryReturnedNoRows) => Err(ProjectStoreError::SnapshotMissing),
         Err(error) => Err(error.into()),
     }
+}
+
+pub fn import_media(request: MediaImportRequest) -> Result<MediaImportResponse, ProjectStoreError> {
+    import_media_at(request, Uuid::new_v4(), Uuid::new_v4())
+}
+
+pub fn import_media_at(
+    request: MediaImportRequest,
+    media_id: Uuid,
+    proxy_job_id: Uuid,
+) -> Result<MediaImportResponse, ProjectStoreError> {
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    let database_id = project_id(&connection)?;
+    if request.project_id != database_id {
+        return Err(ProjectStoreError::ProjectIdentityMismatch {
+            snapshot_id: request.project_id,
+            database_id,
+        });
+    }
+
+    let metadata = fs::metadata(&request.source_path)
+        .map_err(|_| ProjectStoreError::InvalidMediaSource(path_string(&request.source_path)))?;
+    if !metadata.is_file() {
+        return Err(ProjectStoreError::InvalidMediaSource(path_string(
+            &request.source_path,
+        )));
+    }
+    let file_name = request
+        .source_path
+        .file_name()
+        .filter(|name| !name.is_empty())
+        .map(|name| name.to_string_lossy().into_owned())
+        .ok_or_else(|| ProjectStoreError::InvalidMediaSource(path_string(&request.source_path)))?;
+    let hash = sha256_file(&request.source_path)?;
+    let original_path = path_string(&request.source_path);
+    let file_size_bytes = i64::try_from(metadata.len())
+        .map_err(|_| ProjectStoreError::MediaSourceTooLarge(original_path.clone()))?;
+    let media_id = media_id.to_string();
+    let proxy_job_id = proxy_job_id.to_string();
+    let detail = "Original referenced and hashed; ffprobe/FFmpeg pending";
+
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO media_assets (
+           id, project_id, file_name, original_path, duration_seconds, detected_start,
+           proxy_status, hash, file_size_bytes
+         ) VALUES (?1, ?2, ?3, ?4, 0, '', 'queued', ?5, ?6)",
+        params![
+            media_id,
+            request.project_id,
+            file_name,
+            original_path,
+            hash,
+            file_size_bytes
+        ],
+    )?;
+    transaction.execute(
+        "INSERT INTO jobs (id, project_id, job_type, label, status, progress, detail)
+         VALUES (?1, ?2, 'proxy', ?3, 'queued', 0, ?4)",
+        params![
+            proxy_job_id,
+            request.project_id,
+            format!("Auto proxy: {file_name}"),
+            detail
+        ],
+    )?;
+    transaction.commit()?;
+
+    Ok(MediaImportResponse {
+        media_id,
+        file_name,
+        original_path,
+        hash,
+        file_size_bytes: metadata.len(),
+        duration_seconds: 0.0,
+        detected_start: String::new(),
+        proxy_status: "queued".to_string(),
+        proxy_job_id,
+    })
+}
+
+fn sha256_file(path: &Path) -> Result<String, ProjectStoreError> {
+    let mut file = File::open(path)?;
+    let mut digest = Sha256::new();
+    let mut buffer = vec![0_u8; 1024 * 1024];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+    Ok(hex::encode(digest.finalize()))
 }
 
 fn open_project_database(sqlite_path: &Path) -> Result<Connection, ProjectStoreError> {
@@ -421,8 +541,8 @@ CREATE TABLE IF NOT EXISTS project_snapshots (
 #[cfg(test)]
 mod tests {
     use super::{
-        create_project_at, load_project_snapshot, save_project_snapshot, ProjectCreateRequest,
-        ProjectSaveRequest, ProjectStoreError,
+        create_project_at, import_media_at, load_project_snapshot, save_project_snapshot,
+        MediaImportRequest, ProjectCreateRequest, ProjectSaveRequest, ProjectStoreError,
     };
     use rusqlite::Connection;
     use std::collections::BTreeSet;
@@ -679,6 +799,131 @@ mod tests {
                 supported: 2
             })
         ));
+    }
+
+    #[test]
+    fn imports_referenced_media_with_streaming_hash_and_atomic_proxy_job() {
+        let root = TestRoot::new();
+        let project_id = Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap();
+        let media_id = Uuid::parse_str("66666666-6666-4666-8666-666666666666").unwrap();
+        let job_id = Uuid::parse_str("77777777-7777-4777-8777-777777777777").unwrap();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Media review".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let source_path = root.path().join("front camera.mp4");
+        fs::write(&source_path, b"abc").unwrap();
+
+        let response = import_media_at(
+            MediaImportRequest {
+                sqlite_path: PathBuf::from(&created.sqlite_path),
+                project_id: project_id.to_string(),
+                source_path: source_path.clone(),
+            },
+            media_id,
+            job_id,
+        )
+        .unwrap();
+
+        assert_eq!(response.media_id, media_id.to_string());
+        assert_eq!(response.proxy_job_id, job_id.to_string());
+        assert_eq!(response.file_name, "front camera.mp4");
+        assert_eq!(response.original_path, source_path.to_string_lossy());
+        assert_eq!(response.file_size_bytes, 3);
+        assert_eq!(
+            response.hash,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(response.duration_seconds, 0.0);
+        assert_eq!(response.detected_start, "");
+        assert_eq!(response.proxy_status, "queued");
+
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        let media: (String, String, String, i64) = connection
+            .query_row(
+                "SELECT file_name, original_path, hash, file_size_bytes FROM media_assets WHERE id = ?1",
+                [media_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            media,
+            (
+                "front camera.mp4".to_string(),
+                source_path.to_string_lossy().into_owned(),
+                response.hash.clone(),
+                3
+            )
+        );
+        let job: (String, String, String) = connection
+            .query_row(
+                "SELECT job_type, status, detail FROM jobs WHERE id = ?1",
+                [job_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(job.0, "proxy");
+        assert_eq!(job.1, "queued");
+        assert!(job.2.contains("ffprobe/FFmpeg pending"));
+    }
+
+    #[test]
+    fn rejects_missing_media_and_project_mismatch_without_partial_rows() {
+        let root = TestRoot::new();
+        let project_id = Uuid::parse_str("88888888-8888-4888-8888-888888888888").unwrap();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Rejected media".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let source_path = root.path().join("source.mp4");
+        fs::write(&source_path, b"evidence").unwrap();
+
+        let mismatch = import_media_at(
+            MediaImportRequest {
+                sqlite_path: PathBuf::from(&created.sqlite_path),
+                project_id: Uuid::nil().to_string(),
+                source_path,
+            },
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        );
+        assert!(matches!(
+            mismatch,
+            Err(ProjectStoreError::ProjectIdentityMismatch { .. })
+        ));
+
+        let missing = import_media_at(
+            MediaImportRequest {
+                sqlite_path: PathBuf::from(&created.sqlite_path),
+                project_id: project_id.to_string(),
+                source_path: root.path().join("missing.mp4"),
+            },
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        );
+        assert!(matches!(
+            missing,
+            Err(ProjectStoreError::InvalidMediaSource(_))
+        ));
+
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        let media_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM media_assets", [], |row| row.get(0))
+            .unwrap();
+        let job_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM jobs", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!((media_count, job_count), (0, 0));
     }
 
     fn snapshot_json(
