@@ -56,7 +56,7 @@ outside pure transitions.
 - [x] Verify RED.
 - [x] Implement `import_media`, `import_route`, and
   `import_official_features` actions with export invalidation.
-- [ ] Verify focused GREEN and commit `feat: apply workstation imports atomically`.
+- [x] Verify focused GREEN and commit `feat: apply workstation imports atomically`.
 
 ### Task 4: App Integration
 
