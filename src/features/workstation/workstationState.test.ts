@@ -102,6 +102,119 @@ describe("workstation state", () => {
     expect(next.latestPacket).toBeNull();
     expect(next.latestProjectSnapshot).toBeNull();
   });
+
+  it("sets one export pair and invalidates both when incident content changes", () => {
+    const seed = createSeed(FIRST_PROJECT_ID);
+    const state = createInitialWorkstationState({ seed });
+    const snapshot = createProjectSnapshot(seed);
+    const packet = buildEvidencePacket(snapshot);
+    const exported = workstationReducer(state, { type: "set_export", snapshot, packet });
+
+    expect(exported.latestProjectSnapshot).toBe(snapshot);
+    expect(exported.latestPacket).toBe(packet);
+
+    const edited = workstationReducer(exported, {
+      type: "edit_incident",
+      field: "plate",
+      value: "ATOMIC7"
+    });
+
+    expect(edited.incident.plate).toBe("ATOMIC7");
+    expect(edited.latestProjectSnapshot).toBeNull();
+    expect(edited.latestPacket).toBeNull();
+  });
+
+  it("applies selection and timeline edits while preserving valid selection and reel starts", () => {
+    const state = createInitialWorkstationState({ seed: createSeed(FIRST_PROJECT_ID) });
+    const selected = workstationReducer(state, { type: "select_clip", clipId: initialClips[0].id });
+
+    expect(selected.selectedClipId).toBe(initialClips[0].id);
+    expect(selected.incident).toMatchObject({ start: "13:32", end: "13:56" });
+
+    const reordered = workstationReducer(selected, {
+      type: "reorder_clips",
+      activeClipId: initialClips[0].id,
+      overClipId: initialClips[2].id
+    });
+    expect(reordered.clips.map((clip) => clip.id)).toEqual([
+      initialClips[1].id,
+      initialClips[2].id,
+      initialClips[0].id
+    ]);
+    expect(reordered.clips.map((clip) => clip.reelStartSeconds)).toEqual([0, 18, 32]);
+
+    const trimmed = workstationReducer(reordered, {
+      type: "trim_clip",
+      clipId: initialClips[0].id,
+      sourceInSeconds: 814,
+      sourceOutSeconds: 830,
+      mediaDurationSeconds: mediaAssets[0].durationSeconds
+    });
+    expect(trimmed.clips.find((clip) => clip.id === initialClips[0].id)).toMatchObject({
+      sourceInSeconds: 814,
+      sourceOutSeconds: 830
+    });
+
+    const split = workstationReducer(trimmed, {
+      type: "split_clip",
+      clipId: initialClips[0].id,
+      sourceTimeSeconds: 822,
+      rightClipId: "clip-approach-tail"
+    });
+    expect(split.selectedClipId).toBe("clip-approach-tail");
+    expect(split.clips).toHaveLength(4);
+
+    const duplicated = workstationReducer(split, {
+      type: "duplicate_clip",
+      clipId: "clip-approach-tail",
+      duplicateClipId: "clip-approach-copy"
+    });
+    expect(duplicated.selectedClipId).toBe("clip-approach-copy");
+
+    const removed = workstationReducer(duplicated, {
+      type: "remove_clip",
+      clipId: "clip-approach-copy"
+    });
+    expect(removed.clips.some((clip) => clip.id === "clip-approach-copy")).toBe(false);
+    expect(removed.clips.some((clip) => clip.id === removed.selectedClipId)).toBe(true);
+  });
+
+  it("updates setup/review fields and caps native attempts at eight", () => {
+    let state = createInitialWorkstationState({ seed: createSeed(FIRST_PROJECT_ID) });
+    state = workstationReducer(state, {
+      type: "edit_component_slot",
+      id: "valhalla",
+      field: "status",
+      value: "configured"
+    });
+    state = workstationReducer(state, { type: "set_native_project_root", value: "C:/RoadWatcher/projects" });
+    state = workstationReducer(state, {
+      type: "edit_projected_feature",
+      featureId: projectedFeatures[0].featureId,
+      field: "reviewStatus",
+      value: "included"
+    });
+    for (let index = 0; index < 9; index += 1) {
+      state = workstationReducer(state, {
+        type: "record_native_attempt",
+        attempt: {
+          id: `attempt-${index}`,
+          command: "project_create",
+          status: "browser_fallback",
+          requestedAtIso: "2026-07-10T12:00:00.000Z",
+          requestSummary: `attempt ${index}`,
+          resultSummary: "fallback"
+        }
+      });
+    }
+
+    expect(state.componentSlots.find((slot) => slot.id === "valhalla")?.status).toBe("configured");
+    expect(state.nativeProjectRoot).toBe("C:/RoadWatcher/projects");
+    expect(state.projectedFeatures[0].reviewStatus).toBe("included");
+    expect(state.nativeCommandAttempts).toHaveLength(8);
+    expect(state.nativeCommandAttempts[0].id).toBe("attempt-8");
+    expect(state.nativeCommandAttempts.at(-1)?.id).toBe("attempt-1");
+  });
 });
 
 function createSeed(projectId: ProjectId): WorkstationSeed {

@@ -38,11 +38,11 @@ outside pure transitions.
 - Modify: `src/features/workstation/workstationState.ts`
 - Modify: `src/features/workstation/workstationState.test.ts`
 
-- [ ] Write failing tests for incident edits, clip selection/timing, reorder,
+- [x] Write failing tests for incident edits, clip selection/timing, reorder,
   trim, split, duplicate, remove, component slots, native root, projected review,
   native-attempt capping, `set_export`, and automatic paired invalidation.
-- [ ] Verify RED.
-- [ ] Implement typed actions using existing pure timeline helpers.
+- [x] Verify RED.
+- [x] Implement typed actions using existing pure timeline helpers.
 - [ ] Verify focused GREEN and commit `feat: add atomic workstation edit transitions`.
 
 ### Task 3: Atomic Import Transitions
