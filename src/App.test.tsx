@@ -630,7 +630,7 @@ describe("RoadWatcher workstation", () => {
     const nativeInvoke = vi.fn<NativeInvoke>();
     render(<App nativeInvoke={nativeInvoke} projectRepository={repository} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Probe GPX matcher" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start GPX matcher" }));
 
     expect(nativeInvoke).not.toHaveBeenCalled();
     expect(await screen.findByText(/gpx_match: browser_fallback/)).toBeInTheDocument();
@@ -640,7 +640,7 @@ describe("RoadWatcher workstation", () => {
     expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
       command: "gpx_match",
       status: "browser_fallback",
-      requestSummary: "gpxPath: slot: persisted GPX path from native import; matcher: Valhalla"
+      requestSummary: "routeId: slot: native route id; jobId: slot: native route job id; matcher: Valhalla"
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
@@ -651,30 +651,97 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("browser GPX parsing and queued Valhalla job");
   });
 
-  it("probes the native GPX matcher through the command bridge when invoke is available", async () => {
-    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
-      routeId: "route-valhalla-1",
-      matchedPointCount: 42,
-      projectedFeatureCount: 3
+  it("imports, starts, polls, and reconciles a native GPX route", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/routes/project.sqlite";
+    const snapshot = createProjectSnapshot({
+      clips: initialClips,
+      componentSlots: missingSlots,
+      incident: incidentDraft,
+      jobs: initialJobs,
+      media: mediaAssets,
+      projectId: "native-route-project" as ProjectId,
+      projectedFeatures
+    });
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+      if (command === "project_load") {
+        return {
+          projectId: snapshot.projectId,
+          schemaVersion: snapshot.schemaVersion,
+          savedAtIso: snapshot.savedAtIso,
+          snapshotJson: serializeSnapshot(snapshot)
+        };
+      }
+      if (command === "gpx_import") {
+        return {
+          routeId: "route-valhalla-1",
+          fileName: "drive.gpx",
+          originalPath: "D:/Evidence/drive.gpx",
+          hash: "a".repeat(64),
+          fileSizeBytes: 2048,
+          route: [
+            { latitude: 43.1, longitude: -79.2, timeSeconds: 0 },
+            { latitude: 43.2, longitude: -79.1, timeSeconds: 10 }
+          ],
+          matchStatus: "queued",
+          matchJobId: "route-job-1"
+        };
+      }
+      if (command === "gpx_match") return { jobId: "route-job-1", status: "queued" };
+      if (command === "gpx_job_status") {
+        return {
+          jobId: "route-job-1",
+          routeId: "route-valhalla-1",
+          status: "complete",
+          progress: 100,
+          detail: "Route matched with Valhalla.",
+          matcherUsed: "Valhalla",
+          route: [
+            { latitude: 43.11, longitude: -79.19, timeSeconds: 0 },
+            { latitude: 43.21, longitude: -79.09, timeSeconds: 10 }
+          ]
+        };
+      }
+      throw new Error(`Unexpected command ${command}`);
     });
 
     render(
       <App
         nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
         nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
       />
     );
+    await screen.findByText(/Restored native SQLite project/);
+    fireEvent.change(screen.getByLabelText("Native GPX source path"), { target: { value: "D:/Evidence/drive.gpx" } });
+    fireEvent.click(screen.getByRole("button", { name: "Import native GPX" }));
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native GPX imported");
 
-    fireEvent.click(screen.getByRole("button", { name: "Probe GPX matcher" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start GPX matcher" }));
 
-    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native GPX matcher ready");
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Native route match complete"));
+    expect(nativeInvoke).toHaveBeenCalledWith("gpx_import", {
+      sqlitePath,
+      projectId: "native-route-project",
+      sourcePath: "D:/Evidence/drive.gpx"
+    });
     expect(nativeInvoke).toHaveBeenCalledWith("gpx_match", {
-      projectId: expect.stringMatching(/^local-/),
-      gpxPath: "slot: persisted GPX path from native import",
-      matcher: "Valhalla"
+      sqlitePath,
+      projectId: "native-route-project",
+      routeId: "route-valhalla-1",
+      jobId: "route-job-1",
+      matcher: "Valhalla",
+      valhallaEndpoint: "slot: local Valhalla tiles/config path",
+      osrmEndpoint: "slot: OSRM endpoint or local profile path"
+    });
+    expect(nativeInvoke).toHaveBeenCalledWith("gpx_job_status", {
+      sqlitePath,
+      projectId: "native-route-project",
+      routeId: "route-valhalla-1",
+      jobId: "route-job-1"
     });
     expect(screen.getByText(/gpx_match: invoked/)).toBeInTheDocument();
-    expect(screen.getByText(/matchedPointCount: 42/)).toBeInTheDocument();
+    expect(screen.getByText(/Route matched with Valhalla/)).toBeInTheDocument();
   });
 
   it("records browser GIS projection fallbacks in drafts and export packets", async () => {
@@ -952,6 +1019,24 @@ describe("RoadWatcher workstation", () => {
     expect(nativeInvoke).not.toHaveBeenCalled();
     expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent(
       "Native media import requires an active SQLite project"
+    );
+  });
+
+  it("requires an active native project before importing a native GPX path", async () => {
+    const nativeInvoke = vi.fn<NativeInvoke>();
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Import native GPX" }));
+
+    expect(nativeInvoke).not.toHaveBeenCalled();
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent(
+      "Native GPX import requires an active SQLite project"
     );
   });
 

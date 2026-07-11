@@ -196,7 +196,8 @@ function parseJob(value: unknown, path: string): WorkstationJob {
     status: enumValue(item.status, `${path}.status`, JOB_STATUSES),
     progress: boundedNumber(item.progress, `${path}.progress`, 0, 100),
     detail: stringValue(item.detail, `${path}.detail`),
-    ...(item.mediaId === undefined ? {} : { mediaId: nonBlankString(item.mediaId, `${path}.mediaId`) })
+    ...(item.mediaId === undefined ? {} : { mediaId: nonBlankString(item.mediaId, `${path}.mediaId`) }),
+    ...(item.routeId === undefined ? {} : { routeId: nonBlankString(item.routeId, `${path}.routeId`) })
   };
 }
 

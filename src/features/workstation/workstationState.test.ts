@@ -192,6 +192,84 @@ describe("workstation state", () => {
     expect(next.clips.filter((clip) => clip.mediaId === "media-rear-001")).toEqual(unrelatedClips);
   });
 
+  it("imports a durable native route and match job atomically", () => {
+    const state = createInitialWorkstationState({ seed: createSeed(FIRST_PROJECT_ID) });
+    const imported = {
+      routeId: "route-native-1",
+      fileName: "drive.gpx",
+      originalPath: "D:/Evidence/drive.gpx",
+      hash: "a".repeat(64),
+      fileSizeBytes: 2048,
+      route: [
+        { latitude: 43.1, longitude: -79.2, timeSeconds: 0 },
+        { latitude: 43.2, longitude: -79.1, timeSeconds: 8 }
+      ],
+      matchStatus: "queued" as const,
+      matchJobId: "job-route-native-1"
+    };
+    const attempt = {
+      id: "gpx-import-1",
+      command: "gpx_import" as const,
+      status: "invoked" as const,
+      requestedAtIso: "2026-07-10T18:00:00Z",
+      requestSummary: "sourcePath: D:/Evidence/drive.gpx",
+      resultSummary: "routeId: route-native-1"
+    };
+
+    const next = workstationReducer(state, { type: "import_native_route", imported, attempt });
+
+    expect(next.route).toEqual(imported.route);
+    expect(next.jobs.at(-1)).toMatchObject({
+      id: imported.matchJobId,
+      routeId: imported.routeId,
+      type: "valhalla",
+      status: "queued"
+    });
+    expect(next.nativeCommandAttempts[0]).toEqual(attempt);
+  });
+
+  it("reconciles a completed native match and reprojects official features", () => {
+    const importedRoute = [
+      { latitude: 43.1, longitude: -79.2, timeSeconds: 0 },
+      { latitude: 43.2, longitude: -79.1, timeSeconds: 8 }
+    ];
+    const importedState = workstationReducer(createInitialWorkstationState({ seed: createSeed(FIRST_PROJECT_ID) }), {
+      type: "import_native_route",
+      imported: {
+        routeId: "route-native-1",
+        fileName: "drive.gpx",
+        originalPath: "D:/drive.gpx",
+        hash: "hash",
+        fileSizeBytes: 1,
+        route: importedRoute,
+        matchStatus: "queued",
+        matchJobId: "job-route-native-1"
+      },
+      attempt: nativeAttempt("gpx-import", "gpx_import")
+    });
+    const matchedRoute = [
+      { latitude: 43.64, longitude: -79.39, timeSeconds: 0 },
+      { latitude: 43.65, longitude: -79.38, timeSeconds: 10 }
+    ];
+
+    const next = workstationReducer(importedState, {
+      type: "reconcile_route_job",
+      result: {
+        jobId: "job-route-native-1",
+        routeId: "route-native-1",
+        status: "complete",
+        progress: 100,
+        detail: "Route matched with Valhalla.",
+        matcherUsed: "Valhalla",
+        route: matchedRoute
+      }
+    });
+
+    expect(next.jobs.at(-1)).toMatchObject({ status: "complete", progress: 100 });
+    expect(next.route).toEqual(matchedRoute);
+    expect(next.projectedFeatures).toEqual(projectFeaturesOntoRoute(matchedRoute, next.officialFeatures, 90));
+  });
+
   it("resets the complete project with a newly supplied identity", () => {
     const firstSeed = createSeed(FIRST_PROJECT_ID);
     const secondSeed = createSeed(SECOND_PROJECT_ID);
@@ -415,7 +493,7 @@ function createSeed(projectId: ProjectId): WorkstationSeed {
   };
 }
 
-function nativeAttempt(id: string, command: "gpx_match" | "gis_project") {
+function nativeAttempt(id: string, command: "gpx_import" | "gpx_match" | "gis_project") {
   return {
     id,
     command,

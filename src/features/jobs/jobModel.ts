@@ -9,6 +9,17 @@ export interface WorkstationJob {
   progress: number;
   detail: string;
   mediaId?: string;
+  routeId?: string;
+}
+
+export interface NativeRouteMatchResult {
+  jobId: string;
+  routeId: string;
+  status: JobStatus;
+  progress: number;
+  detail: string;
+  matcherUsed: string;
+  route: import("../geo/projection").TimedRoutePoint[];
 }
 
 export interface NativeProxyJobResult {

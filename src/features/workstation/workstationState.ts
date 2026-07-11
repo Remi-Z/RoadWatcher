@@ -8,7 +8,8 @@ import type {
 import { normalizeProjectedFeatureReview, projectFeaturesOntoRoute } from "../geo/projection";
 import { createGisProjectionJob } from "../geo/geoJsonImport";
 import { createValhallaMatchJob } from "../geo/gpxImport";
-import type { NativeProxyJobResult, WorkstationJob } from "../jobs/jobModel";
+import type { NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "../jobs/jobModel";
+import type { NativeRouteImport } from "../geo/nativeRouteRepository";
 import {
   createImportedMediaAssets,
   createProxyJobsForImportedMedia,
@@ -91,6 +92,8 @@ export type WorkstationAction =
     }
   | { type: "record_native_attempt"; attempt: NativeCommandAttempt }
   | { type: "reconcile_proxy_job"; result: NativeProxyJobResult; attempt?: NativeCommandAttempt }
+  | { type: "import_native_route"; imported: NativeRouteImport; attempt: NativeCommandAttempt }
+  | { type: "reconcile_route_job"; result: NativeRouteMatchResult; attempt?: NativeCommandAttempt }
   | {
       type: "import_media";
       files: BrowserMediaFile[];
@@ -275,6 +278,48 @@ export function workstationReducer(state: WorkstationState, action: WorkstationA
         nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8),
         selectedClipId: action.clip.id
       });
+    case "import_native_route":
+      return withInvalidatedExport(state, {
+        route: structuredClone(action.imported.route),
+        projectedFeatures: projectFeaturesOntoRoute(action.imported.route, state.officialFeatures, 90).map(
+          normalizeProjectedFeatureReview
+        ),
+        jobs: [
+          ...state.jobs,
+          {
+            id: action.imported.matchJobId,
+            routeId: action.imported.routeId,
+            type: "valhalla",
+            label: `Valhalla match: ${action.imported.fileName}`,
+            status: "queued",
+            progress: 0,
+            detail: "Native GPX persisted; local map match queued"
+          }
+        ],
+        nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+      });
+    case "reconcile_route_job": {
+      const completedRoute = action.result.status === "complete" ? structuredClone(action.result.route) : null;
+      return withInvalidatedExport(state, {
+        jobs: state.jobs.map((job) =>
+          job.id === action.result.jobId && job.routeId === action.result.routeId
+            ? {
+                ...job,
+                status: action.result.status,
+                progress: action.result.progress,
+                detail: action.result.detail
+              }
+            : job
+        ),
+        route: completedRoute ?? state.route,
+        projectedFeatures: completedRoute
+          ? projectFeaturesOntoRoute(completedRoute, state.officialFeatures, 90).map(normalizeProjectedFeatureReview)
+          : state.projectedFeatures,
+        nativeCommandAttempts: action.attempt
+          ? [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+          : state.nativeCommandAttempts
+      });
+    }
     case "import_media": {
       const importedAssets = createImportedMediaAssets(action.files, state.media.length);
       const importedClips = createTimelineClipsForImportedMedia(importedAssets, state.clips);

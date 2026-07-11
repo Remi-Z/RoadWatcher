@@ -52,12 +52,13 @@ import {
 import type { ComponentSlot, ComponentSlotStatus, IncidentDraft, MediaAsset, ProjectId } from "./domain/projectModels";
 import { parseOfficialFeaturesFromGeoJson } from "./features/geo/geoJsonImport";
 import { parseGpxTrack } from "./features/geo/gpxImport";
+import { createNativeRouteRepository } from "./features/geo/nativeRouteRepository";
 import {
   type ProjectedFeatureReviewStatus,
   type ProjectedRoadFeature,
   type TimedRoutePoint
 } from "./features/geo/projection";
-import type { NativeProxyJobResult, WorkstationJob } from "./features/jobs/jobModel";
+import type { NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "./features/jobs/jobModel";
 import { createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
 import {
   createBrowserProjectRepository,
@@ -149,7 +150,9 @@ export function App({
   const [detectedNativeInvoke, setDetectedNativeInvoke] = useState<NativeInvoke | undefined>();
   const [activeNativeSqlitePath, setActiveNativeSqlitePath] = useState(() => nativeProjectLocator.load());
   const [nativeMediaSourcePath, setNativeMediaSourcePath] = useState(NATIVE_MEDIA_SOURCE_PATH_SLOT);
+  const [nativeGpxSourcePath, setNativeGpxSourcePath] = useState(NATIVE_GPX_PATH_SLOT);
   const [activeProxyJob, setActiveProxyJob] = useState<{ jobId: string; mediaId: string } | null>(null);
+  const [activeRouteJob, setActiveRouteJob] = useState<{ jobId: string; routeId: string } | null>(null);
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
   const nativeHydrationPathRef = useRef<string | null>(null);
   const firstSlotReferenceInputRef = useRef<HTMLInputElement>(null);
@@ -277,6 +280,8 @@ export function App({
                 : result.issue.message
         };
         if (result.status === "loaded") {
+          setActiveProxyJob(null);
+          setActiveRouteJob(null);
           dispatchWorkstation({ type: "replace_project", snapshot: result.snapshot, fallbackComponentSlots: missingSlots });
           dispatchWorkstation({ type: "record_native_attempt", attempt: loadAttempt });
           projectRepository.save(result.snapshot);
@@ -344,6 +349,52 @@ export function App({
       }
     };
   }, [activeNativeSqlitePath, activeProxyJob, nativeCommandBridge, projectId]);
+
+  useEffect(() => {
+    if (!activeRouteJob || !activeNativeSqlitePath || nativeCommandBridge.status !== "ready") {
+      return;
+    }
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const monitored = activeRouteJob;
+    const sqlitePath = activeNativeSqlitePath;
+    const poll = async () => {
+      const result = await nativeCommandBridge.invoke("gpx_job_status", {
+        sqlitePath,
+        projectId,
+        routeId: monitored.routeId,
+        jobId: monitored.jobId
+      });
+      if (!active) return;
+      if (!result.ok) {
+        setActiveRouteJob(null);
+        setAppStatus(`gpx_job_status ${result.status}: ${result.message}`);
+        return;
+      }
+      const status = nativeRouteMatchResult(result.response);
+      if (!status || status.jobId !== monitored.jobId || status.routeId !== monitored.routeId) {
+        setActiveRouteJob(null);
+        setAppStatus("gpx_job_status invalid_response: Route job response fields or identity are invalid.");
+        return;
+      }
+      dispatchWorkstation({ type: "reconcile_route_job", result: status });
+      if (isTerminalRouteStatus(status.status)) {
+        setActiveRouteJob(null);
+        setAppStatus(
+          status.status === "complete"
+            ? `Native route match complete with ${status.matcherUsed}: ${status.route.length} points`
+            : `Native route match ${status.status}: ${status.detail}`
+        );
+        return;
+      }
+      timer = setTimeout(() => void poll(), 1_000);
+    };
+    void poll();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeNativeSqlitePath, activeRouteJob, nativeCommandBridge, projectId]);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -488,6 +539,7 @@ export function App({
     nativeProjectLocator.clear();
     setActiveNativeSqlitePath(null);
     setActiveProxyJob(null);
+    setActiveRouteJob(null);
     nativeHydrationPathRef.current = null;
     dispatchWorkstation({ type: "reset_project", seed: createWorkstationSeed(projectIdFactory()) });
     setAppStatus(
@@ -549,6 +601,8 @@ export function App({
       nativeHydrationPathRef.current = project.sqlitePath;
       nativeProjectLocator.save(project.sqlitePath);
       setActiveNativeSqlitePath(project.sqlitePath);
+      setActiveProxyJob(null);
+      setActiveRouteJob(null);
       dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: missingSlots });
       dispatchWorkstation({ type: "record_native_attempt", attempt: saveAttempt });
       projectRepository.save(snapshot);
@@ -655,34 +709,88 @@ export function App({
   async function handleProbeGpxMatch() {
     const requestedAtIso = new Date().toISOString();
     const matcher = "Valhalla";
+    const routeJob = jobs.find((job) => job.type === "valhalla" && job.routeId && job.status === "queued");
+    if (nativeCommandBridge.status === "ready" && !activeNativeSqlitePath) {
+      setAppStatus("Native GPX matching requires an active SQLite project. Create or reopen a native project first.");
+      return;
+    }
+    if (nativeCommandBridge.status === "ready" && !routeJob?.routeId) {
+      setAppStatus("Import a native GPX route before starting map matching.");
+      return;
+    }
+    const routeId = routeJob?.routeId ?? "slot: native route id";
+    const jobId = routeJob?.id ?? "slot: native route job id";
+    const valhallaEndpoint = componentSlots.find((slot) => slot.id === "valhalla")?.reference ?? "";
+    const osrmEndpoint = componentSlots.find((slot) => slot.id === "osrm")?.reference ?? "";
     const result = await nativeCommandBridge.invoke("gpx_match", {
+      sqlitePath: activeNativeSqlitePath ?? "slot: active native SQLite path",
       projectId: createProjectSnapshot(currentSnapshotInput).projectId,
-      gpxPath: NATIVE_GPX_PATH_SLOT,
-      matcher
+      routeId,
+      jobId,
+      matcher,
+      valhallaEndpoint,
+      osrmEndpoint
     });
+    const started = result.ok ? nativeRouteStartResponse(result.response) : null;
     const resultSummary = result.ok
-      ? `routeId: ${gpxRouteId(result.response)}; matchedPointCount: ${gpxMatchedPointCount(
-          result.response
-        )}; projectedFeatureCount: ${gpxProjectedFeatureCount(result.response)}`
+      ? started
+        ? `jobId: ${started.jobId}; status: ${started.status}`
+        : "invalid_response; route match start fields have invalid types"
       : `${result.status}; fallback: ${result.fallback}; browser route points: ${route.length}`;
     const attempt: NativeCommandAttempt = {
       id: `gpx-match-probe-${Date.now().toString(36)}`,
       command: result.command,
-      status: result.status,
+      status: result.ok && !started ? "invalid_response" : result.status,
       requestedAtIso,
-      requestSummary: `gpxPath: ${NATIVE_GPX_PATH_SLOT}; matcher: ${matcher}`,
+      requestSummary: `routeId: ${routeId}; jobId: ${jobId}; matcher: ${matcher}`,
       resultSummary
     };
 
     dispatchWorkstation({ type: "record_native_attempt", attempt });
     invalidateLatestExport();
 
-    if (result.ok) {
-      setAppStatus(`Native GPX matcher ready: ${gpxRouteId(result.response)}`);
+    if (result.ok && started && started.jobId === jobId) {
+      setActiveRouteJob({ jobId, routeId });
+      setAppStatus(`Native GPX matcher started: ${jobId}`);
       return;
     }
 
-    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
+    setAppStatus(
+      result.ok
+        ? "gpx_match invalid_response: Route start response fields or identity are invalid."
+        : `${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`
+    );
+  }
+
+  async function handleNativeGpxImport() {
+    if (!activeNativeSqlitePath) {
+      setAppStatus("Native GPX import requires an active SQLite project. Create or reopen a native project first.");
+      return;
+    }
+    const requestedAtIso = new Date().toISOString();
+    const result = await createNativeRouteRepository(
+      nativeCommandBridge,
+      activeNativeSqlitePath,
+      projectId
+    ).importPath(nativeGpxSourcePath);
+    const attempt: NativeCommandAttempt = {
+      id: `gpx-import-${Date.now().toString(36)}`,
+      command: "gpx_import",
+      status: result.status === "imported" ? "invoked" : result.commandStatus,
+      requestedAtIso,
+      requestSummary: `sqlitePath: ${activeNativeSqlitePath}; sourcePath: ${nativeGpxSourcePath}`,
+      resultSummary:
+        result.status === "imported"
+          ? `routeId: ${result.routeId}; points: ${result.route.length}; matchJobId: ${result.matchJobId}`
+          : result.message
+    };
+    if (result.status === "imported") {
+      dispatchWorkstation({ type: "import_native_route", imported: result, attempt });
+      setAppStatus(`Native GPX imported: ${result.fileName} with ${result.route.length} timed points`);
+      return;
+    }
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
+    setAppStatus(`gpx_import ${result.commandStatus}: ${result.message}`);
   }
 
   async function handleProbeGisProjection() {
@@ -915,6 +1023,8 @@ export function App({
   }
 
   function applyProjectSnapshot(snapshot: ProjectSnapshot) {
+    setActiveProxyJob(null);
+    setActiveRouteJob(null);
     dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: missingSlots });
   }
 
@@ -1071,13 +1181,16 @@ export function App({
           <ReviewReadinessPanel
             nativeCommandAttempts={nativeCommandAttempts}
             nativeMediaSourcePath={nativeMediaSourcePath}
+            nativeGpxSourcePath={nativeGpxSourcePath}
             nativeProjectRoot={nativeProjectRoot}
             onNativeMediaSourcePathChange={setNativeMediaSourcePath}
+            onNativeGpxSourcePathChange={setNativeGpxSourcePath}
             readiness={reviewReadiness}
             onNativeProjectRootChange={handleNativeProjectRootChange}
             onProbeFfmpegProxy={handleProbeFfmpegProxy}
             onProbeGisProjection={handleProbeGisProjection}
             onProbeGpxMatch={handleProbeGpxMatch}
+            onNativeGpxImport={handleNativeGpxImport}
             onProbeMediaImport={handleProbeMediaImport}
             onProbeNativeProjectStore={handleProbeNativeProjectStore}
             onProbeCvScan={handleProbeCvScan}
@@ -1187,8 +1300,11 @@ function buildGeneratedArtifactManifest({
 
 function ReviewReadinessPanel({
   nativeCommandAttempts,
+  nativeGpxSourcePath,
   nativeMediaSourcePath,
   nativeProjectRoot,
+  onNativeGpxImport,
+  onNativeGpxSourcePathChange,
   onNativeMediaSourcePathChange,
   onNativeProjectRootChange,
   onProbeCvScan,
@@ -1200,8 +1316,11 @@ function ReviewReadinessPanel({
   readiness
 }: {
   nativeCommandAttempts: NativeCommandAttempt[];
+  nativeGpxSourcePath: string;
   nativeMediaSourcePath: string;
   nativeProjectRoot: string;
+  onNativeGpxImport: () => void;
+  onNativeGpxSourcePathChange: (value: string) => void;
   onNativeMediaSourcePathChange: (value: string) => void;
   onNativeProjectRootChange: (value: string) => void;
   onProbeCvScan: () => void;
@@ -1275,9 +1394,21 @@ function ReviewReadinessPanel({
           <Upload size={15} />
           Import native media
         </button>
+        <label className="native-root-field">
+          <span>Native GPX source path</span>
+          <input
+            aria-label="Native GPX source path"
+            value={nativeGpxSourcePath}
+            onChange={(event) => onNativeGpxSourcePathChange(event.target.value)}
+          />
+        </label>
+        <button type="button" className="button secondary native-probe-button" onClick={onNativeGpxImport}>
+          <Upload size={15} />
+          Import native GPX
+        </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeGpxMatch}>
           <Route size={15} />
-          Probe GPX matcher
+          Start GPX matcher
         </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeGisProjection}>
           <MapPinned size={15} />
@@ -1982,28 +2113,58 @@ function nativeMediaImportResponse(response: unknown): NativeMediaImportResponse
   return value as unknown as NativeMediaImportResponse;
 }
 
-function gpxRouteId(response: unknown): string {
-  if (response && typeof response === "object" && "routeId" in response) {
-    return String((response as { routeId: unknown }).routeId);
-  }
-
-  return "(route id unavailable)";
+function nativeRouteStartResponse(response: unknown): { jobId: string; status: string } | null {
+  if (!response || typeof response !== "object") return null;
+  const value = response as Record<string, unknown>;
+  return typeof value.jobId === "string" && typeof value.status === "string"
+    ? { jobId: value.jobId, status: value.status }
+    : null;
 }
 
-function gpxMatchedPointCount(response: unknown): string {
-  if (response && typeof response === "object" && "matchedPointCount" in response) {
-    return String((response as { matchedPointCount: unknown }).matchedPointCount);
+function nativeRouteMatchResult(response: unknown): NativeRouteMatchResult | null {
+  if (!response || typeof response !== "object") return null;
+  const value = response as Record<string, unknown>;
+  const statuses: WorkstationJob["status"][] = ["queued", "running", "complete", "failed", "blocked", "cancelled"];
+  if (
+    typeof value.jobId !== "string" ||
+    typeof value.routeId !== "string" ||
+    typeof value.status !== "string" ||
+    !statuses.includes(value.status as WorkstationJob["status"]) ||
+    typeof value.progress !== "number" ||
+    !Number.isFinite(value.progress) ||
+    value.progress < 0 ||
+    value.progress > 100 ||
+    typeof value.detail !== "string" ||
+    typeof value.matcherUsed !== "string" ||
+    !Array.isArray(value.route)
+  ) return null;
+  const route: TimedRoutePoint[] = [];
+  let previousTime = -1;
+  for (const point of value.route) {
+    if (!point || typeof point !== "object") return null;
+    const candidate = point as Record<string, unknown>;
+    if (
+      typeof candidate.latitude !== "number" || !Number.isFinite(candidate.latitude) || candidate.latitude < -90 || candidate.latitude > 90 ||
+      typeof candidate.longitude !== "number" || !Number.isFinite(candidate.longitude) || candidate.longitude < -180 || candidate.longitude > 180 ||
+      typeof candidate.timeSeconds !== "number" || !Number.isFinite(candidate.timeSeconds) || candidate.timeSeconds < 0 || candidate.timeSeconds <= previousTime
+    ) return null;
+    previousTime = candidate.timeSeconds;
+    route.push({ latitude: candidate.latitude, longitude: candidate.longitude, timeSeconds: candidate.timeSeconds });
   }
-
-  return "(matched point count unavailable)";
+  if (value.status === "complete" && (route.length < 2 || route[0].timeSeconds !== 0)) return null;
+  return {
+    jobId: value.jobId,
+    routeId: value.routeId,
+    status: value.status as WorkstationJob["status"],
+    progress: value.progress,
+    detail: value.detail,
+    matcherUsed: value.matcherUsed,
+    route
+  };
 }
 
-function gpxProjectedFeatureCount(response: unknown): string {
-  if (response && typeof response === "object" && "projectedFeatureCount" in response) {
-    return String((response as { projectedFeatureCount: unknown }).projectedFeatureCount);
-  }
-
-  return "(projected feature count unavailable)";
+function isTerminalRouteStatus(status: WorkstationJob["status"]): boolean {
+  return status === "complete" || status === "failed" || status === "blocked" || status === "cancelled";
 }
 
 function gisFeatureSourceId(response: unknown): string {

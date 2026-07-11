@@ -30,11 +30,11 @@ through the native RoadWatcher project.
 
 ### Task 4: Frontend Native Route Reconciliation
 
-- [ ] Add failing reducer and App tests for active-project guards, native import,
+- [x] Add failing reducer and App tests for active-project guards, native import,
   polling completion/failure/blocking, project switching, and export invalidation.
-- [ ] Implement native route DTO parsing, reducer actions, UI controls/status,
+- [x] Implement native route DTO parsing, reducer actions, UI controls/status,
   route provenance, polling, and projected-feature recalculation.
-- [ ] Run focused frontend tests/build and commit.
+- [x] Run focused frontend tests/build and commit.
 
 ### Task 5: Verification and Handoff
 
