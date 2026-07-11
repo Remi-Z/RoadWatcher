@@ -2444,7 +2444,9 @@ dependencies = [
 name = "roadwatcher"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "hex",
+ "quick-xml",
  "rusqlite",
  "serde",
  "serde_json",

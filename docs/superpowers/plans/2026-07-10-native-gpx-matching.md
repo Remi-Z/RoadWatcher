@@ -14,10 +14,10 @@ through the native RoadWatcher project.
 
 ### Task 2: Native GPX Parser and Import Command
 
-- [ ] Add failing parser tests for valid namespaces, invalid coordinates,
+- [x] Add failing parser tests for valid namespaces, invalid coordinates,
   missing/invalid timestamps, ordering, and minimum point count.
-- [ ] Implement bounded `quick-xml` parsing and normalized timing.
-- [ ] Register `gpx_import`, update TypeScript contracts/repository adapters, and
+- [x] Implement bounded `quick-xml` parsing and normalized timing.
+- [x] Register `gpx_import`, update TypeScript contracts/repository adapters, and
   commit.
 
 ### Task 3: Durable Map-Match Worker

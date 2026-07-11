@@ -5,10 +5,12 @@ use project_store::{
     ProjectSaveResponse, ProxyJobRequest, ProxyJobStatus,
 };
 use proxy_worker::{ProxyStartResponse, ProxyWorkerManager};
+use route_import::{import_gpx as store_import_gpx, GpxImportRequest};
 use std::path::PathBuf;
 
 mod project_store;
 mod proxy_worker;
+mod route_import;
 
 #[tauri::command]
 fn project_create(
@@ -43,6 +45,20 @@ fn media_import(
     source_path: String,
 ) -> Result<MediaImportResponse, String> {
     store_import_media(MediaImportRequest {
+        sqlite_path: PathBuf::from(sqlite_path),
+        project_id,
+        source_path: PathBuf::from(source_path),
+    })
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn gpx_import(
+    sqlite_path: String,
+    project_id: String,
+    source_path: String,
+) -> Result<project_store::RouteImportResponse, String> {
+    store_import_gpx(GpxImportRequest {
         sqlite_path: PathBuf::from(sqlite_path),
         project_id,
         source_path: PathBuf::from(source_path),
@@ -110,6 +126,7 @@ pub fn run() {
             project_save,
             project_load,
             media_import,
+            gpx_import,
             ffmpeg_proxy,
             job_status,
             job_cancel

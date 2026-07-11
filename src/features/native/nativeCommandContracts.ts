@@ -3,6 +3,7 @@ export type NativeCommandName =
   | "project_save"
   | "project_load"
   | "media_import"
+  | "gpx_import"
   | "gpx_match"
   | "gis_project"
   | "ffmpeg_proxy"
@@ -77,6 +78,26 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     ],
     fallback: "browser file references and placeholder clips",
     ownerAction: "Import source paths or file handles, hash originals, probe metadata, and queue proxy work."
+  },
+  {
+    id: "gpx-import",
+    label: "Native GPX import",
+    command: "gpx_import",
+    implementation: "implemented",
+    readinessRequired: true,
+    requestFields: ["sqlitePath", "projectId", "sourcePath"],
+    responseFields: [
+      "routeId",
+      "fileName",
+      "originalPath",
+      "hash",
+      "fileSizeBytes",
+      "route",
+      "matchStatus",
+      "matchJobId"
+    ],
+    fallback: "browser GPX parsing and queued Valhalla job",
+    ownerAction: "Import a GPX source path into the active native project."
   },
   {
     id: "gpx-match",

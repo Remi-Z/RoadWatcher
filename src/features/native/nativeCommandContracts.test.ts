@@ -9,6 +9,7 @@ describe("native command contracts", () => {
       "project_save",
       "project_load",
       "media_import",
+      "gpx_import",
       "gpx_match",
       "gis_project",
       "ffmpeg_proxy",
@@ -54,6 +55,21 @@ describe("native command contracts", () => {
       requestFields: ["sqlitePath", "projectId", "mediaId", "jobId", "profile", "binaryDirectory"],
       responseFields: ["jobId", "status"]
     });
+    expect(nativeCommandContracts.find((contract) => contract.command === "gpx_import")).toMatchObject({
+      implementation: "implemented",
+      readinessRequired: true,
+      requestFields: ["sqlitePath", "projectId", "sourcePath"],
+      responseFields: [
+        "routeId",
+        "fileName",
+        "originalPath",
+        "hash",
+        "fileSizeBytes",
+        "route",
+        "matchStatus",
+        "matchJobId"
+      ]
+    });
     expect(nativeCommandContracts.find((contract) => contract.command === "job_status")).toMatchObject({
       implementation: "implemented",
       readinessRequired: false,
@@ -70,6 +86,7 @@ describe("native command contracts", () => {
       "project_save",
       "project_load",
       "media_import",
+      "gpx_import",
       "gpx_match",
       "gis_project",
       "ffmpeg_proxy"
