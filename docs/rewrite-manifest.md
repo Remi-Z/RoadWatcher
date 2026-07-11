@@ -414,11 +414,11 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Replace seeded demo state with command-backed empty-project hydration. Native
-   file selection is complete using the official Tauri dialog plugin, scoped
-   original-file access, exact media/GPX/GeoJSON filters, and separate Choose vs
-   Import actions (154 frontend tests and 52 Rust tests pass; one installed-
-   FFmpeg smoke is intentionally ignored).
+1. Implement durable local CV scanning. Production empty-project hydration is
+   complete: no implicit demo evidence, explicit fixture injection, actionable
+   empty regions, and real export readiness. Verification passed 157 frontend
+   tests and the production build; the Rust baseline remains 52 passing tests
+   with one installed-FFmpeg smoke ignored.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -433,8 +433,8 @@ network/DNS access.
 5. Use verified native export files for active SQLite projects; browser data-URL
    links remain only as explicit fallback. Project save/load and export-manifest
    persistence are complete.
-6. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
-   demo fallback only for empty projects.
+6. Keep `src/data/demoProject.ts` limited to explicit demo/test injection;
+   production uses empty or validated command-backed snapshot state.
 7. Preserve the implemented scoped native file picker and import-by-reference
    command boundary while replacing seeded state.
 8. Configure local Valhalla/OSRM data and add an optional live matcher smoke.

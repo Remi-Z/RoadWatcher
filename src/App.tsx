@@ -39,16 +39,7 @@ import {
   Video
 } from "lucide-react";
 import { type ChangeEvent, type RefObject, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import {
-  incidentDraft,
-  initialClips,
-  initialJobs,
-  mediaAssets,
-  missingSlots,
-  officialRoadFeatures,
-  projectedFeatures,
-  routePoints
-} from "./data/demoProject";
+import { defaultComponentSlots } from "./data/defaultComponentSlots";
 import type { ComponentSlot, ComponentSlotStatus, IncidentDraft, MediaAsset, ProjectId } from "./domain/projectModels";
 import { parseOfficialFeaturesFromGeoJson } from "./features/geo/geoJsonImport";
 import { parseGpxTrack } from "./features/geo/gpxImport";
@@ -86,7 +77,6 @@ import {
   buildEvidencePacket,
   createProjectId,
   createProjectSnapshot,
-  DEFAULT_NATIVE_PROJECT_ROOT,
   tryParseSnapshot,
   type EvidencePacket,
   type NativeCommandAttempt,
@@ -105,13 +95,18 @@ import type { TimelineClip } from "./features/timeline/timelineModel";
 import { clipDurationSeconds, timelineDurationSeconds } from "./features/timeline/timelineModel";
 import {
   createInitialWorkstationState,
-  workstationReducer,
-  type WorkstationSeed
+  workstationReducer
 } from "./features/workstation/workstationState";
+import {
+  createEmptyWorkstationSeed,
+  type WorkstationSeedFactory
+} from "./features/workstation/workstationSeed";
 
 const defaultProjectRepository = createBrowserProjectRepository();
 const defaultNativeProjectLocator = createNativeProjectLocator();
 const defaultNativeFilePicker = createNativeFilePicker();
+const defaultWorkstationSeedFactory: WorkstationSeedFactory = (projectId) =>
+  createEmptyWorkstationSeed(projectId, defaultComponentSlots);
 const NATIVE_MEDIA_SOURCE_PATH_SLOT = "slot: native media source path from file picker";
 const NATIVE_GPX_PATH_SLOT = "slot: persisted GPX path from native import";
 const NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT = "slot: official GIS source path from native import";
@@ -123,7 +118,8 @@ export function App({
   nativeProjectLocator = defaultNativeProjectLocator,
   nativeRuntimeStatus,
   projectIdFactory = createProjectId,
-  projectRepository = defaultProjectRepository
+  projectRepository = defaultProjectRepository,
+  workstationSeedFactory = defaultWorkstationSeedFactory
 }: {
   nativeInvoke?: NativeInvoke;
   nativeFilePicker?: NativeFilePicker;
@@ -131,10 +127,11 @@ export function App({
   nativeRuntimeStatus?: NativeRuntimeStatus;
   projectIdFactory?: () => ProjectId;
   projectRepository?: ProjectRepository;
+  workstationSeedFactory?: WorkstationSeedFactory;
 }) {
   const [initialLoad] = useState(() => projectRepository.load());
   const restoredSnapshot = initialLoad.status === "loaded" ? initialLoad.snapshot : null;
-  const [initialSeed] = useState(() => createWorkstationSeed(restoredSnapshot?.projectId ?? projectIdFactory()));
+  const [initialSeed] = useState(() => workstationSeedFactory(restoredSnapshot?.projectId ?? projectIdFactory()));
   const [workstation, dispatchWorkstation] = useReducer(
     workstationReducer,
     { seed: initialSeed, snapshot: restoredSnapshot },
@@ -311,7 +308,7 @@ export function App({
           setActiveProxyJob(null);
           setActiveRouteJob(null);
           setActiveGisJob(null);
-          dispatchWorkstation({ type: "replace_project", snapshot: result.snapshot, fallbackComponentSlots: missingSlots });
+          dispatchWorkstation({ type: "replace_project", snapshot: result.snapshot, fallbackComponentSlots: defaultComponentSlots });
           dispatchWorkstation({ type: "record_native_attempt", attempt: loadAttempt });
           projectRepository.save(result.snapshot);
           setAppStatus(`Restored native SQLite project: ${sqlitePath}`);
@@ -620,6 +617,10 @@ export function App({
   }
 
   async function handleExportPacket() {
+    if (!reviewReadiness.canExportPacket) {
+      setAppStatus(`Export blocked: ${reviewReadiness.packet.blockers.join(" ")}`);
+      return;
+    }
     const snapshot = createProjectSnapshot(currentSnapshotInput);
     const packet = buildEvidencePacket(snapshot, { runtimeStatus: activeNativeRuntimeStatus });
     const artifacts = [
@@ -676,11 +677,11 @@ export function App({
     setActiveRouteJob(null);
     setActiveGisJob(null);
     nativeHydrationPathRef.current = null;
-    dispatchWorkstation({ type: "reset_project", seed: createWorkstationSeed(projectIdFactory()) });
+    dispatchWorkstation({ type: "reset_project", seed: workstationSeedFactory(projectIdFactory()) });
     setAppStatus(
       cleared
-        ? "Local draft cleared; seeded review state restored."
-        : "Session draft cleared; browser storage was unavailable."
+        ? "Local draft cleared; a new empty project is ready."
+        : "Session draft cleared; a new empty project is ready, but browser storage was unavailable."
     );
   }
 
@@ -739,7 +740,7 @@ export function App({
       setActiveProxyJob(null);
       setActiveRouteJob(null);
       setActiveGisJob(null);
-      dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: missingSlots });
+      dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: defaultComponentSlots });
       dispatchWorkstation({ type: "record_native_attempt", attempt: saveAttempt });
       projectRepository.save(snapshot);
       setAppStatus(`Native project store ready: ${project.projectDirectory}`);
@@ -1218,7 +1219,7 @@ export function App({
     setActiveProxyJob(null);
     setActiveRouteJob(null);
     setActiveGisJob(null);
-    dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: missingSlots });
+    dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: defaultComponentSlots });
   }
 
   function invalidateLatestExport(statusMessage = "Draft changed since last export; regenerate packet to refresh downloads.") {
@@ -1263,7 +1264,7 @@ export function App({
             <Trash2 size={16} />
             Clear local draft
           </button>
-          <button type="button" className="button primary" onClick={handleExportPacket}>
+          <button type="button" className="button primary" onClick={handleExportPacket} disabled={!reviewReadiness.canExportPacket}>
             <Download size={16} />
             Export packet
           </button>
@@ -1304,7 +1305,7 @@ export function App({
             <div className="scrub-bar" aria-hidden="true">
               <span style={{ width: "42%" }} />
             </div>
-            <span className="timecode">00:13:56 / 01:11:00</span>
+            <span className="timecode">{primaryMedia ? "00:00:00 / " + formatMediaDuration(primaryMedia.durationSeconds) : "No media"}</span>
           </div>
         </section>
 
@@ -1331,6 +1332,7 @@ export function App({
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={clips.map((clip) => clip.id)} strategy={horizontalListSortingStrategy}>
               <div className="timeline-track">
+                {clips.length === 0 && <p className="empty-state">Import media to create the first evidence clip.</p>}
                 {clips.map((clip) => (
                   <SortableClip
                     key={clip.id}
@@ -1403,6 +1405,7 @@ export function App({
         <section className="panel">
           <PanelHeader icon={<FileVideo size={18} />} title="Session media" meta="Referenced originals" />
           <div className="media-list">
+            {media.length === 0 && <p className="empty-state">No media referenced. Choose or import a source video to begin.</p>}
             {media.map((asset) => (
               <article className="media-row" key={asset.id}>
                 <div>
@@ -1851,7 +1854,7 @@ function RouteMap({
     <div className="map-canvas">
       <svg viewBox="0 0 100 100" role="img" aria-label="Route with projected official road features">
         <path className="map-grid-line" d="M0 30H100 M0 60H100 M25 0V100 M55 0V100 M82 0V100" />
-        <path className="raw-gpx" d="M12 74 L29 62 L48 58 L67 42 L86 34" />
+        {route.length > 0 && <path className="raw-gpx" d="M12 74 L29 62 L48 58 L67 42 L86 34" />}
         <path className="matched-route" d={routePath} />
         {projectedFeatures.map((feature, index) => (
           <g key={feature.featureId} transform={`translate(${29 + index * 20} ${62 - index * 12})`}>
@@ -2054,7 +2057,7 @@ function Inspector({
       <InspectorField label="Category" value={draft.category} onChange={(value) => onDraftChange("category", value)} />
       <InspectorField label="Start" value={draft.start} onChange={(value) => onDraftChange("start", value)} />
       <InspectorField label="End" value={draft.end} onChange={(value) => onDraftChange("end", value)} />
-      <InspectorField label="Plate" value={draft.plate || "manual entry needed"} onChange={(value) => onDraftChange("plate", value)} />
+      <InspectorField label="Plate" value={draft.plate} placeholder="manual entry needed" onChange={(value) => onDraftChange("plate", value)} />
       <InspectorField
         label="Vehicle notes"
         value={draft.vehicleNotes}
@@ -2078,11 +2081,21 @@ function Inspector({
   );
 }
 
-function InspectorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function InspectorField({
+  label,
+  value,
+  placeholder,
+  onChange
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
   return (
     <label>
       <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
+      <input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -2098,6 +2111,7 @@ function JobList({
 }) {
   return (
     <div className="job-list">
+      {jobs.length === 0 && <p className="empty-state">No processing jobs. Import media, GPX, or GIS data to queue work.</p>}
       {jobs.map((job) => {
         const blockers = nativeChecklist.filter((item) => item.blockingJobs.includes(job.label));
 
@@ -2144,6 +2158,7 @@ function ProjectedFeatureList({
 }) {
   return (
     <div className="feature-review-list">
+      {projectedFeatures.length === 0 && <p className="empty-state">No projected official features to review.</p>}
       {projectedFeatures.map((feature) => {
         const source = officialFeatures.find((candidate) => candidate.id === feature.featureId);
         return <article className="feature-review-row" key={feature.featureId}>
@@ -2272,22 +2287,6 @@ function componentSlotPillStatus(status: ComponentSlotStatus): string {
   }
 
   return "queued";
-}
-
-function createWorkstationSeed(projectId: ProjectId): WorkstationSeed {
-  return {
-    clips: initialClips,
-    componentSlots: missingSlots,
-    incident: incidentDraft,
-    jobs: initialJobs,
-    media: mediaAssets,
-    nativeCommandAttempts: [],
-    nativeProjectRoot: DEFAULT_NATIVE_PROJECT_ROOT,
-    officialFeatures: officialRoadFeatures,
-    projectId,
-    projectedFeatures,
-    route: routePoints
-  };
 }
 
 function isGpxFile(file: File): boolean {

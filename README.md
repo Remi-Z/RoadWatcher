@@ -165,8 +165,11 @@ GPX/map-matching, and official GeoJSON projection workflows are complete; the
 The official Tauri dialog plugin now provides scoped, single-file media/GPX/GIS
 selection with purpose-specific filters. Choose actions populate the existing
 paths without auto-importing or copying originals; browser mode retains manual
-path entry. The next slice is replacing seeded demo data with command-backed
-empty-project hydration.
+path entry. Production startup and clear now create an honest empty project with
+no fabricated evidence; validated browser/native snapshots hydrate over that
+state, while the former dataset is available only through an explicit demo/test
+seed factory. Empty media, route, timeline, job, and GIS regions are actionable,
+and packet export stays disabled until media and a clip exist.
 
 ## Slots You Need To Fill
 

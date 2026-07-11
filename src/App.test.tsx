@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { App } from "./App";
+import { App as RoadWatcherApp } from "./App";
 import {
   incidentDraft,
   initialClips,
@@ -11,6 +11,7 @@ import {
   projectedFeatures,
   routePoints
 } from "./data/demoProject";
+import { createDemoWorkstationSeed } from "./data/demoProject";
 import type { ProjectLoadResult, ProjectRepository } from "./features/project/browserProjectRepository";
 import { createProjectSnapshot, parseSnapshot, serializeSnapshot, type ProjectSnapshot } from "./features/project/projectState";
 import { detectNativeRuntime } from "./features/native/runtimeEnvironment";
@@ -21,7 +22,56 @@ import type { NativeFilePicker } from "./features/native/nativeFilePicker";
 
 const TEST_PROJECT_ID = "local-app-test-project" as ProjectId;
 
+function App(props: Parameters<typeof RoadWatcherApp>[0]) {
+  return <RoadWatcherApp workstationSeedFactory={createDemoWorkstationSeed} {...props} />;
+}
+
 describe("RoadWatcher workstation", () => {
+  it("starts production with an honest empty project instead of seeded evidence", () => {
+    render(
+      <RoadWatcherApp
+        projectIdFactory={() => TEST_PROJECT_ID}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+
+    expect(screen.getByLabelText("Dashcam preview")).toHaveTextContent("no media imported");
+    expect(screen.getByLabelText("Matched route map")).toHaveTextContent("0 timed points");
+    expect(screen.getByLabelText("Matched route map")).toHaveTextContent("No timed points imported");
+    expect(screen.getByLabelText("Evidence reel timeline")).toHaveTextContent("Import media to create the first evidence clip");
+    expect(screen.getByText("No media referenced. Choose or import a source video to begin.")).toBeInTheDocument();
+    expect(screen.getByText("No processing jobs. Import media, GPX, or GIS data to queue work.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export packet" })).toBeDisabled();
+    expect(screen.queryByText("front-cam-2026-07-06-ride-01.mp4")).not.toBeInTheDocument();
+  });
+
+  it("imports into an empty project and clears back to a new empty identity", () => {
+    const ids = ["empty-project-1", "empty-project-2"] as ProjectId[];
+    const repository = createMemoryProjectRepository();
+    render(
+      <RoadWatcherApp
+        projectIdFactory={() => ids.shift() ?? ("unexpected-project" as ProjectId)}
+        projectRepository={repository}
+      />
+    );
+    const importedVideo = new File(["video"], "first-evidence.mp4", { type: "video/mp4" });
+
+    fireEvent.change(screen.getByLabelText("Import media files"), { target: { files: [importedVideo] } });
+
+    expect(screen.getAllByText("first-evidence.mp4")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Evidence reel timeline" }).closest("section")).toHaveTextContent("1 clips");
+    expect(screen.getByRole("button", { name: "Export packet" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear local draft" }));
+
+    expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("new empty project is ready");
+    expect(screen.queryAllByText("first-evidence.mp4")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Export packet" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
+    expect(repository.snapshot?.projectId).toBe("empty-project-2");
+    expect(repository.snapshot?.media).toEqual([]);
+    expect(repository.snapshot?.clips).toEqual([]);
+  });
   it("renders the core evidence review regions", () => {
     render(<App />);
 
@@ -196,7 +246,8 @@ describe("RoadWatcher workstation", () => {
     render(<App projectRepository={createMemoryProjectRepository(null, loadResult)} />);
 
     expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent(expectedStatus);
-    expect(screen.getByLabelText("Plate")).toHaveValue("manual entry needed");
+    expect(screen.getByLabelText("Plate")).toHaveValue("");
+    expect(screen.getByLabelText("Plate")).toHaveAttribute("placeholder", "manual entry needed");
     expect(screen.getByLabelText("Evidence reel timeline")).toHaveTextContent("Approach");
   });
 
@@ -223,7 +274,7 @@ describe("RoadWatcher workstation", () => {
 
     expect(repository.snapshot).toBeNull();
     expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Local draft cleared");
-    expect(screen.getByLabelText("Plate")).toHaveValue("manual entry needed");
+    expect(screen.getByLabelText("Plate")).toHaveValue("");
     expect(screen.getByLabelText("Narrative")).toHaveValue("Evidence note draft stays neutral until manual review.");
   });
 
@@ -611,7 +662,7 @@ describe("RoadWatcher workstation", () => {
     );
 
     expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Could not restore native SQLite project");
-    expect(screen.getByLabelText("Plate")).toHaveValue("manual entry needed");
+    expect(screen.getByLabelText("Plate")).toHaveValue("");
   });
 
   it("saves subsequent drafts to the active native SQLite project", async () => {
