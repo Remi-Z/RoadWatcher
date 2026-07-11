@@ -7,10 +7,10 @@ with a durable, recoverable export manifest.
 
 ### Task 1: Schema-v6 Export Manifest Store
 
-- [ ] Add failing schema/migration/recovery tests for staging and complete export
+- [x] Add failing schema/migration/recovery tests for staging and complete export
   manifests plus artifact metadata.
-- [ ] Implement schema v6 manifest/artifact tables and confined stale recovery.
-- [ ] Run focused store tests and commit.
+- [x] Implement schema v6 manifest/artifact tables and confined stale recovery.
+- [x] Run focused store tests and commit.
 
 ### Task 2: Atomic Native Export Writer
 

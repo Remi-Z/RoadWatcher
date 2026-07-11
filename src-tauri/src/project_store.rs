@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
 
-const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 5;
+const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 6;
 
 #[derive(Debug)]
 pub struct ProjectCreateRequest {
@@ -435,6 +435,7 @@ pub fn save_project_snapshot(
 
 pub fn load_project_snapshot(sqlite_path: &Path) -> Result<ProjectLoadResponse, ProjectStoreError> {
     let connection = open_project_database(sqlite_path)?;
+    recover_stale_exports(&connection, sqlite_path)?;
     let database_id = project_id(&connection)?;
     let response = connection.query_row(
         "SELECT project_id, snapshot_schema_version, saved_at_iso, snapshot_json
@@ -1594,6 +1595,9 @@ fn migrate_database(connection: &mut Connection) -> Result<(), ProjectStoreError
         if version <= 4 {
             transaction.execute_batch(FEATURE_SOURCE_MIGRATION_SQL)?;
         }
+        if version <= 5 {
+            transaction.execute_batch(EXPORT_MANIFEST_MIGRATION_SQL)?;
+        }
         transaction.execute(
             "UPDATE schema_info SET version = ?1",
             params![PROJECT_DATABASE_SCHEMA_VERSION],
@@ -1609,6 +1613,73 @@ fn migrate_database(connection: &mut Connection) -> Result<(), ProjectStoreError
         )));
     }
     Ok(())
+}
+
+fn recover_stale_exports(
+    connection: &Connection,
+    sqlite_path: &Path,
+) -> Result<(), ProjectStoreError> {
+    let project_directory = sqlite_path.parent().ok_or_else(|| {
+        ProjectStoreError::InvalidDatabase("project database has no parent directory".to_string())
+    })?;
+    let exports_directory = project_directory.join("exports");
+    let mut statement = connection.prepare(
+        "SELECT id, staging_directory FROM export_manifests
+         WHERE status = 'staging' ORDER BY created_at_unix, id",
+    )?;
+    let stale_exports = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(statement);
+
+    for (export_id, recorded_path) in stale_exports {
+        let expected_path = exports_directory.join(format!(".staging-{export_id}"));
+        let cleanup_detail = if PathBuf::from(&recorded_path) != expected_path {
+            "Stale export was not removed because its staging path was outside the confined export directory."
+                .to_string()
+        } else {
+            match remove_flat_staging_directory(&expected_path) {
+                Ok(()) => "Stale export staging files were removed during project open.".to_string(),
+                Err(error) => format!(
+                    "Stale export requires manual cleanup; confined removal was refused or failed: {error}"
+                ),
+            }
+        };
+        connection.execute(
+            "UPDATE export_manifests
+             SET status = 'failed', failure_detail = ?2
+             WHERE id = ?1 AND status = 'staging'",
+            params![export_id, cleanup_detail],
+        )?;
+    }
+    Ok(())
+}
+
+fn remove_flat_staging_directory(path: &Path) -> std::io::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "staging path is not a regular directory",
+        ));
+    }
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let entry_metadata = entry.file_type()?;
+        if !entry_metadata.is_file() || entry_metadata.is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "staging directory contains a non-file entry",
+            ));
+        }
+        fs::remove_file(entry.path())?;
+    }
+    fs::remove_dir(path)
 }
 
 fn project_id(connection: &Connection) -> Result<String, ProjectStoreError> {
@@ -1644,7 +1715,7 @@ fn path_string(path: &Path) -> String {
 const SCHEMA_SQL: &str = r#"
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;
 
 CREATE TABLE schema_info (
     version INTEGER NOT NULL CHECK (version > 0)
@@ -1789,6 +1860,30 @@ CREATE TABLE project_snapshots (
     saved_at_iso TEXT NOT NULL,
     snapshot_json TEXT NOT NULL
 );
+
+CREATE TABLE export_manifests (
+    id TEXT PRIMARY KEY NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_base_name TEXT NOT NULL,
+    created_at_unix INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('staging', 'complete', 'failed')),
+    staging_directory TEXT NOT NULL,
+    final_directory TEXT NOT NULL DEFAULT '',
+    manifest_path TEXT NOT NULL DEFAULT '',
+    manifest_json TEXT NOT NULL DEFAULT '',
+    failure_detail TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE export_artifacts (
+    export_id TEXT NOT NULL REFERENCES export_manifests(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL CHECK (mime_type IN ('application/json', 'text/markdown')),
+    sha256 TEXT NOT NULL,
+    byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
+    final_path TEXT NOT NULL,
+    PRIMARY KEY (export_id, file_name)
+);
 "#;
 
 const PROJECT_SNAPSHOT_TABLE_SQL: &str = r#"
@@ -1908,6 +2003,31 @@ UPDATE feature_sources SET projection_status = 'queued'
 WHERE id IN (SELECT feature_source_id FROM jobs WHERE job_type = 'gis' AND status = 'queued');
 "#;
 
+const EXPORT_MANIFEST_MIGRATION_SQL: &str = r#"
+CREATE TABLE export_manifests (
+    id TEXT PRIMARY KEY NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_base_name TEXT NOT NULL,
+    created_at_unix INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('staging', 'complete', 'failed')),
+    staging_directory TEXT NOT NULL,
+    final_directory TEXT NOT NULL DEFAULT '',
+    manifest_path TEXT NOT NULL DEFAULT '',
+    manifest_json TEXT NOT NULL DEFAULT '',
+    failure_detail TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE export_artifacts (
+    export_id TEXT NOT NULL REFERENCES export_manifests(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL CHECK (mime_type IN ('application/json', 'text/markdown')),
+    sha256 TEXT NOT NULL,
+    byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
+    final_path TEXT NOT NULL,
+    PRIMARY KEY (export_id, file_name)
+);
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1920,7 +2040,7 @@ mod tests {
         ProjectSaveRequest, ProjectStoreError, ProxyCompletion, ProxyJobRequest,
         RouteImportRequest, RouteMatchRequest, RoutePoint,
     };
-    use rusqlite::Connection;
+    use rusqlite::{params, Connection};
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1967,7 +2087,7 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(schema_version, 5);
+        assert_eq!(schema_version, 6);
         assert_eq!(
             metadata,
             (
@@ -1998,6 +2118,8 @@ mod tests {
             "component_slots",
             "native_command_attempts",
             "project_snapshots",
+            "export_manifests",
+            "export_artifacts",
         ] {
             assert!(table_names.contains(table), "missing table {table}");
         }
@@ -2416,8 +2538,8 @@ mod tests {
         let schema_version: i64 = connection
             .query_row("SELECT version FROM schema_info", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(user_version, 5);
-        assert_eq!(schema_version, 5);
+        assert_eq!(user_version, 6);
+        assert_eq!(schema_version, 6);
     }
 
     #[test]
@@ -2485,7 +2607,7 @@ mod tests {
             load_project_snapshot(Path::new(&created.sqlite_path)),
             Err(ProjectStoreError::UnsupportedDatabaseVersion {
                 found: 99,
-                supported: 5
+                supported: 6
             })
         ));
     }
@@ -2689,7 +2811,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         let media_columns: BTreeSet<String> = connection
             .prepare("PRAGMA table_info(media_assets)")
             .unwrap()
@@ -2747,7 +2869,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         let migrated: (String, String, f64) = connection
             .query_row(
                 "SELECT route_id, point_set, time_seconds FROM route_points WHERE sequence = 1",
@@ -2808,7 +2930,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         let source: (String, String, i64) = connection.query_row(
             "SELECT source_crs, normalized_crs, feature_count FROM feature_sources WHERE id = 'legacy-gis-gis-project'",
             [],
@@ -2841,6 +2963,164 @@ mod tests {
                 0.0
             )
         );
+    }
+
+    #[test]
+    fn migrates_v5_projects_to_durable_export_manifest_tables() {
+        let root = TestRoot::new();
+        let sqlite_path = root.path().join("v5-export.sqlite");
+        let connection = Connection::open(&sqlite_path).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA user_version = 5;
+                 CREATE TABLE schema_info (version INTEGER NOT NULL);
+                 INSERT INTO schema_info VALUES (5);
+                 CREATE TABLE projects (
+                   id TEXT PRIMARY KEY, display_name TEXT NOT NULL, created_at_unix INTEGER NOT NULL
+                 );
+                 INSERT INTO projects VALUES ('export-project', 'Legacy export', 0);",
+            )
+            .unwrap();
+        drop(connection);
+
+        drop(open_project_database(&sqlite_path).unwrap());
+        let connection = Connection::open(&sqlite_path).unwrap();
+        let versions: (i64, i64) = connection
+            .query_row(
+                "SELECT (SELECT user_version FROM pragma_user_version), version FROM schema_info",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(versions, (6, 6));
+        let tables: BTreeSet<String> = connection
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert!(tables.contains("export_manifests"));
+        assert!(tables.contains("export_artifacts"));
+    }
+
+    #[test]
+    fn project_load_fails_stale_exports_and_removes_only_flat_confined_staging() {
+        let root = TestRoot::new();
+        let project_id = Uuid::new_v4();
+        let export_id = Uuid::new_v4();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Export recovery".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let project_directory = PathBuf::from(&created.project_directory);
+        let staging_directory = project_directory
+            .join("exports")
+            .join(format!(".staging-{export_id}"));
+        fs::create_dir(&staging_directory).unwrap();
+        fs::write(staging_directory.join("packet.json"), b"partial").unwrap();
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        connection
+            .execute(
+                "INSERT INTO export_manifests
+                 (id, project_id, file_base_name, created_at_unix, status, staging_directory)
+                 VALUES (?1, ?2, 'packet', 1, 'staging', ?3)",
+                params![
+                    export_id.to_string(),
+                    project_id.to_string(),
+                    staging_directory.to_string_lossy().into_owned()
+                ],
+            )
+            .unwrap();
+        drop(connection);
+
+        assert!(matches!(
+            load_project_snapshot(Path::new(&created.sqlite_path)),
+            Err(ProjectStoreError::SnapshotMissing)
+        ));
+        assert!(!staging_directory.exists());
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        let recovered: (String, String) = connection
+            .query_row(
+                "SELECT status, failure_detail FROM export_manifests WHERE id = ?1",
+                [export_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(recovered.0, "failed");
+        assert!(recovered.1.contains("removed during project open"));
+    }
+
+    #[test]
+    fn stale_export_recovery_refuses_nested_entries_and_preserves_complete_history() {
+        let root = TestRoot::new();
+        let project_id = Uuid::new_v4();
+        let stale_id = Uuid::new_v4();
+        let complete_id = Uuid::new_v4();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Confined recovery".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let staging_directory = PathBuf::from(&created.project_directory)
+            .join("exports")
+            .join(format!(".staging-{stale_id}"));
+        fs::create_dir(&staging_directory).unwrap();
+        fs::create_dir(staging_directory.join("unexpected-directory")).unwrap();
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        connection
+            .execute(
+                "INSERT INTO export_manifests
+                 (id, project_id, file_base_name, created_at_unix, status, staging_directory)
+                 VALUES (?1, ?2, 'stale', 1, 'staging', ?3)",
+                params![
+                    stale_id.to_string(),
+                    project_id.to_string(),
+                    staging_directory.to_string_lossy().into_owned()
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO export_manifests
+                 (id, project_id, file_base_name, created_at_unix, status, staging_directory,
+                  final_directory, manifest_path, manifest_json)
+                 VALUES (?1, ?2, 'complete', 2, 'complete', '', 'exports/final',
+                         'exports/final/manifest.json', '{}')",
+                params![complete_id.to_string(), project_id.to_string()],
+            )
+            .unwrap();
+        drop(connection);
+
+        let _ = load_project_snapshot(Path::new(&created.sqlite_path));
+        assert!(staging_directory.exists());
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        let stale: (String, String) = connection
+            .query_row(
+                "SELECT status, failure_detail FROM export_manifests WHERE id = ?1",
+                [stale_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let complete: (String, String) = connection
+            .query_row(
+                "SELECT status, manifest_json FROM export_manifests WHERE id = ?1",
+                [complete_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(stale.0, "failed");
+        assert!(stale.1.contains("manual cleanup"));
+        assert_eq!(complete, ("complete".to_string(), "{}".to_string()));
     }
 
     #[test]

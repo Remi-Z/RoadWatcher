@@ -142,11 +142,14 @@ paths must be invoked successfully before native-ready is claimed. Tauri
 `project_create` is backed by a SQLite project folder and durable metadata. Its
 pure Rust store now
 creates the UUID layout, required directories, schema version, project metadata,
-and foundational tables under test. Database schema version 5 retains the
+and foundational tables under test. Database schema version 6 retains the
 canonical transactional snapshot record, migrates older projects on open, and
 adds durable proxy outputs plus identified raw/matched routes, route-job links,
 matcher provenance, identified GIS sources/features/projections, CRS provenance,
-cancellation, and stale-running recovery.
+cancellation, and stale-running recovery. It also adds durable export-manifest
+and artifact records. Project load fails abandoned `staging` exports and removes
+only flat files from the exact confined `exports/.staging-<export-id>` directory;
+completed export history is immutable. The atomic file writer is the next slice.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,

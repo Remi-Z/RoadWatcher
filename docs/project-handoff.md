@@ -492,26 +492,25 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `src/features/project/nativeProjectLocator.ts` - stores only the last SQLite
   path for startup hydration; clearing it never deletes the project directory.
 - `src-tauri/` - Tauri 2 shell with implemented project/media/proxy/GPX/matcher
-  commands, schema version 5 migrations, streaming SHA-256, durable background
+  commands, schema version 6 migrations, streaming SHA-256, durable background
   jobs, transactional raw/matched routes, and identified GIS source/projection
-  persistence.
+  persistence. Schema v6 includes export manifests/artifacts and confined stale
+  staging recovery; the native export writer is not registered yet.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
 
 ## Next Best Implementation Slice
 
-The native official-GIS module is complete. Verification on 2026-07-10 passed
-144 frontend tests across 21 files, the production Vite build, and 46 Rust tests
-(plus the intentionally ignored installed-FFmpeg smoke). Fixtures cover bounded
-GeoJSON normalization, EPSG:4326, numeric EPSG:3857 inverse projection,
-source/properties/geometry provenance, schema migration, metric projection,
-source-specific atomic publication, missing-route blocking, background execution,
-polling, project guards, and browser fallback. GDAL/PostGIS formats and arbitrary
-CRSs remain intentionally unsupported rather than inferred.
+The schema-v6 native-export foundation is complete. Focused verification on
+2026-07-10 passed all 20 project-store tests. Coverage includes v5 migration,
+manifest/artifact table creation, confined flat staging cleanup, refusal of
+nested staging content, stale-state failure recording, and preservation of
+completed export history. The suite used a short-path temporary Cargo target to
+avoid the known Windows build-script problem with the workspace path's space.
 
-1. Replace browser data-URL packet/snapshot downloads with atomic native export
-   files and a durable export manifest.
+1. Implement the validated atomic native export writer and `native_export`
+   command against the durable schema-v6 manifest store.
 2. Add a native file picker that populates the implemented media/GPX source
    paths without changing the store contracts.
 3. Replace seeded demo data with command-backed state after native media/project

@@ -414,7 +414,9 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement atomic native evidence export files and a durable export manifest.
+1. Implement the atomic native evidence writer and `native_export` command;
+   schema-v6 durable manifest/artifact tables and confined stale recovery are
+   complete (20 focused project-store tests passed on 2026-07-10).
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -426,8 +428,9 @@ network/DNS access.
    - `pnpm build`
 4. Run Tauri commands with a temp target in this managed workspace; debug MSI
    and NSIS bundling is verified.
-5. Replace browser data-URL downloads with native file export; command-backed
-   SQLite project save/load is complete.
+5. Reconcile the completed native writer into packet export and replace browser
+   data-URL links after verified native success; command-backed SQLite
+   project save/load and export-manifest persistence are complete.
 6. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
    demo fallback only for empty projects.
 7. Add a native file picker for the implemented import-by-reference command.
