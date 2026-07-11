@@ -9,8 +9,8 @@
 ### Task 2: Durable Native CV Jobs
 
 - [x] Add schema-v7 CV scan/finding persistence and recovery.
-- [ ] Implement asynchronous sidecar process execution and status polling.
-- [ ] Register strict Tauri contracts and run Rust tests.
+- [x] Implement asynchronous sidecar process execution and Rust status command.
+- [x] Register Tauri handlers and run the full Rust suite.
 
 ### Task 3: Reviewer Reconciliation
 

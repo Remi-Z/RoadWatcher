@@ -415,8 +415,9 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement asynchronous CV sidecar execution/status polling over the completed
-   schema-v7 scan/finding persistence layer (23 focused store tests pass).
+1. Implement strict frontend CV start/status polling and reviewer reconciliation.
+   The schema-v7 store and asynchronous locked/offline sidecar worker are complete
+   (57 Rust tests pass; one installed-FFmpeg smoke is ignored).
    Production empty-project hydration is
    complete: no implicit demo evidence, explicit fixture injection, actionable
    empty regions, and real export readiness. Verification passed 157 frontend

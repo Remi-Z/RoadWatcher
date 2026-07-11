@@ -504,7 +504,7 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   publication and interrupted-job recovery; process execution is not wired yet.
 - `sidecars/roadwatcher-cv/` - real bounded YOLO-style ONNX/video scanner with
   ONNX Runtime CPU, OpenCV headless, locked dependencies, and pipeline/CLI tests.
-  Native durable execution is not registered yet.
+  Native durable execution is registered through `cv_scan`/`cv_job_status`.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
 
@@ -533,9 +533,13 @@ model/video smoke remains conditional on compatible user-supplied weights.
 All 23 focused project-store tests pass for schema v7, including v6 migration,
 queued/running/complete/failed transitions, exact source/model/label provenance,
 atomic finding publication, invalid-output rollback, and interrupted-job recovery.
+The asynchronous manager queues before returning, invokes locked/offline `uv`
+without a shell, canonicalizes source/model/label identities, caps process output,
+rejects mismatched aggregates, and records terminal blocked/failed states. Full
+Rust verification passes 57 tests with only the installed-FFmpeg smoke ignored.
 
-1. Add asynchronous sidecar execution over the schema-v7 store and status polling.
-2. Reconcile polled findings into explicit reviewer decisions and exports.
+1. Add strict TypeScript CV start/status adapters and poll durable findings.
+2. Reconcile findings into explicit reviewer decisions and exports.
 3. Add GDAL/PostGIS import for production GIS containers and arbitrary CRSs.
 4. Implement the GPStitch integration boundary.
 

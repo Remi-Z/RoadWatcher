@@ -1,3 +1,4 @@
+use cv_worker::{CvStartResponse, CvWorkerManager, CvWorkerRequest};
 use gis_import::{import_gis as store_import_gis, GisImportRequest};
 use gis_projector::GisProjectorManager;
 use native_export::{
@@ -14,6 +15,7 @@ use route_import::{import_gpx as store_import_gpx, GpxImportRequest};
 use route_matcher::{RouteMatcherManager, RouteMatcherRequest};
 use std::path::PathBuf;
 
+mod cv_worker;
 mod gis_import;
 mod gis_projector;
 mod native_export;
@@ -60,6 +62,63 @@ fn native_export(
         project_id,
         file_base_name,
         artifacts_json,
+    })
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn cv_scan(
+    state: tauri::State<'_, CvWorkerManager>,
+    sqlite_path: String,
+    project_id: String,
+    media_id: String,
+    model_path: String,
+    labels_path: String,
+    uv_executable: String,
+    sidecar_directory: String,
+    confidence_threshold: f64,
+    sample_interval_seconds: f64,
+    max_findings: i64,
+) -> Result<CvStartResponse, String> {
+    state
+        .start(CvWorkerRequest {
+            store: project_store::CvScanRequest {
+                sqlite_path: PathBuf::from(sqlite_path),
+                project_id,
+                media_id,
+                scan_id: uuid::Uuid::new_v4().to_string(),
+                job_id: uuid::Uuid::new_v4().to_string(),
+                model_path: PathBuf::from(model_path),
+                labels_path: PathBuf::from(labels_path),
+                confidence_threshold,
+                sample_interval_seconds,
+                max_findings,
+            },
+            uv_executable,
+            sidecar_directory: PathBuf::from(sidecar_directory),
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn cv_job_status(
+    sqlite_path: String,
+    project_id: String,
+    media_id: String,
+    scan_id: String,
+    job_id: String,
+) -> Result<project_store::CvScanStatus, String> {
+    project_store::read_cv_scan_status(&project_store::CvScanRequest {
+        sqlite_path: PathBuf::from(sqlite_path),
+        project_id,
+        media_id,
+        scan_id,
+        job_id,
+        model_path: PathBuf::new(),
+        labels_path: PathBuf::new(),
+        confidence_threshold: 0.5,
+        sample_interval_seconds: 1.0,
+        max_findings: 500,
     })
     .map_err(|error| error.to_string())
 }
@@ -248,11 +307,14 @@ pub fn run() {
         .manage(ProxyWorkerManager::default())
         .manage(RouteMatcherManager::default())
         .manage(GisProjectorManager::default())
+        .manage(CvWorkerManager::default())
         .invoke_handler(tauri::generate_handler![
             project_create,
             project_save,
             project_load,
             native_export,
+            cv_scan,
+            cv_job_status,
             media_import,
             gpx_import,
             gis_import,
