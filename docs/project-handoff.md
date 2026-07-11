@@ -503,6 +503,10 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   fallback retention, success-only link hiding, and stale-result race guards.
   Schema v7 also persists identified CV scans/findings with atomic terminal
   publication, interrupted-job recovery, and identity-guarded reviewer updates.
+- `src-tauri/src/gdal_adapter.rs` - bounded, no-shell `ogrinfo`/`ogr2ogr`
+  boundary for Shapefile, GeoPackage, FlatGeobuf, FileGDB, and arbitrary CRS
+  normalization. The original source dataset retains deterministic evidence
+  hashing; converted GeoJSON is transient.
 - `sidecars/roadwatcher-cv/` - real bounded YOLO-style ONNX/video scanner with
   ONNX Runtime CPU, OpenCV headless, locked dependencies, and pipeline/CLI tests.
   Native durable execution is registered through `cv_scan`/`cv_job_status`.
@@ -518,9 +522,9 @@ an explicit test/demo dependency. Empty regions have actionable guidance,
 decorative route evidence is suppressed, blank plates use a placeholder rather
 than stored text, and packet export is disabled until media plus a clip exist.
 
-Final verification on 2026-07-11 passed 163 frontend tests across 25 files, the
+Final verification on 2026-07-11 passed 165 frontend tests across 25 files, the
 production Vite build, TypeScript project compilation, four locked/offline
-Python sidecar tests, and 57 Rust tests with only the installed-FFmpeg smoke
+Python sidecar tests, and 60 Rust tests with only the installed-FFmpeg smoke
 intentionally ignored. Rust verification uses `C:\tmp\roadwatcher-target` to
 avoid a Rust 1.96 dependency-probe failure under the workspace path containing
 a space.
@@ -539,16 +543,17 @@ atomic finding publication, invalid-output rollback, and interrupted-job recover
 The asynchronous manager queues before returning, invokes locked/offline `uv`
 without a shell, canonicalizes source/model/label identities, caps process output,
 rejects mismatched aggregates, and records terminal blocked/failed states. Full
-Rust verification passes 57 tests with only the installed-FFmpeg smoke ignored.
+Rust verification passes 60 tests with only the installed-FFmpeg smoke ignored.
 
-1. Add GDAL/PROJ or PostGIS import for production GIS containers and arbitrary
-   CRSs while retaining source/projection identity guards.
-2. Implement the GPStitch integration boundary and its licensing/packaging
+1. Implement the GPStitch integration boundary and its licensing/packaging
    posture.
-3. Package/document FFmpeg, the CV sidecar environment, and user-supplied model
+2. Package/document GDAL/OGR, FFmpeg, the CV sidecar environment, and
+   user-supplied model
    discovery for Windows distribution.
-4. Add real-model/video, live matcher, and installed-binary smoke coverage at
+3. Add real-model/video, live matcher, and installed-binary smoke coverage at
    the end of the implementation cycle.
+4. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
+   representative-feature model insufficient.
 
 ## Boundaries To Preserve
 

@@ -252,6 +252,7 @@ const verifyCommands: Record<string, string> = {
   valhalla: "valhalla_service <path-to-valhalla.json>",
   osrm: "curl <osrm-endpoint>/match/v1/driving/<lon,lat;...>",
   gis: "import official GIS GeoJSON/GPKG into RoadWatcher",
+  gdal: "ogrinfo --version && ogr2ogr --version",
   ffmpeg: "ffmpeg -version && ffprobe -version",
   "cv-model": "roadwatcher-cv --model <model.onnx> --labels <labels.txt>"
 };

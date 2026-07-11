@@ -18,7 +18,7 @@ export interface OfficialRoadFeature {
   geometryType?: "Point" | "LineString";
   propertiesJson?: string;
   sourcePath?: string;
-  sourceCrs?: "EPSG:4326" | "EPSG:3857";
+  sourceCrs?: string;
   normalizedCrs?: "EPSG:4326";
 }
 

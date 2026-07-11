@@ -98,7 +98,7 @@ describe("native command contracts", () => {
     expect(nativeCommandContracts.find((contract) => contract.command === "gis_import")).toMatchObject({
       implementation: "implemented",
       readinessRequired: true,
-      requestFields: ["sqlitePath", "projectId", "sourcePath", "sourceCrs", "layerKind"]
+      requestFields: ["sqlitePath", "projectId", "sourcePath", "sourceCrs", "layerKind", "layerName", "gdalBinaryDirectory"]
     });
     expect(nativeCommandContracts.find((contract) => contract.command === "gis_project")).toMatchObject({
       implementation: "implemented",

@@ -13,7 +13,7 @@ describe("native GIS repository", () => {
         originalPath: "D:/GIS/signals.geojson",
         hash: "a".repeat(64),
         fileSizeBytes: 2048,
-        sourceCrs: "EPSG:3857",
+        sourceCrs: "EPSG:26917",
         normalizedCrs: "EPSG:4326",
         layerKind: "traffic_light",
         features: [{
@@ -32,14 +32,16 @@ describe("native GIS repository", () => {
     });
     const repository = createNativeGisRepository({ invoke }, "C:/project.sqlite", "project-1");
 
-    const result = await repository.importPath("D:/GIS/signals.geojson", "EPSG:3857", "traffic_light");
+    const result = await repository.importPath("D:/GIS/signals.gpkg", "AUTO", "traffic_light", "signals", "C:/GDAL/bin");
 
     expect(invoke).toHaveBeenCalledWith("gis_import", {
       sqlitePath: "C:/project.sqlite",
       projectId: "project-1",
-      sourcePath: "D:/GIS/signals.geojson",
-      sourceCrs: "EPSG:3857",
-      layerKind: "traffic_light"
+      sourcePath: "D:/GIS/signals.gpkg",
+      sourceCrs: "AUTO",
+      layerKind: "traffic_light",
+      layerName: "signals",
+      gdalBinaryDirectory: "C:/GDAL/bin"
     });
     expect(result).toMatchObject({ status: "imported", featureSourceId: "source-1", projectionJobId: "gis-job-1" });
   });
@@ -58,7 +60,7 @@ describe("native GIS repository", () => {
     });
 
     const result = await createNativeGisRepository({ invoke }, "C:/project.sqlite", "project-1")
-      .importPath("D:/bad.geojson", "EPSG:4326", "mixed");
+      .importPath("D:/bad.geojson", "EPSG:4326", "mixed", "", "");
 
     expect(result).toEqual({
       status: "unavailable",

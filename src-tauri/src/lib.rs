@@ -16,6 +16,7 @@ use route_matcher::{RouteMatcherManager, RouteMatcherRequest};
 use std::path::PathBuf;
 
 mod cv_worker;
+mod gdal_adapter;
 mod gis_import;
 mod gis_projector;
 mod native_export;
@@ -180,6 +181,8 @@ fn gis_import(
     source_path: String,
     source_crs: String,
     layer_kind: String,
+    layer_name: String,
+    gdal_binary_directory: String,
 ) -> Result<project_store::FeatureImportResponse, String> {
     store_import_gis(GisImportRequest {
         sqlite_path: PathBuf::from(sqlite_path),
@@ -187,6 +190,8 @@ fn gis_import(
         source_path: PathBuf::from(source_path),
         source_crs,
         layer_kind,
+        layer_name,
+        gdal_binary_directory,
     })
     .map_err(|error| error.to_string())
 }

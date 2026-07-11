@@ -1,9 +1,10 @@
+use crate::gdal_adapter::{normalize_with_gdal, GdalAdapterError, GdalNormalizeRequest};
 use crate::project_store::{
     import_feature_source_at, FeatureImportRequest, FeatureImportResponse,
     NormalizedOfficialFeature, ProjectStoreError,
 };
 use serde_json::{Map, Value};
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,16 +23,22 @@ pub struct GisImportRequest {
     pub source_path: PathBuf,
     pub source_crs: String,
     pub layer_kind: String,
+    pub layer_name: String,
+    pub gdal_binary_directory: String,
 }
 
 #[derive(Debug, Error)]
 pub enum GisImportError {
-    #[error("Official GIS source must have a .geojson or .json extension.")]
+    #[error("Official GIS source must be GeoJSON, Shapefile, GeoPackage, FlatGeobuf, or FileGDB.")]
     InvalidExtension,
     #[error("Official GIS source exceeds the 64 MiB import limit.")]
     SourceTooLarge,
-    #[error("Official GIS source CRS must be EPSG:4326 or EPSG:3857.")]
+    #[error(
+        "Official GIS source CRS must be AUTO or a non-empty CRS definition up to 8192 characters."
+    )]
     UnsupportedCrs,
+    #[error("Internal GeoJSON normalization accepts only EPSG:4326 or EPSG:3857 coordinates.")]
+    UnsupportedNormalizedCrs,
     #[error("Official GIS GeoJSON is invalid: {0}")]
     InvalidGeoJson(String),
     #[error("Official GIS import did not contain supported road features.")]
@@ -40,39 +47,69 @@ pub enum GisImportError {
     Io(#[from] std::io::Error),
     #[error("Could not persist official GIS source: {0}")]
     Store(#[from] ProjectStoreError),
+    #[error("Could not normalize official GIS through GDAL/OGR: {0}")]
+    Gdal(#[from] GdalAdapterError),
     #[error("System clock is before the Unix epoch.")]
     InvalidSystemClock,
 }
 
 pub fn import_gis(request: GisImportRequest) -> Result<FeatureImportResponse, GisImportError> {
-    if request
+    let mut request = request;
+    request.source_path = fs::canonicalize(&request.source_path)?;
+    let extension = request
         .source_path
         .extension()
         .and_then(|value| value.to_str())
-        .is_none_or(|value| !matches!(value.to_ascii_lowercase().as_str(), "geojson" | "json"))
-    {
+        .map(str::to_ascii_lowercase)
+        .ok_or(GisImportError::InvalidExtension)?;
+    if !matches!(
+        extension.as_str(),
+        "geojson" | "json" | "shp" | "gpkg" | "fgb" | "gdb"
+    ) {
         return Err(GisImportError::InvalidExtension);
     }
-    let mut bytes = Vec::new();
-    File::open(&request.source_path)?
-        .take(MAX_GIS_BYTES + 1)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > MAX_GIS_BYTES {
-        return Err(GisImportError::SourceTooLarge);
+    let metadata = fs::metadata(&request.source_path)?;
+    if (extension == "gdb" && !metadata.is_dir()) || (extension != "gdb" && !metadata.is_file()) {
+        return Err(GisImportError::InvalidExtension);
     }
-    let text = String::from_utf8(bytes)
-        .map_err(|error| GisImportError::InvalidGeoJson(error.to_string()))?;
+    let source_crs = validate_source_crs(&request.source_crs)?;
     let source_id = Uuid::new_v4();
+    let direct_geojson = matches!(extension.as_str(), "geojson" | "json")
+        && matches!(source_crs.as_str(), "EPSG:4326" | "EPSG:3857")
+        && request.layer_name.trim().is_empty();
+    let (text, normalized_input_crs, persisted_source_crs, source_layer_name) = if direct_geojson {
+        let text = read_geojson(&request.source_path)?;
+        (
+            text,
+            source_crs.clone(),
+            source_crs,
+            request
+                .source_path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("official.geojson")
+                .to_string(),
+        )
+    } else {
+        let normalized = normalize_with_gdal(&GdalNormalizeRequest {
+            source_path: request.source_path.clone(),
+            source_crs,
+            layer_name: request.layer_name,
+            binary_directory: request.gdal_binary_directory,
+        })?;
+        (
+            normalized.geojson,
+            "EPSG:4326".to_string(),
+            normalized.source_crs,
+            normalized.layer_name,
+        )
+    };
     let features = parse_geojson_features(
         &text,
         &source_id.to_string(),
-        &request.source_crs,
+        &normalized_input_crs,
         &request.layer_kind,
-        request
-            .source_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("official.geojson"),
+        &source_layer_name,
     )?;
     let imported_at_unix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -83,7 +120,7 @@ pub fn import_gis(request: GisImportRequest) -> Result<FeatureImportResponse, Gi
             sqlite_path: request.sqlite_path,
             project_id: request.project_id,
             source_path: request.source_path,
-            source_crs: request.source_crs,
+            source_crs: persisted_source_crs,
             layer_kind: request.layer_kind,
             features,
         },
@@ -91,6 +128,29 @@ pub fn import_gis(request: GisImportRequest) -> Result<FeatureImportResponse, Gi
         Uuid::new_v4(),
         imported_at_unix,
     )?)
+}
+
+fn read_geojson(path: &std::path::Path) -> Result<String, GisImportError> {
+    let mut bytes = Vec::new();
+    File::open(path)?
+        .take(MAX_GIS_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_GIS_BYTES {
+        return Err(GisImportError::SourceTooLarge);
+    }
+    String::from_utf8(bytes).map_err(|error| GisImportError::InvalidGeoJson(error.to_string()))
+}
+
+fn validate_source_crs(value: &str) -> Result<String, GisImportError> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 8_192 || value.chars().any(|character| character == '\0') {
+        return Err(GisImportError::UnsupportedCrs);
+    }
+    Ok(if value.eq_ignore_ascii_case("AUTO") {
+        "AUTO".to_string()
+    } else {
+        value.to_string()
+    })
 }
 
 pub(crate) fn parse_geojson_features(
@@ -101,7 +161,7 @@ pub(crate) fn parse_geojson_features(
     source_file_name: &str,
 ) -> Result<Vec<NormalizedOfficialFeature>, GisImportError> {
     if !matches!(source_crs, "EPSG:4326" | "EPSG:3857") {
-        return Err(GisImportError::UnsupportedCrs);
+        return Err(GisImportError::UnsupportedNormalizedCrs);
     }
     let document: Value = serde_json::from_str(text)
         .map_err(|error| GisImportError::InvalidGeoJson(error.to_string()))?;

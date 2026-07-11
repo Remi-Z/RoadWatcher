@@ -43,3 +43,13 @@ normalized road features onto durable matched routes.
 - [x] Update README, project handoff, rewrite manifest, and this plan with exact
   evidence and remaining GDAL/PostGIS/native-export work.
 - [x] Commit documentation and advance the roadmap to native export.
+
+### Task 6: Production Container and CRS Extension
+
+- [x] Add bounded no-shell `ogrinfo`/`ogr2ogr` inspection and normalization.
+- [x] Support Shapefile, GeoPackage, FlatGeobuf, and FileGDB source selection.
+- [x] Preserve arbitrary detected/declared CRS and deterministic multi-file
+  dataset evidence.
+- [x] Add layer-name and feature-kind controls plus strict frontend contracts.
+- [x] Verify focused/full suites, update handoff documentation, and advance the
+  roadmap to GPStitch integration.

@@ -347,13 +347,14 @@ network/DNS access.
 
 ## Known Gaps
 
-- SQLite create/save/load and Windows debug bundles are verified. Native export
-  files are not implemented, so packet downloads still use browser data URLs.
-- Canonical snapshot JSON is durable, and native media import populates normalized
-  media/job rows. Timeline/geo normalization and proxy completion updates remain.
+- SQLite create/save/load, atomic native export files, and Windows debug bundles
+  are verified. Browser data URLs remain only as the explicit fallback.
+- Canonical snapshot JSON, normalized media/GIS/job state, proxy completion, and
+  export manifests are durable. Dense timeline rendering remains a later UI
+  upgrade rather than a persistence gap.
 - The native setup checklist is informational and slot-backed. It records saved
   references and verification commands, but it does not execute toolchain or data
-  checks until Tauri commands are available.
+  checks automatically; reviewers still run or configure external tools/data.
 - The native runtime boundary detects Tauri shell globals and lists implemented
   versus planned DTOs. Project create/save/load, media import, durable FFmpeg,
   native GPX import, Valhalla/OSRM matching, official GeoJSON import/projection,
@@ -367,9 +368,8 @@ network/DNS access.
   response fields are validated before native data is accepted. The browser-safe
   Tauri invoke adapter is wired for runtime readiness and packet export status.
   The UI project-store
-  probe uses the editable native project root field; it defaults to
-  `slot: native project root` until the native project-folder picker/storage
-  flow exists. Project-store and CV probe attempts are logged in browser state
+  probe uses the editable native project root field and the implemented native
+  project-folder picker/storage flow. Project-store and CV probe attempts are logged in browser state
   and portable snapshots, but no native command log file exists until the Rust
   project store is implemented.
 - Browser media import remains available as fallback. Native import accepts an
@@ -381,11 +381,12 @@ network/DNS access.
   hashed GPX assets and immutable raw points, execute Valhalla with OSRM fallback,
   publish matched points transactionally, poll durable state, and reproject
   official features. Live matching still requires a configured loopback service.
-- Browser GeoJSON import remains an explicit fallback. Native projects now hash
-  and persist GeoJSON sources, preserve feature provenance, normalize EPSG:4326
-  and EPSG:3857, execute durable source-specific projection, and reconcile
-  reviewer-default results. GDAL/PostGIS must own other containers, arbitrary
-  CRS transformation, and production spatial indexing.
+- Browser GeoJSON import remains an explicit fallback. Native projects hash and
+  persist direct GeoJSON or complete Shapefile/FileGDB dataset evidence and use
+  bounded no-shell GDAL/OGR normalization for Shapefile, GeoPackage,
+  FlatGeobuf, FileGDB, and arbitrary detected/declared CRS data. Durable
+  source-specific projection and reviewer reconciliation remain unchanged.
+  PostGIS and production spatial indexing are still deferred.
 - React Konva is installed but the current timeline is HTML/dnd-kit with tested
   edit controls. Upgrade to Konva when the timeline needs canvas-scale
   thumbnails, waveforms, zoom, and dense marker rendering.
@@ -394,8 +395,9 @@ network/DNS access.
 - GPStitch has not been vendored yet.
 - Valhalla/OSRM adapters are implemented for configured loopback HTTP services;
   local tiles/profiles and live-service smoke evidence are not present yet.
-- Shapefile/GeoPackage/FileGDB and arbitrary CRS normalization are not implemented;
-  the native GeoJSON EPSG:4326/EPSG:3857 workflow is implemented.
+- Shapefile, GeoPackage, FlatGeobuf, FileGDB, and arbitrary CRS normalization
+  are implemented through configured/PATH GDAL/OGR tools. A live installed-GDAL
+  smoke is not present on this machine.
 - The CV sidecar implements bounded YOLO-style ONNX Runtime/OpenCV frame
   scanning and conservative finding JSON. Durable Rust execution, strict
   polling, reviewer reconciliation, SQLite decision persistence, portable
@@ -412,15 +414,17 @@ network/DNS access.
 | Valhalla York/GTA data | Local map matching | Editable UI slot + blocked job |
 | OSRM Match fallback | Simpler GPX matching fallback | Editable optional UI slot |
 | Official GIS layers | Stop signs/lights/bike lanes projection | Editable UI slot |
+| GDAL/OGR | Production GIS containers and CRS normalization | Editable optional binary-directory/PATH slot |
 | FFmpeg/ffprobe | Proxy generation and metadata probing | Editable UI slot + proxy jobs |
 | ONNX model + labels | Local vehicle/CV scan | Editable UI slot + `roadwatcher-cv scan --model --labels --source` |
 
 ## Next Agent Checklist
 
-1. Implement GDAL/PROJ or PostGIS ingestion for production GIS containers and
-   arbitrary CRS transformation. Local CV execution/reconciliation is complete:
-   verification passes 163 frontend tests, 57 Rust tests (one installed-FFmpeg
-   smoke ignored), four locked/offline Python tests, and the production build.
+1. Implement the GPStitch boundary and resolve its fork/license/packaging
+   posture. Production GIS container normalization and local CV reconciliation
+   are complete: verification passes 165 frontend tests, 60 Rust tests (one
+   installed-FFmpeg smoke ignored), four locked/offline Python tests, and the
+   production build.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -440,7 +444,7 @@ network/DNS access.
 7. Preserve the implemented scoped native file picker and import-by-reference
    command boundary while replacing seeded state.
 8. Configure local Valhalla/OSRM data and add an optional live matcher smoke.
-9. Add GDAL/PostGIS container import, arbitrary CRS normalization, and indexing.
+9. Add PostGIS/spatial indexing only if production dataset scale requires it.
 10. Define FFmpeg/ffprobe bundling, update, and licensing policy for deployment.
 
 ## Design Guardrails

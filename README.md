@@ -39,10 +39,11 @@ call local Valhalla with OSRM Match fallback, poll terminal state, publish
 matched points atomically, show matcher provenance, and reproject official
 features,
 browser-imported GeoJSON retains explicit `gis_project` fallback audit entries;
-active native projects can instead hash and persist bounded official GeoJSON,
-normalize EPSG:4326 or EPSG:3857 coordinates to WGS84, preserve source geometry
-and properties provenance, queue durable source-specific projection, poll it,
-and publish reviewer-default results atomically onto the active route,
+active native projects can instead hash and persist bounded official GeoJSON or
+use bounded no-shell GDAL/OGR normalization for Shapefile, GeoPackage,
+FlatGeobuf, FileGDB, and arbitrary detected/declared CRS data. Multi-file
+dataset manifests, source/layer/CRS provenance, durable projection, polling, and
+reviewer-default route results remain auditable,
 RoadWatcher `.json` snapshots restore portable review state
 before falling back to GeoJSON parsing, and export packet previews produce
 downloadable Markdown/JSON artifacts with source media metadata, per-clip source
@@ -165,7 +166,7 @@ reconciliation are implemented.
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
 and retains browser storage as recovery fallback. Native media/proxy,
-GPX/map-matching, official GeoJSON projection, and local CV workflows are
+GPX/map-matching, production GIS normalization/projection, and local CV workflows are
 complete. The official Tauri dialog plugin now provides scoped, single-file media/GPX/GIS
 selection with purpose-specific filters. Choose actions populate the existing
 paths without auto-importing or copying originals; browser mode retains manual
@@ -192,12 +193,12 @@ version 3.
 - Provide York/GTA Valhalla data/config for local map matching.
 - Optionally provide OSRM Match endpoint/config as the simpler fallback.
 - Provide official GIS files for traffic signals, stop signs, and bike lanes.
+- Install GDAL/OGR or configure its binary directory when importing non-GeoJSON
+  containers or arbitrary coordinate systems.
 - Bundle or document a redistributable FFmpeg/ffprobe installation and resolve
   its licensing/distribution policy; PATH and configured directories work now.
 - Run a local Valhalla or OSRM HTTP service and replace their slot placeholders
   with loopback endpoints such as `http://localhost:8002`.
-- Add GDAL/PROJ or PostGIS ingestion for Shapefile, GeoPackage, FileGDB, and
-  arbitrary CRSs; native GeoJSON currently supports EPSG:4326 and EPSG:3857.
 - Provide a local ONNX vehicle model and labels file for the CV sidecar.
 
 See [docs/rewrite-manifest.md](docs/rewrite-manifest.md) for the implementation

@@ -753,21 +753,33 @@ pub fn import_feature_source_at(
     imported_at_unix: i64,
 ) -> Result<FeatureImportResponse, ProjectStoreError> {
     validate_official_features(&request.features)?;
-    if !matches!(request.source_crs.as_str(), "EPSG:4326" | "EPSG:3857") {
+    if request.source_crs.trim().is_empty()
+        || request.source_crs.len() > 8_192
+        || request
+            .source_crs
+            .chars()
+            .any(|character| character == '\0')
+    {
         return Err(ProjectStoreError::InvalidOfficialFeatures(
-            "source CRS must be EPSG:4326 or EPSG:3857".to_string(),
+            "source CRS provenance must be non-empty and bounded".to_string(),
         ));
     }
     let mut connection = open_project_database(&request.sqlite_path)?;
     verify_project_identity(&connection, &request.project_id)?;
     let metadata = fs::metadata(&request.source_path)
         .map_err(|_| ProjectStoreError::InvalidFeatureSource(path_string(&request.source_path)))?;
-    if !metadata.is_file() {
+    let is_file_gdb = metadata.is_dir()
+        && request
+            .source_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("gdb"));
+    if !metadata.is_file() && !is_file_gdb {
         return Err(ProjectStoreError::InvalidFeatureSource(path_string(
             &request.source_path,
         )));
     }
-    let file_size_bytes = metadata.len();
+    let (file_size_bytes, hash) = feature_source_evidence(&request.source_path)?;
     let file_size_sql = i64::try_from(file_size_bytes)
         .map_err(|_| ProjectStoreError::MediaSourceTooLarge(path_string(&request.source_path)))?;
     let file_name = request
@@ -777,7 +789,6 @@ pub fn import_feature_source_at(
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| ProjectStoreError::InvalidFeatureSource(path_string(&request.source_path)))?
         .to_string();
-    let hash = sha256_file(&request.source_path)?;
     let feature_source_id = feature_source_id.to_string();
     let projection_job_id = projection_job_id.to_string();
     let original_path = path_string(&request.source_path);
@@ -843,6 +854,133 @@ pub fn import_feature_source_at(
         projection_status: "queued".to_string(),
         projection_job_id,
     })
+}
+
+fn feature_source_evidence(path: &Path) -> Result<(u64, String), ProjectStoreError> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|_| ProjectStoreError::InvalidFeatureSource(path_string(path)))?;
+    if metadata.file_type().is_symlink() {
+        return Err(ProjectStoreError::InvalidFeatureSource(path_string(path)));
+    }
+    if metadata.is_file() {
+        let is_shapefile = path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("shp"));
+        if !is_shapefile {
+            return Ok((metadata.len(), sha256_file(path)?));
+        }
+        let parent = path
+            .parent()
+            .ok_or_else(|| ProjectStoreError::InvalidFeatureSource(path_string(path)))?;
+        let stem = path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| ProjectStoreError::InvalidFeatureSource(path_string(path)))?;
+        let mut files = fs::read_dir(parent)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|candidate| {
+                let Some(name) = candidate.file_name().and_then(|value| value.to_str()) else {
+                    return false;
+                };
+                let name = name.to_ascii_lowercase();
+                let prefix = format!("{}.", stem.to_ascii_lowercase());
+                candidate.is_file()
+                    && name.starts_with(&prefix)
+                    && [
+                        ".shp", ".shx", ".dbf", ".prj", ".cpg", ".qix", ".sbn", ".sbx", ".ain",
+                        ".aih", ".atx", ".ixs", ".mxs", ".shp.xml",
+                    ]
+                    .iter()
+                    .any(|suffix| name.ends_with(suffix))
+            })
+            .collect::<Vec<_>>();
+        files.sort();
+        return hash_dataset_files(parent, &files);
+    }
+    if metadata.is_dir()
+        && path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("gdb"))
+    {
+        let mut files = Vec::new();
+        collect_dataset_files(path, path, &mut files)?;
+        files.sort();
+        return hash_dataset_files(path, &files);
+    }
+    Err(ProjectStoreError::InvalidFeatureSource(path_string(path)))
+}
+
+fn collect_dataset_files(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), ProjectStoreError> {
+    if files.len() > 100_000 {
+        return Err(ProjectStoreError::InvalidFeatureSource(format!(
+            "dataset contains too many files: {}",
+            path_string(root)
+        )));
+    }
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let metadata = entry.file_type()?;
+        if metadata.is_symlink() {
+            return Err(ProjectStoreError::InvalidFeatureSource(format!(
+                "dataset contains a symbolic link: {}",
+                path_string(&entry.path())
+            )));
+        }
+        if metadata.is_dir() {
+            collect_dataset_files(root, &entry.path(), files)?;
+        } else if metadata.is_file() {
+            files.push(entry.path());
+            if files.len() > 100_000 {
+                return Err(ProjectStoreError::InvalidFeatureSource(format!(
+                    "dataset contains too many files: {}",
+                    path_string(root)
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn hash_dataset_files(root: &Path, files: &[PathBuf]) -> Result<(u64, String), ProjectStoreError> {
+    if files.is_empty() {
+        return Err(ProjectStoreError::InvalidFeatureSource(format!(
+            "dataset is empty: {}",
+            path_string(root)
+        )));
+    }
+    let mut digest = Sha256::new();
+    digest.update(b"RoadWatcher GIS dataset manifest v1\0");
+    let mut total_bytes = 0_u64;
+    let mut buffer = vec![0_u8; 1024 * 1024];
+    for path in files {
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or_else(|_| path.file_name().map(Path::new).unwrap_or(path));
+        let relative = relative.to_string_lossy().replace('\\', "/");
+        let file_size = fs::metadata(path)?.len();
+        digest.update((relative.len() as u64).to_le_bytes());
+        digest.update(relative.as_bytes());
+        digest.update(file_size.to_le_bytes());
+        let mut file = File::open(path)?;
+        loop {
+            let count = file.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            total_bytes = total_bytes.checked_add(count as u64).ok_or_else(|| {
+                ProjectStoreError::InvalidFeatureSource("dataset byte size overflow".to_string())
+            })?;
+            digest.update(&buffer[..count]);
+        }
+    }
+    Ok((total_bytes, hex::encode(digest.finalize())))
 }
 
 fn validate_official_features(
@@ -2708,9 +2846,9 @@ mod tests {
     use super::{
         claim_cv_scan, claim_proxy_job, claim_route_match_job, complete_cv_scan,
         complete_proxy_job, complete_route_match_job, create_project_at, fail_cv_scan,
-        fail_proxy_job, fail_route_match_job, import_feature_source_at, import_media_at,
-        import_route_at, load_project_snapshot, open_project_database, queue_cv_scan,
-        read_cv_scan_status, read_proxy_job_status, read_route_match_status,
+        fail_proxy_job, fail_route_match_job, feature_source_evidence, import_feature_source_at,
+        import_media_at, import_route_at, load_project_snapshot, open_project_database,
+        queue_cv_scan, read_cv_scan_status, read_proxy_job_status, read_route_match_status,
         request_proxy_job_cancel, review_cv_finding, save_project_snapshot, update_proxy_progress,
         update_route_match_progress, CvFinding, CvFindingReviewRequest, CvScanRequest,
         FeatureImportRequest, MediaImportRequest, NormalizedOfficialFeature, ProjectCreateRequest,
@@ -2837,7 +2975,7 @@ mod tests {
                 sqlite_path: PathBuf::from(&created.sqlite_path),
                 project_id: project_id.to_string(),
                 source_path: source_path.clone(),
-                source_crs: "EPSG:3857".to_string(),
+                source_crs: "EPSG:26917".to_string(),
                 layer_kind: "traffic_light".to_string(),
                 features: features.clone(),
             },
@@ -2862,7 +3000,7 @@ mod tests {
         assert_eq!(
             source,
             (
-                "EPSG:3857".to_string(),
+                "EPSG:26917".to_string(),
                 "EPSG:4326".to_string(),
                 "queued".to_string(),
                 1
@@ -2891,6 +3029,34 @@ mod tests {
             )
             .unwrap();
         assert_eq!(job_source, source_id.to_string());
+    }
+
+    #[test]
+    fn hashes_complete_shapefile_and_file_gdb_dataset_evidence() {
+        let root = TestRoot::new();
+        let shapefile = root.path().join("signals.shp");
+        fs::write(&shapefile, b"shape").unwrap();
+        fs::write(root.path().join("signals.dbf"), b"attributes").unwrap();
+        fs::write(root.path().join("signals.prj"), b"projection").unwrap();
+        fs::write(root.path().join("unrelated.dbf"), b"ignore").unwrap();
+        let first = feature_source_evidence(&shapefile).unwrap();
+        assert_eq!(first.0, 25);
+        fs::write(root.path().join("signals.dbf"), b"changed attributes").unwrap();
+        let second = feature_source_evidence(&shapefile).unwrap();
+        assert_ne!(first.1, second.1);
+
+        let file_gdb = root.path().join("roads.gdb");
+        fs::create_dir(&file_gdb).unwrap();
+        fs::create_dir(file_gdb.join("indexes")).unwrap();
+        fs::write(file_gdb.join("a00000001.gdbtable"), b"table").unwrap();
+        fs::write(
+            file_gdb.join("indexes").join("a00000001.gdbtablx"),
+            b"index",
+        )
+        .unwrap();
+        let evidence = feature_source_evidence(&file_gdb).unwrap();
+        assert_eq!(evidence.0, 10);
+        assert_eq!(evidence.1.len(), 64);
     }
 
     #[test]

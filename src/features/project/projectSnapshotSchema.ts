@@ -244,7 +244,7 @@ function parseOfficialFeature(value: unknown, path: string): OfficialRoadFeature
     ...(item.geometryType === undefined ? {} : { geometryType: enumValue(item.geometryType, `${path}.geometryType`, ["Point", "LineString"] as const) }),
     ...(item.propertiesJson === undefined ? {} : { propertiesJson: stringValue(item.propertiesJson, `${path}.propertiesJson`) }),
     ...(item.sourcePath === undefined ? {} : { sourcePath: nonBlankString(item.sourcePath, `${path}.sourcePath`) }),
-    ...(item.sourceCrs === undefined ? {} : { sourceCrs: enumValue(item.sourceCrs, `${path}.sourceCrs`, ["EPSG:4326", "EPSG:3857"] as const) }),
+    ...(item.sourceCrs === undefined ? {} : { sourceCrs: nonBlankString(item.sourceCrs, `${path}.sourceCrs`) }),
     ...(item.normalizedCrs === undefined ? {} : { normalizedCrs: enumValue(item.normalizedCrs, `${path}.normalizedCrs`, ["EPSG:4326"] as const) })
   };
 }

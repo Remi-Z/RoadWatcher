@@ -141,7 +141,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     command: "gis_import",
     implementation: "implemented",
     readinessRequired: true,
-    requestFields: ["sqlitePath", "projectId", "sourcePath", "sourceCrs", "layerKind"],
+    requestFields: ["sqlitePath", "projectId", "sourcePath", "sourceCrs", "layerKind", "layerName", "gdalBinaryDirectory"],
     responseFields: [
       "featureSourceId",
       "fileName",
@@ -156,7 +156,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
       "projectionJobId"
     ],
     fallback: "browser GeoJSON projection",
-    ownerAction: "Persist and normalize official GeoJSON in the active native project."
+    ownerAction: "Persist official GIS evidence and normalize supported containers through bounded GDAL/OGR execution."
   },
   {
     id: "gis-project",

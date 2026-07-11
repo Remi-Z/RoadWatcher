@@ -18,6 +18,10 @@ Shapefile, GeoPackage, FileGDB, arbitrary CRS transformation, PostGIS loading,
 and a native file picker remain later deployment/integration work. Those formats
 need GDAL/PROJ or PostGIS and must not be approximated in application code.
 
+The GDAL/OGR production-container extension was subsequently implemented under
+`2026-07-11-gdal-gis-ingestion-design.md`. PostGIS and spatial indexing remain
+deferred.
+
 ## Schema Version 5
 
 Add `feature_sources` with source UUID, project identity, filename/path, SHA-256,

@@ -549,7 +549,10 @@ describe("RoadWatcher workstation", () => {
   it("populates purpose-specific native source paths without importing automatically", async () => {
     const select = vi.fn<NativeFilePicker["select"]>().mockImplementation(async (purpose) => ({
       status: "selected",
-      path: purpose === "media" ? "D:/Evidence/front.mp4" : purpose === "gpx" ? "D:/Evidence/route.gpx" : "D:/GIS/signals.geojson"
+      path: purpose === "media" ? "D:/Evidence/front.mp4"
+        : purpose === "gpx" ? "D:/Evidence/route.gpx"
+        : purpose === "gis_directory" ? "D:/GIS/network.gdb"
+        : "D:/GIS/signals.geojson"
     }));
     const nativeInvoke = vi.fn<NativeInvoke>();
     render(
@@ -567,10 +570,14 @@ describe("RoadWatcher workstation", () => {
     await waitFor(() => expect(screen.getByLabelText("Native GPX source path")).toHaveValue("D:/Evidence/route.gpx"));
     fireEvent.click(screen.getByRole("button", { name: "Choose GIS file" }));
     await waitFor(() => expect(screen.getByLabelText("Native GIS source path")).toHaveValue("D:/GIS/signals.geojson"));
+    fireEvent.click(screen.getByRole("button", { name: "Choose FileGDB directory" }));
+    await waitFor(() => expect(screen.getByLabelText("Native GIS source path")).toHaveValue("D:/GIS/network.gdb"));
+    expect(screen.getByLabelText("Native GIS source CRS")).toHaveValue("AUTO");
 
     expect(select).toHaveBeenNthCalledWith(1, "media", "slot: native media source path from file picker");
     expect(select).toHaveBeenNthCalledWith(2, "gpx", "slot: persisted GPX path from native import");
     expect(select).toHaveBeenNthCalledWith(3, "gis", "slot: official GIS source path from native import");
+    expect(select).toHaveBeenNthCalledWith(4, "gis_directory", "D:/GIS/signals.geojson");
     expect(nativeInvoke).not.toHaveBeenCalled();
   });
 
@@ -1022,8 +1029,8 @@ describe("RoadWatcher workstation", () => {
         savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot)
       };
       if (command === "gis_import") return {
-        featureSourceId: "source-1", fileName: "signals.geojson", originalPath: "D:/GIS/signals.geojson",
-        hash: "a".repeat(64), fileSizeBytes: 1024, sourceCrs: "EPSG:3857", normalizedCrs: "EPSG:4326",
+        featureSourceId: "source-1", fileName: "signals.gpkg", originalPath: "D:/GIS/signals.gpkg",
+        hash: "a".repeat(64), fileSizeBytes: 1024, sourceCrs: "EPSG:26917", normalizedCrs: "EPSG:4326",
         layerKind: "mixed", projectionStatus: "queued", projectionJobId: "gis-job-1",
         features: [{
           id: "source-1:signal-1", sourceFeatureId: "signal-1", kind: "traffic_light",
@@ -1053,17 +1060,20 @@ describe("RoadWatcher workstation", () => {
       />
     );
     await screen.findByText(/Restored native SQLite project/);
-    fireEvent.change(screen.getByLabelText("Native GIS source path"), { target: { value: "D:/GIS/signals.geojson" } });
-    fireEvent.change(screen.getByLabelText("Native GIS source CRS"), { target: { value: "EPSG:3857" } });
+    fireEvent.change(screen.getByLabelText("Native GIS source path"), { target: { value: "D:/GIS/signals.gpkg" } });
+    fireEvent.change(screen.getByLabelText("Native GIS source CRS"), { target: { value: "AUTO" } });
+    fireEvent.change(screen.getByLabelText("Native GIS layer name"), { target: { value: "signals" } });
+    fireEvent.change(screen.getByLabelText("Native GIS feature kind"), { target: { value: "traffic_light" } });
     fireEvent.click(screen.getByRole("button", { name: "Import native GIS" }));
-    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("EPSG:3857 normalized to EPSG:4326");
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("EPSG:26917 normalized to EPSG:4326");
 
     fireEvent.click(screen.getByRole("button", { name: "Start GIS projection" }));
 
     await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Native GIS projection complete"));
     expect(nativeInvoke).toHaveBeenCalledWith("gis_import", {
-      sqlitePath, projectId: "native-gis-project", sourcePath: "D:/GIS/signals.geojson",
-      sourceCrs: "EPSG:3857", layerKind: "mixed"
+      sqlitePath, projectId: "native-gis-project", sourcePath: "D:/GIS/signals.gpkg",
+      sourceCrs: "AUTO", layerKind: "traffic_light", layerName: "signals",
+      gdalBinaryDirectory: "slot: GDAL/OGR binary directory or PATH"
     });
     expect(nativeInvoke).toHaveBeenCalledWith("gis_project", {
       sqlitePath, projectId: "native-gis-project", featureSourceId: "source-1",
@@ -1074,7 +1084,7 @@ describe("RoadWatcher workstation", () => {
     });
     expect(screen.getByText(/gis_project: invoked/)).toBeInTheDocument();
     expect(screen.getByText(/Projected 1 official features/)).toBeInTheDocument();
-    expect(screen.getByText(/EPSG:3857 → EPSG:4326/)).toBeInTheDocument();
+    expect(screen.getByText(/EPSG:26917 → EPSG:4326/)).toBeInTheDocument();
   });
 
   it("requires an active native project before starting a proxy job", async () => {

@@ -61,6 +61,19 @@ describe("project snapshot schema", () => {
       videoCodec: "libx264"
     });
   });
+
+  it("preserves arbitrary native GIS source CRS provenance", () => {
+    const snapshot = validSnapshotV2();
+    snapshot.schemaVersion = 3;
+    snapshot.cvFindings = [];
+    snapshot.officialFeatures = [{
+      ...officialRoadFeatures[0], sourceCrs: "EPSG:26917", normalizedCrs: "EPSG:4326"
+    }];
+
+    expect(parseSnapshot(JSON.stringify(snapshot)).officialFeatures[0]).toMatchObject({
+      sourceCrs: "EPSG:26917", normalizedCrs: "EPSG:4326"
+    });
+  });
   it("migrates a version-1 snapshot and retains its identity", () => {
     const legacy = JSON.stringify({
       ...validSnapshotV2(),

@@ -20,7 +20,7 @@ export interface NativeGisImport {
   originalPath: string;
   hash: string;
   fileSizeBytes: number;
-  sourceCrs: "EPSG:4326" | "EPSG:3857";
+  sourceCrs: string;
   normalizedCrs: "EPSG:4326";
   layerKind: string;
   features: NativeOfficialFeature[];
@@ -36,10 +36,12 @@ export function createNativeGisRepository(
   bridge: Pick<NativeCommandBridge, "invoke">,
   sqlitePath: string,
   projectId: string
-): { importPath(sourcePath: string, sourceCrs: string, layerKind: string): Promise<NativeGisImportResult> } {
+): { importPath(sourcePath: string, sourceCrs: string, layerKind: string, layerName: string, gdalBinaryDirectory: string): Promise<NativeGisImportResult> } {
   return {
-    async importPath(sourcePath, sourceCrs, layerKind) {
-      const result = await bridge.invoke("gis_import", { sqlitePath, projectId, sourcePath, sourceCrs, layerKind });
+    async importPath(sourcePath, sourceCrs, layerKind, layerName, gdalBinaryDirectory) {
+      const result = await bridge.invoke("gis_import", {
+        sqlitePath, projectId, sourcePath, sourceCrs, layerKind, layerName, gdalBinaryDirectory
+      });
       if (!result.ok) {
         return { status: "unavailable", commandStatus: result.status, message: result.message };
       }
@@ -58,18 +60,20 @@ export function createNativeGisRepository(
 function parseNativeGisImport(value: unknown): NativeGisImport | null {
   if (!isRecord(value) || !Array.isArray(value.features)) return null;
   const features = value.features.map(parseFeature);
+  const featureIds = features.map((feature) => feature?.id);
   if (
     features.length === 0 ||
     features.some((feature) => feature === null) ||
+    new Set(featureIds).size !== featureIds.length ||
     !nonBlank(value.featureSourceId) ||
     !nonBlank(value.fileName) ||
     !nonBlank(value.originalPath) ||
-    !nonBlank(value.hash) ||
+    typeof value.hash !== "string" || !/^[a-f0-9]{64}$/i.test(value.hash) ||
     !Number.isSafeInteger(value.fileSizeBytes) ||
     (value.fileSizeBytes as number) < 0 ||
-    !matchesSourceCrs(value.sourceCrs) ||
+    !boundedText(value.sourceCrs, 8_192) ||
     value.normalizedCrs !== "EPSG:4326" ||
-    !nonBlank(value.layerKind) ||
+    typeof value.layerKind !== "string" || !["mixed", "traffic_light", "stop_sign", "bike_lane", "crosswalk"].includes(value.layerKind) ||
     value.projectionStatus !== "queued" ||
     !nonBlank(value.projectionJobId)
   ) return null;
@@ -111,16 +115,16 @@ function parseFeature(value: unknown): NativeOfficialFeature | null {
   return value as unknown as NativeOfficialFeature;
 }
 
-function matchesSourceCrs(value: unknown): value is NativeGisImport["sourceCrs"] {
-  return value === "EPSG:4326" || value === "EPSG:3857";
-}
-
 function matchesGeometry(value: unknown): value is NativeOfficialFeature["geometryType"] {
   return value === "Point" || value === "LineString";
 }
 
 function nonBlank(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function boundedText(value: unknown, maximum: number): value is string {
+  return nonBlank(value) && value.length <= maximum;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

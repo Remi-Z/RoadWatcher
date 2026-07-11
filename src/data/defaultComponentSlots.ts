@@ -29,7 +29,13 @@ export const defaultComponentSlots: ComponentSlot[] = [
     id: "gis", label: "Official GIS layers",
     ownerAction: "Provide traffic signal, stop sign, and cycling network files for import.",
     status: "needed", reference: "slot: official traffic signal / stop sign / bike lane files",
-    notes: "Browser MVP accepts WGS84 GeoJSON; production path should normalize CRS before import."
+    notes: "GeoJSON imports directly; GDAL/OGR normalizes Shapefile, GeoPackage, FlatGeobuf, and FileGDB datasets."
+  },
+  {
+    id: "gdal", label: "GDAL/OGR tools",
+    ownerAction: "Install GDAL/OGR or provide the directory containing ogrinfo and ogr2ogr.",
+    status: "optional", reference: "slot: GDAL/OGR binary directory or PATH",
+    notes: "Required for non-GeoJSON containers and arbitrary CRS transformation."
   },
   {
     id: "ffmpeg", label: "FFmpeg and ffprobe",

@@ -48,6 +48,7 @@ import { createNativeGisRepository } from "./features/geo/nativeGisRepository";
 import {
   type ProjectedFeatureReviewStatus,
   type ProjectedRoadFeature,
+  type RoadFeatureKind,
   type TimedRoutePoint
 } from "./features/geo/projection";
 import type { CvFindingReview, CvFindingReviewStatus, NativeGisProjectionResult, NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "./features/jobs/jobModel";
@@ -164,7 +165,9 @@ export function App({
   const [nativeMediaSourcePath, setNativeMediaSourcePath] = useState(NATIVE_MEDIA_SOURCE_PATH_SLOT);
   const [nativeGpxSourcePath, setNativeGpxSourcePath] = useState(NATIVE_GPX_PATH_SLOT);
   const [nativeGisSourcePath, setNativeGisSourcePath] = useState(NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT);
-  const [nativeGisSourceCrs, setNativeGisSourceCrs] = useState<"EPSG:4326" | "EPSG:3857">("EPSG:4326");
+  const [nativeGisSourceCrs, setNativeGisSourceCrs] = useState("EPSG:4326");
+  const [nativeGisLayerName, setNativeGisLayerName] = useState("");
+  const [nativeGisLayerKind, setNativeGisLayerKind] = useState<"mixed" | RoadFeatureKind>("mixed");
   const [nativeCvModelPath, setNativeCvModelPath] = useState(NATIVE_CV_MODEL_PATH_SLOT);
   const [nativeCvLabelsPath, setNativeCvLabelsPath] = useState(NATIVE_CV_LABELS_PATH_SLOT);
   const [activeProxyJob, setActiveProxyJob] = useState<{ jobId: string; mediaId: string } | null>(null);
@@ -604,8 +607,11 @@ export function App({
     if (result.status === "selected") {
       if (purpose === "media") setNativeMediaSourcePath(result.path);
       else if (purpose === "gpx") setNativeGpxSourcePath(result.path);
-      else setNativeGisSourcePath(result.path);
-      setAppStatus(`Selected native ${purpose.toUpperCase()} source: ${result.path}`);
+      else {
+        setNativeGisSourcePath(result.path);
+        if (!/\.(?:geojson|json)$/i.test(result.path)) setNativeGisSourceCrs("AUTO");
+      }
+      setAppStatus(`Selected native ${purpose.replace("_directory", "").toUpperCase()} source: ${result.path}`);
     } else if (result.status === "cancelled") {
       setAppStatus(`Native ${purpose.toUpperCase()} file selection cancelled; current path was kept.`);
     } else {
@@ -1076,14 +1082,15 @@ export function App({
       return;
     }
     const requestedAtIso = new Date().toISOString();
+    const gdalBinaryDirectory = componentSlots.find((slot) => slot.id === "gdal")?.reference ?? "";
     const result = await createNativeGisRepository(nativeCommandBridge, activeNativeSqlitePath, projectId)
-      .importPath(nativeGisSourcePath, nativeGisSourceCrs, "mixed");
+      .importPath(nativeGisSourcePath, nativeGisSourceCrs, nativeGisLayerKind, nativeGisLayerName, gdalBinaryDirectory);
     const attempt: NativeCommandAttempt = {
       id: `gis-import-${Date.now().toString(36)}`,
       command: "gis_import",
       status: result.status === "imported" ? "invoked" : result.commandStatus,
       requestedAtIso,
-      requestSummary: `sqlitePath: ${activeNativeSqlitePath}; sourcePath: ${nativeGisSourcePath}; sourceCrs: ${nativeGisSourceCrs}`,
+      requestSummary: `sqlitePath: ${activeNativeSqlitePath}; sourcePath: ${nativeGisSourcePath}; sourceCrs: ${nativeGisSourceCrs}; layerName: ${nativeGisLayerName || "auto"}; layerKind: ${nativeGisLayerKind}`,
       resultSummary:
         result.status === "imported"
           ? `featureSourceId: ${result.featureSourceId}; features: ${result.features.length}; projectionJobId: ${result.projectionJobId}`
@@ -1463,6 +1470,8 @@ export function App({
             nativeGpxSourcePath={nativeGpxSourcePath}
             nativeGisSourcePath={nativeGisSourcePath}
             nativeGisSourceCrs={nativeGisSourceCrs}
+            nativeGisLayerName={nativeGisLayerName}
+            nativeGisLayerKind={nativeGisLayerKind}
             nativeProjectRoot={nativeProjectRoot}
             onNativeMediaSourcePathChange={setNativeMediaSourcePath}
             onNativeCvModelPathChange={setNativeCvModelPath}
@@ -1470,8 +1479,11 @@ export function App({
             onNativeGpxSourcePathChange={setNativeGpxSourcePath}
             onNativeGisSourcePathChange={setNativeGisSourcePath}
             onNativeGisSourceCrsChange={setNativeGisSourceCrs}
+            onNativeGisLayerNameChange={setNativeGisLayerName}
+            onNativeGisLayerKindChange={setNativeGisLayerKind}
             onNativeGisImport={handleNativeGisImport}
             onNativeGisSelect={() => void handleNativeFileSelection("gis")}
+            onNativeGisDirectorySelect={() => void handleNativeFileSelection("gis_directory")}
             readiness={reviewReadiness}
             onNativeProjectRootChange={handleNativeProjectRootChange}
             onProbeFfmpegProxy={handleProbeFfmpegProxy}
@@ -1621,6 +1633,8 @@ function ReviewReadinessPanel({
   nativeCvModelPath,
   nativeCvLabelsPath,
   nativeGisSourceCrs,
+  nativeGisLayerName,
+  nativeGisLayerKind,
   nativeGisSourcePath,
   nativeGpxSourcePath,
   nativeMediaSourcePath,
@@ -1629,7 +1643,10 @@ function ReviewReadinessPanel({
   onNativeCvModelPathChange,
   onNativeCvLabelsPathChange,
   onNativeGisSelect,
+  onNativeGisDirectorySelect,
   onNativeGisSourceCrsChange,
+  onNativeGisLayerNameChange,
+  onNativeGisLayerKindChange,
   onNativeGisSourcePathChange,
   onNativeGpxImport,
   onNativeGpxSelect,
@@ -1648,7 +1665,9 @@ function ReviewReadinessPanel({
   nativeCommandAttempts: NativeCommandAttempt[];
   nativeCvModelPath: string;
   nativeCvLabelsPath: string;
-  nativeGisSourceCrs: "EPSG:4326" | "EPSG:3857";
+  nativeGisSourceCrs: string;
+  nativeGisLayerName: string;
+  nativeGisLayerKind: "mixed" | RoadFeatureKind;
   nativeGisSourcePath: string;
   nativeGpxSourcePath: string;
   nativeMediaSourcePath: string;
@@ -1657,7 +1676,10 @@ function ReviewReadinessPanel({
   onNativeCvModelPathChange: (value: string) => void;
   onNativeCvLabelsPathChange: (value: string) => void;
   onNativeGisSelect: () => void;
-  onNativeGisSourceCrsChange: (value: "EPSG:4326" | "EPSG:3857") => void;
+  onNativeGisDirectorySelect: () => void;
+  onNativeGisSourceCrsChange: (value: string) => void;
+  onNativeGisLayerNameChange: (value: string) => void;
+  onNativeGisLayerKindChange: (value: "mixed" | RoadFeatureKind) => void;
   onNativeGisSourcePathChange: (value: string) => void;
   onNativeGpxImport: () => void;
   onNativeGpxSelect: () => void;
@@ -1772,15 +1794,40 @@ function ReviewReadinessPanel({
           <Upload size={15} />
           Choose GIS file
         </button>
+        <button type="button" className="button secondary native-probe-button" onClick={onNativeGisDirectorySelect}>
+          <Upload size={15} />
+          Choose FileGDB directory
+        </button>
         <label className="native-root-field">
           <span>Native GIS source CRS</span>
-          <select
+          <input
             aria-label="Native GIS source CRS"
             value={nativeGisSourceCrs}
-            onChange={(event) => onNativeGisSourceCrsChange(event.target.value as "EPSG:4326" | "EPSG:3857")}
+            placeholder="AUTO or EPSG:26917"
+            onChange={(event) => onNativeGisSourceCrsChange(event.target.value)}
+          />
+        </label>
+        <label className="native-root-field">
+          <span>Native GIS layer name</span>
+          <input
+            aria-label="Native GIS layer name"
+            value={nativeGisLayerName}
+            placeholder="blank for a single-layer dataset"
+            onChange={(event) => onNativeGisLayerNameChange(event.target.value)}
+          />
+        </label>
+        <label className="native-root-field">
+          <span>Native GIS feature kind</span>
+          <select
+            aria-label="Native GIS feature kind"
+            value={nativeGisLayerKind}
+            onChange={(event) => onNativeGisLayerKindChange(event.target.value as "mixed" | RoadFeatureKind)}
           >
-            <option value="EPSG:4326">EPSG:4326</option>
-            <option value="EPSG:3857">EPSG:3857</option>
+            <option value="mixed">Read kind from each feature</option>
+            <option value="traffic_light">Traffic lights</option>
+            <option value="stop_sign">Stop signs</option>
+            <option value="bike_lane">Bike lanes</option>
+            <option value="crosswalk">Crosswalks</option>
           </select>
         </label>
         <button type="button" className="button secondary native-probe-button" onClick={onNativeGisImport}>
