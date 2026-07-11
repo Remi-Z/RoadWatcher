@@ -73,3 +73,13 @@ On the same VM:
 Any failed required check keeps `publicReleaseReady` false. Update the release
 manifest only in the release commit that carries the corresponding signing and
 clean-machine evidence.
+
+## Development-Host Tool Evidence
+
+On 2026-07-11, the startup script passed against the freshly rebuilt debug
+`RoadWatcher.exe` version `0.1.0`, proving that the spawned process remained
+alive for five seconds and that JSON evidence generation/targeted shutdown work.
+The executable SHA-256 was
+`E99E97AA99725704B078EF8699CD455DCF5E48A9A431089DABC00D52FBAA47D5`.
+This is smoke-tool evidence only. It is deliberately not recorded as a passed
+clean-machine gate because the executable ran from the development build host.

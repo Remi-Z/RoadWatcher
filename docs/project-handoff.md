@@ -570,6 +570,15 @@ build-script problem with the workspace path's space.
 The release-governance slice additionally passed `npm run verify:release`
 (runtime audit, three positive/negative metadata tests, and repository audit),
 PowerShell syntax parsing, and `cargo check` with the Rust release gate enabled.
+A fresh debug NSIS package built after that change is 3,985,023 bytes with
+SHA-256 `C401819BC524819D65621E78F7C9CE6671ADCFED3E0834B856C1D96F0C68B4BB`.
+Archive inspection confirms the `0.1.0` executable, 624-byte release manifest,
+runtime manifest, notices, and GPL text are present. Running the installed-startup
+script against the freshly built development executable proved it stayed alive
+for five seconds and recorded executable SHA-256
+`E99E97AA99725704B078EF8699CD455DCF5E48A9A431089DABC00D52FBAA47D5`.
+This validates the smoke tool on the development host; it does not replace the
+still-required clean-VM run for a public release.
 The packaging slice additionally passed `pnpm verify:runtime`, two focused Rust
 resource-path tests, a full debug Tauri application build, and an unsigned debug
 NSIS build. Extracting the 3,952,131-byte installer confirmed a 1,541-byte
