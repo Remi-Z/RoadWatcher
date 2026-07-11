@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
 
-const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 4;
+const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 5;
 
 #[derive(Debug)]
 pub struct ProjectCreateRequest {
@@ -122,6 +122,45 @@ pub struct RouteMatchStatus {
     pub route: Vec<RoutePoint>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedOfficialFeature {
+    pub id: String,
+    pub source_feature_id: String,
+    pub kind: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub source_layer: String,
+    pub geometry_type: String,
+    pub properties_json: String,
+}
+
+#[derive(Debug)]
+pub struct FeatureImportRequest {
+    pub sqlite_path: PathBuf,
+    pub project_id: String,
+    pub source_path: PathBuf,
+    pub source_crs: String,
+    pub layer_kind: String,
+    pub features: Vec<NormalizedOfficialFeature>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureImportResponse {
+    pub feature_source_id: String,
+    pub file_name: String,
+    pub original_path: String,
+    pub hash: String,
+    pub file_size_bytes: u64,
+    pub source_crs: String,
+    pub normalized_crs: String,
+    pub layer_kind: String,
+    pub features: Vec<NormalizedOfficialFeature>,
+    pub projection_status: String,
+    pub projection_job_id: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct ProxyJobRequest {
     pub sqlite_path: PathBuf,
@@ -208,6 +247,10 @@ pub enum ProjectStoreError {
     RouteMatchJobNotFound,
     #[error("Route match job cannot be claimed from status {0}.")]
     InvalidRouteMatchState(String),
+    #[error("Official GIS source must be an existing regular file: {0}")]
+    InvalidFeatureSource(String),
+    #[error("Normalized official GIS features are invalid: {0}")]
+    InvalidOfficialFeatures(String),
     #[error("Unsupported proxy profile: {0}")]
     InvalidProxyProfile(String),
     #[error("Proxy job was not found for the supplied project/media identity.")]
@@ -456,6 +499,138 @@ pub fn import_route_at(
         match_status: "queued".to_string(),
         match_job_id: job_id,
     })
+}
+
+pub fn import_feature_source_at(
+    request: FeatureImportRequest,
+    feature_source_id: Uuid,
+    projection_job_id: Uuid,
+    imported_at_unix: i64,
+) -> Result<FeatureImportResponse, ProjectStoreError> {
+    validate_official_features(&request.features)?;
+    if !matches!(request.source_crs.as_str(), "EPSG:4326" | "EPSG:3857") {
+        return Err(ProjectStoreError::InvalidOfficialFeatures(
+            "source CRS must be EPSG:4326 or EPSG:3857".to_string(),
+        ));
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let metadata = fs::metadata(&request.source_path)
+        .map_err(|_| ProjectStoreError::InvalidFeatureSource(path_string(&request.source_path)))?;
+    if !metadata.is_file() {
+        return Err(ProjectStoreError::InvalidFeatureSource(path_string(
+            &request.source_path,
+        )));
+    }
+    let file_size_bytes = metadata.len();
+    let file_size_sql = i64::try_from(file_size_bytes)
+        .map_err(|_| ProjectStoreError::MediaSourceTooLarge(path_string(&request.source_path)))?;
+    let file_name = request
+        .source_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| ProjectStoreError::InvalidFeatureSource(path_string(&request.source_path)))?
+        .to_string();
+    let hash = sha256_file(&request.source_path)?;
+    let feature_source_id = feature_source_id.to_string();
+    let projection_job_id = projection_job_id.to_string();
+    let original_path = path_string(&request.source_path);
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO feature_sources
+         (id, project_id, file_name, original_path, hash, file_size_bytes, imported_at_unix,
+          source_crs, normalized_crs, layer_kind, feature_count, projection_status, route_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'EPSG:4326', ?9, ?10, 'queued', '')",
+        params![
+            feature_source_id,
+            request.project_id,
+            file_name,
+            original_path,
+            hash,
+            file_size_sql,
+            imported_at_unix,
+            request.source_crs,
+            request.layer_kind,
+            request.features.len() as i64
+        ],
+    )?;
+    {
+        let mut statement = transaction.prepare(
+            "INSERT INTO official_features
+             (id, project_id, feature_source_id, source_feature_id, kind, latitude, longitude,
+              source_layer, geometry_type, properties_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        )?;
+        for feature in &request.features {
+            statement.execute(params![
+                feature.id,
+                request.project_id,
+                feature_source_id,
+                feature.source_feature_id,
+                feature.kind,
+                feature.latitude,
+                feature.longitude,
+                feature.source_layer,
+                feature.geometry_type,
+                feature.properties_json
+            ])?;
+        }
+    }
+    transaction.execute(
+        "INSERT INTO jobs
+         (id, project_id, media_id, route_id, feature_source_id, job_type, label, status, progress, detail, cancellation_requested)
+         VALUES (?1, ?2, '', '', ?3, 'gis', ?4, 'queued', 0,
+                 'Official GIS normalized; route projection queued.', 0)",
+        params![projection_job_id, request.project_id, feature_source_id, format!("Official GIS projection: {file_name}")],
+    )?;
+    transaction.commit()?;
+    Ok(FeatureImportResponse {
+        feature_source_id,
+        file_name,
+        original_path,
+        hash,
+        file_size_bytes,
+        source_crs: request.source_crs,
+        normalized_crs: "EPSG:4326".to_string(),
+        layer_kind: request.layer_kind,
+        features: request.features,
+        projection_status: "queued".to_string(),
+        projection_job_id,
+    })
+}
+
+fn validate_official_features(
+    features: &[NormalizedOfficialFeature],
+) -> Result<(), ProjectStoreError> {
+    if features.is_empty() {
+        return Err(ProjectStoreError::InvalidOfficialFeatures(
+            "at least one supported feature is required".to_string(),
+        ));
+    }
+    for feature in features {
+        if feature.id.trim().is_empty()
+            || feature.source_feature_id.trim().is_empty()
+            || feature.source_layer.trim().is_empty()
+            || !matches!(
+                feature.kind.as_str(),
+                "traffic_light" | "stop_sign" | "bike_lane" | "crosswalk" | "other"
+            )
+            || !matches!(feature.geometry_type.as_str(), "Point" | "LineString")
+            || !feature.latitude.is_finite()
+            || !feature.longitude.is_finite()
+            || !(-90.0..=90.0).contains(&feature.latitude)
+            || !(-180.0..=180.0).contains(&feature.longitude)
+            || feature.properties_json.len() > 64 * 1024
+            || serde_json::from_str::<serde_json::Value>(&feature.properties_json).is_err()
+        {
+            return Err(ProjectStoreError::InvalidOfficialFeatures(
+                "identities, kinds, WGS84 coordinates, geometry, or properties are invalid"
+                    .to_string(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_route_points(points: &[RoutePoint]) -> Result<(), ProjectStoreError> {
@@ -1057,6 +1232,9 @@ fn migrate_database(connection: &mut Connection) -> Result<(), ProjectStoreError
         if version <= 3 {
             transaction.execute_batch(ROUTE_ASSET_MIGRATION_SQL)?;
         }
+        if version <= 4 {
+            transaction.execute_batch(FEATURE_SOURCE_MIGRATION_SQL)?;
+        }
         transaction.execute(
             "UPDATE schema_info SET version = ?1",
             params![PROJECT_DATABASE_SCHEMA_VERSION],
@@ -1107,7 +1285,7 @@ fn path_string(path: &Path) -> String {
 const SCHEMA_SQL: &str = r#"
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;
 
 CREATE TABLE schema_info (
     version INTEGER NOT NULL CHECK (version > 0)
@@ -1139,6 +1317,7 @@ CREATE TABLE jobs (
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     media_id TEXT NOT NULL DEFAULT '',
     route_id TEXT NOT NULL DEFAULT '',
+    feature_source_id TEXT NOT NULL DEFAULT '',
     job_type TEXT NOT NULL,
     label TEXT NOT NULL,
     status TEXT NOT NULL,
@@ -1182,18 +1361,40 @@ CREATE TABLE route_points (
     UNIQUE(route_id, point_set, sequence)
 );
 
+CREATE TABLE feature_sources (
+    id TEXT PRIMARY KEY NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    original_path TEXT NOT NULL,
+    hash TEXT NOT NULL DEFAULT '',
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    imported_at_unix INTEGER NOT NULL DEFAULT 0,
+    source_crs TEXT NOT NULL,
+    normalized_crs TEXT NOT NULL,
+    layer_kind TEXT NOT NULL,
+    feature_count INTEGER NOT NULL DEFAULT 0,
+    projection_status TEXT NOT NULL DEFAULT 'queued',
+    route_id TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE official_features (
     id TEXT PRIMARY KEY NOT NULL,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    feature_source_id TEXT NOT NULL REFERENCES feature_sources(id) ON DELETE CASCADE,
+    source_feature_id TEXT NOT NULL,
     kind TEXT NOT NULL,
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
-    source_layer TEXT NOT NULL
+    source_layer TEXT NOT NULL,
+    geometry_type TEXT NOT NULL,
+    properties_json TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE projected_features (
     feature_id TEXT PRIMARY KEY NOT NULL REFERENCES official_features(id) ON DELETE CASCADE,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    feature_source_id TEXT NOT NULL DEFAULT '',
+    route_id TEXT NOT NULL DEFAULT '',
     kind TEXT NOT NULL,
     source_layer TEXT NOT NULL,
     time_seconds REAL NOT NULL,
@@ -1299,16 +1500,66 @@ UPDATE route_assets SET match_status = 'queued'
 WHERE id IN (SELECT route_id FROM jobs WHERE job_type IN ('valhalla', 'osrm') AND status = 'queued');
 "#;
 
+const FEATURE_SOURCE_MIGRATION_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS official_features (
+    id TEXT PRIMARY KEY NOT NULL, project_id TEXT NOT NULL, kind TEXT NOT NULL,
+    latitude REAL NOT NULL, longitude REAL NOT NULL, source_layer TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS projected_features (
+    feature_id TEXT PRIMARY KEY NOT NULL, project_id TEXT NOT NULL, kind TEXT NOT NULL,
+    source_layer TEXT NOT NULL, time_seconds REAL NOT NULL, distance_meters REAL NOT NULL,
+    confidence REAL NOT NULL, review_status TEXT NOT NULL, review_note TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE feature_sources (
+    id TEXT PRIMARY KEY NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL, original_path TEXT NOT NULL, hash TEXT NOT NULL DEFAULT '',
+    file_size_bytes INTEGER NOT NULL DEFAULT 0, imported_at_unix INTEGER NOT NULL DEFAULT 0,
+    source_crs TEXT NOT NULL, normalized_crs TEXT NOT NULL, layer_kind TEXT NOT NULL,
+    feature_count INTEGER NOT NULL DEFAULT 0, projection_status TEXT NOT NULL DEFAULT 'queued',
+    route_id TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO feature_sources
+    (id, project_id, file_name, original_path, source_crs, normalized_crs,
+     layer_kind, feature_count, projection_status)
+SELECT 'legacy-gis-' || project_id, project_id, 'Legacy snapshot GIS', '',
+       'EPSG:4326', 'EPSG:4326', 'mixed', COUNT(*), 'complete'
+FROM official_features GROUP BY project_id;
+ALTER TABLE official_features ADD COLUMN feature_source_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE official_features ADD COLUMN source_feature_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE official_features ADD COLUMN geometry_type TEXT NOT NULL DEFAULT 'Point';
+ALTER TABLE official_features ADD COLUMN properties_json TEXT NOT NULL DEFAULT '{}';
+UPDATE official_features
+SET feature_source_id = 'legacy-gis-' || project_id, source_feature_id = id
+WHERE feature_source_id = '';
+ALTER TABLE projected_features ADD COLUMN feature_source_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE projected_features ADD COLUMN route_id TEXT NOT NULL DEFAULT '';
+UPDATE projected_features
+SET feature_source_id = 'legacy-gis-' || project_id
+WHERE feature_source_id = '';
+ALTER TABLE jobs ADD COLUMN feature_source_id TEXT NOT NULL DEFAULT '';
+UPDATE jobs SET feature_source_id = 'legacy-gis-' || project_id
+WHERE job_type = 'gis' AND feature_source_id = ''
+  AND EXISTS (SELECT 1 FROM feature_sources WHERE feature_sources.id = 'legacy-gis-' || jobs.project_id);
+UPDATE jobs
+SET status = 'queued', progress = 0,
+    detail = 'GIS projection recovered after restart.', cancellation_requested = 0
+WHERE job_type = 'gis' AND status = 'running';
+UPDATE feature_sources SET projection_status = 'queued'
+WHERE id IN (SELECT feature_source_id FROM jobs WHERE job_type = 'gis' AND status = 'queued');
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::{
         claim_proxy_job, claim_route_match_job, complete_proxy_job, complete_route_match_job,
-        create_project_at, fail_proxy_job, fail_route_match_job, import_media_at, import_route_at,
-        load_project_snapshot, open_project_database, read_proxy_job_status,
-        read_route_match_status, request_proxy_job_cancel, save_project_snapshot,
-        update_proxy_progress, update_route_match_progress, MediaImportRequest,
-        ProjectCreateRequest, ProjectSaveRequest, ProjectStoreError, ProxyCompletion,
-        ProxyJobRequest, RouteImportRequest, RouteMatchRequest, RoutePoint,
+        create_project_at, fail_proxy_job, fail_route_match_job, import_feature_source_at,
+        import_media_at, import_route_at, load_project_snapshot, open_project_database,
+        read_proxy_job_status, read_route_match_status, request_proxy_job_cancel,
+        save_project_snapshot, update_proxy_progress, update_route_match_progress,
+        FeatureImportRequest, MediaImportRequest, NormalizedOfficialFeature, ProjectCreateRequest,
+        ProjectSaveRequest, ProjectStoreError, ProxyCompletion, ProxyJobRequest,
+        RouteImportRequest, RouteMatchRequest, RoutePoint,
     };
     use rusqlite::Connection;
     use std::collections::BTreeSet;
@@ -1357,7 +1608,7 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(schema_version, 4);
+        assert_eq!(schema_version, 5);
         assert_eq!(
             metadata,
             (
@@ -1382,6 +1633,7 @@ mod tests {
             "timeline_clips",
             "route_assets",
             "route_points",
+            "feature_sources",
             "official_features",
             "projected_features",
             "component_slots",
@@ -1390,6 +1642,95 @@ mod tests {
         ] {
             assert!(table_names.contains(table), "missing table {table}");
         }
+    }
+
+    #[test]
+    fn imports_feature_source_normalized_features_and_projection_job_atomically() {
+        let root = TestRoot::new();
+        let project_id = Uuid::new_v4();
+        let source_id = Uuid::new_v4();
+        let job_id = Uuid::new_v4();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Official GIS".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let source_path = root.path().join("signals.geojson");
+        fs::write(&source_path, b"fixture-geojson").unwrap();
+        let features = vec![NormalizedOfficialFeature {
+            id: "signal-1".to_string(),
+            source_feature_id: "official-42".to_string(),
+            kind: "traffic_light".to_string(),
+            latitude: 43.8565,
+            longitude: -79.33747,
+            source_layer: "York signals".to_string(),
+            geometry_type: "Point".to_string(),
+            properties_json: r#"{"kind":"traffic_light"}"#.to_string(),
+        }];
+
+        let imported = import_feature_source_at(
+            FeatureImportRequest {
+                sqlite_path: PathBuf::from(&created.sqlite_path),
+                project_id: project_id.to_string(),
+                source_path: source_path.clone(),
+                source_crs: "EPSG:3857".to_string(),
+                layer_kind: "traffic_light".to_string(),
+                features: features.clone(),
+            },
+            source_id,
+            job_id,
+            1_788_000_001,
+        )
+        .unwrap();
+
+        assert_eq!(imported.feature_source_id, source_id.to_string());
+        assert_eq!(imported.projection_job_id, job_id.to_string());
+        assert_eq!(imported.features, features);
+        assert_eq!(imported.normalized_crs, "EPSG:4326");
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        let source: (String, String, String, i64) = connection
+            .query_row(
+                "SELECT source_crs, normalized_crs, projection_status, feature_count FROM feature_sources WHERE id = ?1",
+                [source_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            source,
+            (
+                "EPSG:3857".to_string(),
+                "EPSG:4326".to_string(),
+                "queued".to_string(),
+                1
+            )
+        );
+        let stored: (String, String, String) = connection
+            .query_row(
+                "SELECT feature_source_id, source_feature_id, geometry_type FROM official_features WHERE id = 'signal-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            stored,
+            (
+                source_id.to_string(),
+                "official-42".to_string(),
+                "Point".to_string()
+            )
+        );
+        let job_source: String = connection
+            .query_row(
+                "SELECT feature_source_id FROM jobs WHERE id = ?1",
+                [job_id.to_string()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(job_source, source_id.to_string());
     }
 
     #[test]
@@ -1716,8 +2057,8 @@ mod tests {
         let schema_version: i64 = connection
             .query_row("SELECT version FROM schema_info", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(user_version, 4);
-        assert_eq!(schema_version, 4);
+        assert_eq!(user_version, 5);
+        assert_eq!(schema_version, 5);
     }
 
     #[test]
@@ -1785,7 +2126,7 @@ mod tests {
             load_project_snapshot(Path::new(&created.sqlite_path)),
             Err(ProjectStoreError::UnsupportedDatabaseVersion {
                 found: 99,
-                supported: 4
+                supported: 5
             })
         ));
     }
@@ -1989,7 +2330,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
         let media_columns: BTreeSet<String> = connection
             .prepare("PRAGMA table_info(media_assets)")
             .unwrap()
@@ -2047,7 +2388,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
         let migrated: (String, String, f64) = connection
             .query_row(
                 "SELECT route_id, point_set, time_seconds FROM route_points WHERE sequence = 1",
@@ -2070,6 +2411,77 @@ mod tests {
         assert_eq!(recovered.1, "queued");
         assert_eq!(recovered.2, 0.0);
         assert!(recovered.3.contains("recovered after restart"));
+    }
+
+    #[test]
+    fn migrates_v4_feature_provenance_and_recovers_stale_gis_jobs() {
+        let root = TestRoot::new();
+        let sqlite_path = root.path().join("v4-gis.sqlite");
+        let connection = Connection::open(&sqlite_path).unwrap();
+        connection.execute_batch(
+            "PRAGMA user_version = 4;
+             CREATE TABLE schema_info (version INTEGER NOT NULL);
+             INSERT INTO schema_info VALUES (4);
+             CREATE TABLE projects (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, created_at_unix INTEGER NOT NULL);
+             INSERT INTO projects VALUES ('gis-project', 'Legacy GIS', 0);
+             CREATE TABLE official_features (
+               id TEXT PRIMARY KEY, project_id TEXT NOT NULL, kind TEXT NOT NULL,
+               latitude REAL NOT NULL, longitude REAL NOT NULL, source_layer TEXT NOT NULL
+             );
+             INSERT INTO official_features VALUES ('signal-legacy', 'gis-project', 'traffic_light', 43.8, -79.3, 'snapshot');
+             CREATE TABLE projected_features (
+               feature_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, kind TEXT NOT NULL,
+               source_layer TEXT NOT NULL, time_seconds REAL NOT NULL, distance_meters REAL NOT NULL,
+               confidence REAL NOT NULL, review_status TEXT NOT NULL, review_note TEXT NOT NULL DEFAULT ''
+             );
+             CREATE TABLE jobs (
+               id TEXT PRIMARY KEY, project_id TEXT NOT NULL, media_id TEXT NOT NULL DEFAULT '',
+               route_id TEXT NOT NULL DEFAULT '', job_type TEXT NOT NULL, label TEXT NOT NULL,
+               status TEXT NOT NULL, progress REAL NOT NULL DEFAULT 0, detail TEXT NOT NULL DEFAULT '',
+               cancellation_requested INTEGER NOT NULL DEFAULT 0
+             );
+             INSERT INTO jobs VALUES ('gis-job', 'gis-project', '', '', 'gis', 'GIS projection', 'running', 40, 'interrupted', 0);"
+        ).unwrap();
+        drop(connection);
+
+        drop(open_project_database(&sqlite_path).unwrap());
+        let connection = Connection::open(&sqlite_path).unwrap();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 5);
+        let source: (String, String, i64) = connection.query_row(
+            "SELECT source_crs, normalized_crs, feature_count FROM feature_sources WHERE id = 'legacy-gis-gis-project'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).unwrap();
+        assert_eq!(
+            source,
+            ("EPSG:4326".to_string(), "EPSG:4326".to_string(), 1)
+        );
+        let feature_source: String = connection
+            .query_row(
+                "SELECT feature_source_id FROM official_features WHERE id = 'signal-legacy'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(feature_source, "legacy-gis-gis-project");
+        let job: (String, String, f64) = connection
+            .query_row(
+                "SELECT feature_source_id, status, progress FROM jobs WHERE id = 'gis-job'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            job,
+            (
+                "legacy-gis-gis-project".to_string(),
+                "queued".to_string(),
+                0.0
+            )
+        );
     }
 
     #[test]

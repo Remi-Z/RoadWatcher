@@ -7,10 +7,10 @@ normalized road features onto durable matched routes.
 
 ### Task 1: Schema-v5 Feature Source Store
 
-- [ ] Add failing migration/store tests for feature sources, normalized feature
+- [x] Add failing migration/store tests for feature sources, normalized feature
   provenance, GIS-job identity, rollback, and stale-job recovery.
-- [ ] Implement schema v5 and guarded GIS store DTOs/transitions.
-- [ ] Run focused Rust tests and commit.
+- [x] Implement schema v5 and guarded GIS store DTOs/transitions.
+- [x] Run focused Rust tests and commit.
 
 ### Task 2: Native GeoJSON and CRS Import
 
