@@ -211,11 +211,9 @@ Build a Windows-first, local-first evidence workstation:
 
 ## Current Verification
 
-Latest module verification on 2026-07-11: 168 frontend tests across 26 files,
-TypeScript compilation, production Vite build, and 65 Rust tests passed; the one
-installed-FFmpeg smoke remains intentionally ignored. GPStitch worker/store tests
-use a fake executor because no compatible local GPStitch/FFmpeg render toolchain
-was available for a live smoke.
+Latest module verification on 2026-07-11: 171 frontend tests across 27 files,
+TypeScript compilation, production Vite build, and 68 default Rust tests passed.
+The ignored installed-FFmpeg smoke also passes when explicitly enabled.
 
 Windows runtime packaging now has a deterministic source-and-license boundary.
 `pnpm verify:runtime` validates the exact GPStitch gitlink, component versions,
@@ -224,6 +222,13 @@ non-redistributed tools. A debug NSIS build and archive extraction confirmed the
 manifest, notices, GPL text, and whitelisted source files are non-empty and omit
 local Python caches. The installer still requires externally provisioned
 uv/Python and native media/GIS/matcher tools.
+
+The native `runtime_preflight` command and strict React adapter now expose
+packaged-source, uv/Python, FFmpeg/ffprobe, and optional GDAL/OGR status through
+parallel bounded probes. A real locked/offline GPStitch render of the upstream
+five-second fixture produced a verified H.264/AAC output after RoadWatcher added
+explicit Windows system-font selection. Installed GDAL, real CV model/video, and
+live matcher smokes remain.
 
 ```powershell
 pnpm test
@@ -441,11 +446,11 @@ network/DNS access.
 ## Next Agent Checklist
 
 1. Select and inventory a self-contained `uv`/Python and FFmpeg Windows runtime,
-   or add a formal administrator prerequisite/preflight flow. GPL source and
-   notice delivery for GPStitch is now implemented. Production GIS container
+   or retain the implemented administrator prerequisite/preflight flow. GPL
+   source and notice delivery for GPStitch is implemented. Production GIS container
    normalization, local CV, and GPStitch reconciliation are complete:
-   verification passes 168 frontend tests, 65 Rust tests (one
-   installed-FFmpeg smoke ignored), four locked/offline Python tests, and the
+   verification passes 171 frontend tests, 68 default Rust tests plus the
+   explicitly enabled installed-FFmpeg smoke, four locked/offline Python tests, and the
    production build.
 2. Verify toolchain:
    - `node --version`

@@ -31,6 +31,12 @@ The runnable app today is the React/Vite evidence workstation:
   Native sidecar commands resolve installed resources through Tauri instead of
   relying on the process working directory. `uv`, Python, FFmpeg/ffprobe,
   GDAL/OGR, Valhalla, and OSRM remain explicit external prerequisites.
+- `runtime_preflight` now checks packaged GPStitch/CV sources plus uv, Python,
+  FFmpeg, ffprobe, ogrinfo, and ogr2ogr. Independent no-shell probes run in
+  parallel with 10-second/64-KiB bounds; strict frontend validation and the
+  readiness UI expose per-component paths, versions, and failures. CV and
+  GPStitch now share the bounded-process runner, giving CV a four-hour timeout
+  and streaming output cap.
 - Browser repository loads now report `loaded`, `missing`, `corrupt`,
   `unsupported`, or `unavailable`; startup keeps seeded state usable while
   showing the precise recovery condition. Schema-declaring project imports no
@@ -537,10 +543,10 @@ an explicit test/demo dependency. Empty regions have actionable guidance,
 decorative route evidence is suppressed, blank plates use a placeholder rather
 than stored text, and packet export is disabled until media plus a clip exist.
 
-Final verification on 2026-07-11 passed 168 frontend tests across 26 files, the
+Final verification on 2026-07-11 passed 171 frontend tests across 27 files, the
 production Vite build, TypeScript project compilation, four locked/offline
-Python sidecar tests, and 65 Rust tests with only the installed-FFmpeg smoke
-intentionally ignored. Rust verification uses `C:\tmp\roadwatcher-target` to
+Python sidecar tests, and 68 default Rust tests with only the separately executed
+installed-FFmpeg smoke ignored by default. Rust verification uses `C:\tmp\roadwatcher-target` to
 avoid a Rust 1.96 dependency-probe failure under the workspace path containing
 a space.
 The suite used a short-path temporary Cargo target to avoid the known Windows
@@ -550,6 +556,11 @@ resource-path tests, a full debug Tauri application build, and an unsigned debug
 NSIS build. Extracting the 3,952,131-byte installer confirmed a 1,541-byte
 runtime manifest, 1,643-byte notices file, 36,606-byte GPL text, both sidecar
 source trees/locks, and no `__pycache__` entries.
+The ignored real FFmpeg test was then run explicitly and passed with FFmpeg
+8.1.1. A real locked/offline GPStitch CLI render also passed after the worker was
+updated to select an installed Windows TrueType font: the upstream five-second
+fixture produced a 198,791-byte H.264/AAC 320x180 output of 5.08 seconds with
+SHA-256 `7800DC1510B29D72AC1ECBE95AF1205141AA743FE3AF72EED48AE17C24DD6A87`.
 
 The CV sidecar and durable schema foundation are complete. Four Python tests prove request limits,
 label validation, confidence/bounds filtering, deterministic ordering, bounded
@@ -563,13 +574,13 @@ atomic finding publication, invalid-output rollback, and interrupted-job recover
 The asynchronous manager queues before returning, invokes locked/offline `uv`
 without a shell, canonicalizes source/model/label identities, caps process output,
 rejects mismatched aggregates, and records terminal blocked/failed states. Full
-Rust verification passes 65 tests with only the installed-FFmpeg smoke ignored.
+default Rust verification passes 68 tests with the installed-FFmpeg smoke also
+passing when explicitly enabled.
 
 1. Choose, inventory, and license a self-contained Windows runtime strategy for
-   `uv`/Python and FFmpeg/ffprobe, or formalize them as administrator-installed
-   prerequisites with an in-app preflight. The source/license bundle is complete.
-2. Add a real GPStitch/FFmpeg video+GPX smoke, real-model/video CV smoke, live
-   matcher, and installed-binary coverage at
+   `uv`/Python and FFmpeg/ffprobe, or retain the now-implemented administrator
+   prerequisite/preflight model. The source/license bundle and preflight are complete.
+2. Add a real-model/video CV smoke, live matcher, and installed-GDAL coverage at
    the end of the implementation cycle.
 3. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
    representative-feature model insufficient.

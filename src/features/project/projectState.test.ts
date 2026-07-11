@@ -101,7 +101,7 @@ describe("project state", () => {
         ],
         nativeProjectRoot: "C:/RoadWatcher/native-projects",
         componentSlots: [
-          { ...missingSlots[2], reference: "C:/roadwatcher/valhalla/greater-toronto.json", notes: "York/GTA extract staged." }
+          { ...missingSlots.find((slot) => slot.id === "valhalla")!, reference: "C:/roadwatcher/valhalla/greater-toronto.json", notes: "York/GTA extract staged." }
         ],
         projectId: TEST_PROJECT_ID,
         projectedFeatures,

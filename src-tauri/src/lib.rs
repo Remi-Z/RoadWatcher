@@ -17,6 +17,7 @@ use route_matcher::{RouteMatcherManager, RouteMatcherRequest};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
+mod bounded_process;
 mod cv_worker;
 mod gdal_adapter;
 mod gis_import;
@@ -28,6 +29,7 @@ mod proxy_worker;
 mod route_import;
 mod route_matcher;
 mod runtime_paths;
+mod runtime_preflight;
 
 #[tauri::command]
 fn project_create(
@@ -316,6 +318,31 @@ fn resolve_runtime_component(
 }
 
 #[tauri::command]
+fn runtime_preflight(
+    app: tauri::AppHandle,
+    uv_executable: String,
+    ffmpeg_binary_directory: String,
+    gdal_binary_directory: String,
+) -> Result<runtime_preflight::RuntimePreflightResponse, String> {
+    let gpstitch_source = resolve_runtime_component(
+        &app,
+        "sidecars/roadwatcher-gpstitch",
+        "sidecars/roadwatcher-gpstitch",
+    )?;
+    let cv_source =
+        resolve_runtime_component(&app, "sidecars/roadwatcher-cv", "sidecars/roadwatcher-cv")?;
+    Ok(runtime_preflight::run_runtime_preflight(
+        runtime_preflight::RuntimePreflightRequest {
+            uv_executable,
+            ffmpeg_binary_directory,
+            gdal_binary_directory,
+            gpstitch_source,
+            cv_source,
+        },
+    ))
+}
+
+#[tauri::command]
 fn gpx_match(
     state: tauri::State<'_, RouteMatcherManager>,
     sqlite_path: String,
@@ -432,6 +459,7 @@ pub fn run() {
             gis_job_status,
             gpstitch_render,
             gpstitch_job_status,
+            runtime_preflight,
             gpx_match,
             gpx_job_status,
             ffmpeg_proxy,

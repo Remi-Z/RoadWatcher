@@ -70,7 +70,7 @@ matcher, GIS projection, FFmpeg proxy, and local CV actions. Project
 create/save/load, `media_import`, `ffmpeg_proxy`, `job_status`, `job_cancel`,
 `gpx_import`, `gpx_match`, `gpx_job_status`, `gis_import`, `gis_project`, and
 `gis_job_status`, `cv_scan`, `cv_job_status`, `cv_finding_review`,
-`gpstitch_render`, and `gpstitch_job_status` are
+`gpstitch_render`, `gpstitch_job_status`, and `runtime_preflight` are
 implemented; the native project root and separate CV model/labels slots remain
 editable, saved in portable project snapshots, and included in exports/setup
 checklists. Probe
@@ -176,12 +176,24 @@ proxy copy so source/proxy evidence timestamps are never mutated. Completed
 outputs are confined below the project proxy tree and record path, SHA-256,
 size, and exact GPStitch version in SQLite, portable snapshot schema v4, the UI,
 and evidence exports.
+The installed-runtime preflight resolves both packaged source trees and probes
+`uv`, Python, FFmpeg, ffprobe, ogrinfo, and ogr2ogr concurrently through bounded,
+no-shell processes. Its strict frontend adapter rejects incomplete identities or
+inconsistent aggregate status, and the readiness panel shows each required or
+optional component with resolved executable and version/error evidence. The
+shared bounded-process utility now also gives CV execution a four-hour timeout
+and streaming 16 MiB output limit instead of checking size only after an
+unbounded child-process capture.
 The Windows packaging boundary now resolves repository-relative sidecar names to
 Tauri's packaged resource directory while still permitting explicit absolute
 development paths. `src-tauri/resources/runtime-manifest.json` is validated by
 both the Rust build script and `pnpm verify:runtime`; an NSIS archive inspection
 proves the source, locks, notices, and non-empty GPL license are present without
 local Python cache artifacts.
+A live installed-tool check now passes the real FFmpeg proxy/thumbnail smoke and
+a locked/offline GPStitch render of the upstream five-second fixture. The latter
+exposed and fixed an upstream Windows default-font failure by passing an existing
+system TrueType font explicitly. GDAL/OGR remains unavailable on this machine.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,

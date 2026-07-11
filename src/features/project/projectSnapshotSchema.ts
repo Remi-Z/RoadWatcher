@@ -62,7 +62,8 @@ const NATIVE_COMMANDS = [
   "cv_job_status",
   "cv_finding_review",
   "gpstitch_render",
-  "gpstitch_job_status"
+  "gpstitch_job_status",
+  "runtime_preflight"
 ] as const;
 const NATIVE_ATTEMPT_STATUSES = [
   "invoked",

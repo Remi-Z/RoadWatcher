@@ -17,7 +17,8 @@ export type NativeCommandName =
   | "cv_job_status"
   | "cv_finding_review"
   | "gpstitch_render"
-  | "gpstitch_job_status";
+  | "gpstitch_job_status"
+  | "runtime_preflight";
 export type NativeCommandImplementation = "implemented" | "planned";
 
 export interface NativeCommandContract {
@@ -292,5 +293,16 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     responseFields: ["renderId", "jobId", "mediaId", "routeId", "status", "progress", "detail", "layout", "alignment", "timeOffsetSeconds", "outputPath", "outputHash", "outputSizeBytes", "gpstitchVersion"],
     fallback: "portable snapshot render status",
     ownerAction: "Poll durable GPStitch progress and output provenance."
+  },
+  {
+    id: "runtime-preflight",
+    label: "Installed runtime preflight",
+    command: "runtime_preflight",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["uvExecutable", "ffmpegBinaryDirectory", "gdalBinaryDirectory"],
+    responseFields: ["checkedAtUnix", "status", "components"],
+    fallback: "editable setup slots and per-job blocked details",
+    ownerAction: "Probe packaged sources and externally provided tools with bounded no-shell version commands."
   }
 ];

@@ -91,6 +91,7 @@ import {
   type ReviewReadiness
 } from "./features/project/reviewReadiness";
 import { createNativeCommandBridge, type NativeInvoke } from "./features/native/nativeCommandBridge";
+import { createNativeRuntimePreflightRepository, type RuntimePreflightReport } from "./features/native/nativeRuntimePreflightRepository";
 import { createNativeFilePicker, type NativeFilePicker, type NativeFilePurpose } from "./features/native/nativeFilePicker";
 import { detectNativeRuntime, type NativeRuntimeHost, type NativeRuntimeStatus } from "./features/native/runtimeEnvironment";
 import { resolveTauriInvoke } from "./features/native/tauriInvokeAdapter";
@@ -186,6 +187,7 @@ export function App({
   } | null>(null);
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
   const [latestNativeExport, setLatestNativeExport] = useState<NativeExportSuccess | null>(null);
+  const [runtimePreflightReport, setRuntimePreflightReport] = useState<RuntimePreflightReport | null>(null);
   const exportGenerationRef = useRef(0);
   const nativeHydrationPathRef = useRef<string | null>(null);
   const firstSlotReferenceInputRef = useRef<HTMLInputElement>(null);
@@ -632,6 +634,7 @@ export function App({
 
   function handleComponentSlotChange(id: string, field: keyof Pick<ComponentSlot, "status" | "reference" | "notes">, value: string) {
     dispatchWorkstation({ type: "edit_component_slot", id, field, value });
+    if (id === "ffmpeg" || id === "gdal" || id === "python-runtime") setRuntimePreflightReport(null);
     invalidateLatestExport();
   }
 
@@ -771,6 +774,7 @@ export function App({
     setActiveGisJob(null);
     setActiveCvJob(null);
     setActiveGpstitchJob(null);
+    setRuntimePreflightReport(null);
     nativeHydrationPathRef.current = null;
     dispatchWorkstation({ type: "reset_project", seed: workstationSeedFactory(projectIdFactory()) });
     setAppStatus(
@@ -837,6 +841,7 @@ export function App({
       setActiveGisJob(null);
       setActiveCvJob(null);
       setActiveGpstitchJob(null);
+      setRuntimePreflightReport(null);
       dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: defaultComponentSlots });
       dispatchWorkstation({ type: "record_native_attempt", attempt: saveAttempt });
       projectRepository.save(snapshot);
@@ -1019,6 +1024,38 @@ export function App({
       routeId: routeJob.routeId, layout: gpstitchLayout, alignment: gpstitchAlignment,
       timeOffsetSeconds: gpstitchTimeOffsetSeconds });
     setAppStatus(`GPStitch telemetry render queued: ${result.jobId}`);
+  }
+
+  async function handleRuntimePreflight() {
+    const requestedAtIso = new Date().toISOString();
+    const ffmpegReference = componentSlots.find((slot) => slot.id === "ffmpeg")?.reference ?? "";
+    const gdalReference = componentSlots.find((slot) => slot.id === "gdal")?.reference ?? "";
+    const config = {
+      uvExecutable: "uv",
+      ffmpegBinaryDirectory: ffmpegReference.startsWith("slot:") ? "" : ffmpegReference,
+      gdalBinaryDirectory: gdalReference.startsWith("slot:") ? "" : gdalReference
+    };
+    const result = await createNativeRuntimePreflightRepository(nativeCommandBridge, config).run();
+    const attempt: NativeCommandAttempt = {
+      id: `runtime-preflight-${Date.now().toString(36)}`,
+      command: "runtime_preflight",
+      status: result.status === "loaded" ? "invoked" : result.commandStatus,
+      requestedAtIso,
+      requestSummary: `uv: ${config.uvExecutable}; ffmpeg directory: ${config.ffmpegBinaryDirectory || "PATH"}; GDAL directory: ${config.gdalBinaryDirectory || "PATH"}`,
+      resultSummary: result.status === "loaded"
+        ? `${result.report.status}; ${result.report.components.filter((component) => component.status === "ready").length}/${result.report.components.length} components ready`
+        : result.message
+    };
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
+    if (result.status === "loaded") {
+      setRuntimePreflightReport(result.report);
+      setAppStatus(result.report.status === "ready"
+        ? "Installed runtime preflight passed for all required components."
+        : "Installed runtime preflight found missing required components; review the component details.");
+    } else {
+      setRuntimePreflightReport(null);
+      setAppStatus(`runtime_preflight ${result.commandStatus}: ${result.message}`);
+    }
   }
 
   async function handleProbeGpxMatch() {
@@ -1397,6 +1434,7 @@ export function App({
     setActiveGisJob(null);
     setActiveCvJob(null);
     setActiveGpstitchJob(null);
+    setRuntimePreflightReport(null);
     dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: defaultComponentSlots });
   }
 
@@ -1593,6 +1631,8 @@ export function App({
             onGpstitchAlignmentChange={setGpstitchAlignment}
             onGpstitchTimeOffsetSecondsChange={setGpstitchTimeOffsetSeconds}
             onGpstitchRender={() => void handleGpstitchRender()}
+            runtimePreflightReport={runtimePreflightReport}
+            onRuntimePreflight={() => void handleRuntimePreflight()}
           />
         </section>
 
@@ -1763,6 +1803,7 @@ function ReviewReadinessPanel({
   gpstitchLayout,
   gpstitchAlignment,
   gpstitchTimeOffsetSeconds,
+  runtimePreflightReport,
   onNativeGisImport,
   onNativeCvModelPathChange,
   onNativeCvLabelsPathChange,
@@ -1783,6 +1824,7 @@ function ReviewReadinessPanel({
   onGpstitchAlignmentChange,
   onGpstitchTimeOffsetSecondsChange,
   onGpstitchRender,
+  onRuntimePreflight,
   onProbeFfmpegProxy,
   onProbeGisProjection,
   onProbeGpxMatch,
@@ -1803,6 +1845,7 @@ function ReviewReadinessPanel({
   gpstitchLayout: TelemetryRender["layout"];
   gpstitchAlignment: GpstitchAlignment;
   gpstitchTimeOffsetSeconds: number;
+  runtimePreflightReport: RuntimePreflightReport | null;
   onNativeGisImport: () => void;
   onNativeCvModelPathChange: (value: string) => void;
   onNativeCvLabelsPathChange: (value: string) => void;
@@ -1823,6 +1866,7 @@ function ReviewReadinessPanel({
   onGpstitchAlignmentChange: (value: GpstitchAlignment) => void;
   onGpstitchTimeOffsetSecondsChange: (value: number) => void;
   onGpstitchRender: () => void;
+  onRuntimePreflight: () => void;
   onProbeFfmpegProxy: () => void;
   onProbeGisProjection: () => void;
   onProbeGpxMatch: () => void;
@@ -1869,6 +1913,23 @@ function ReviewReadinessPanel({
           />{" "}
           {readiness.runtime.bridgeSummary}
         </p>
+        <button type="button" className="button secondary native-probe-button" onClick={onRuntimePreflight}>
+          <ShieldCheck size={15} />
+          Check installed runtime
+        </button>
+        {runtimePreflightReport ? (
+          <div className="native-attempt-list" aria-label="Installed runtime preflight results">
+            <strong>Installed runtime: {runtimePreflightReport.status}</strong>
+            {runtimePreflightReport.components.map((component) => (
+              <article className="native-attempt-row" key={component.id}>
+                <strong>{component.label}</strong>
+                <span><StatusPill status={component.status === "ready" ? "ready" : "blocked"} label={component.status} /> {component.required ? "required" : "optional"}</span>
+                <span>{component.version || component.detail}</span>
+                <span>{component.executable || "not resolved"}</span>
+              </article>
+            ))}
+          </div>
+        ) : null}
         <label className="native-root-field">
           <span>Native project root</span>
           <input

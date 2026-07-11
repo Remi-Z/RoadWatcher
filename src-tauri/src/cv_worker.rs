@@ -7,9 +7,11 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use thiserror::Error;
 
-const MAX_SIDECAR_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
+const MAX_SIDECAR_OUTPUT_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_SCAN_DURATION: Duration = Duration::from_secs(4 * 60 * 60);
 
 #[derive(Clone, Debug)]
 pub struct CvWorkerRequest {
@@ -61,7 +63,8 @@ impl CvExecutor for ProcessCvExecutor {
                 "uv executable and an existing sidecar directory are required".to_string(),
             ));
         }
-        let output = Command::new(&request.uv_executable)
+        let mut command = Command::new(&request.uv_executable);
+        command
             .arg("run")
             .arg("--locked")
             .arg("--offline")
@@ -80,21 +83,23 @@ impl CvExecutor for ProcessCvExecutor {
             .arg("--interval-seconds")
             .arg(request.store.sample_interval_seconds.to_string())
             .arg("--max-findings")
-            .arg(request.store.max_findings.to_string())
-            .output()
-            .map_err(|error| CvWorkerError::Execution(error.to_string()))?;
-        if output.stdout.len() > MAX_SIDECAR_OUTPUT_BYTES
-            || output.stderr.len() > MAX_SIDECAR_OUTPUT_BYTES
-        {
-            return Err(CvWorkerError::InvalidOutput(
-                "sidecar output exceeded 16 MiB".to_string(),
-            ));
-        }
+            .arg(request.store.max_findings.to_string());
+        let output = run_bounded_process(&mut command, MAX_SCAN_DURATION, MAX_SIDECAR_OUTPUT_BYTES)
+            .map_err(map_process_error)?;
         if !output.status.success() {
             return Err(CvWorkerError::Execution(bounded_text(&output.stderr)));
         }
         String::from_utf8(output.stdout)
             .map_err(|error| CvWorkerError::InvalidOutput(format!("stdout is not UTF-8: {error}")))
+    }
+}
+
+fn map_process_error(error: BoundedProcessError) -> CvWorkerError {
+    match error {
+        BoundedProcessError::OutputLimit { .. } => {
+            CvWorkerError::InvalidOutput("sidecar output exceeded 16 MiB".to_string())
+        }
+        other => CvWorkerError::Execution(other.to_string()),
     }
 }
 
@@ -407,3 +412,4 @@ mod tests {
         }
     }
 }
+use crate::bounded_process::{run_bounded_process, BoundedProcessError};

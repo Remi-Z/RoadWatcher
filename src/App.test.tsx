@@ -794,6 +794,44 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("No CV findings saved.");
   });
 
+  it("runs one native installed-runtime preflight and renders component evidence", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/preflight/project.sqlite";
+    const snapshot = createProjectSnapshot({ clips: initialClips, componentSlots: missingSlots, incident: incidentDraft,
+      jobs: initialJobs, media: mediaAssets, projectId: "native-preflight-project" as ProjectId, projectedFeatures });
+    const definitions = [
+      ["gpstitch-source", "GPStitch bundled source", true, "ready"],
+      ["cv-source", "RoadWatcher CV bundled source", true, "ready"],
+      ["uv", "uv package runner", true, "ready"],
+      ["python", "Python 3.12+ through uv", true, "missing"],
+      ["ffmpeg", "FFmpeg video processor", true, "ready"],
+      ["ffprobe", "ffprobe metadata reader", true, "ready"],
+      ["ogrinfo", "GDAL ogrinfo", false, "missing"],
+      ["ogr2ogr", "GDAL ogr2ogr", false, "missing"]
+    ] as const;
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+      if (command === "project_load") return { projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion, savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot) };
+      if (command === "runtime_preflight") return { checkedAtUnix: 1_788_000_000, status: "incomplete", components: definitions.map(([id, label, required, status]) => ({
+        id, label, required, status, executable: status === "ready" ? `D:/${id}` : id, version: status === "ready" && !id.includes("source") ? "1.0" : "", detail: status === "ready" ? "probe succeeded" : "not installed"
+      })) };
+      throw new Error(`Unexpected command ${command}`);
+    });
+    render(<App nativeInvoke={nativeInvoke}
+      nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+      nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+      projectRepository={createMemoryProjectRepository()} />);
+    await screen.findByText(/Restored native SQLite project/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Check installed runtime" }));
+
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("missing required components"));
+    expect(nativeInvoke).toHaveBeenCalledWith("runtime_preflight", { uvExecutable: "uv", ffmpegBinaryDirectory: "", gdalBinaryDirectory: "" });
+    const results = screen.getByLabelText("Installed runtime preflight results");
+    expect(results).toHaveTextContent("Installed runtime: incomplete");
+    expect(results).toHaveTextContent("Python 3.12+ through uv");
+    expect(results).toHaveTextContent("not installed");
+    expect(screen.getByText(/runtime_preflight: invoked/)).toBeInTheDocument();
+  });
+
   it("starts, reconciles, reviews, and exports native CV findings", async () => {
     const sqlitePath = "D:/RoadWatcherProjects/cv/project.sqlite";
     const snapshot = createProjectSnapshot({

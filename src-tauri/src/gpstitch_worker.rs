@@ -6,12 +6,11 @@ use chrono::DateTime;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs::{self, File, FileTimes};
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 use thiserror::Error;
 
 pub const PINNED_GPSTITCH_VERSION: &str = "0.18.0";
@@ -82,9 +81,20 @@ impl GpstitchExecutor for ProcessGpstitchExecutor {
         if claimed.alignment != "gpx_timestamps" {
             command.arg("--video-time-start").arg("file-modified");
         }
-        command.arg("--layout").arg(&claimed.layout);
-        let result = run_bounded(command)?;
-        if !result.success {
+        let overlay_font = overlay_font_path().ok_or_else(|| {
+            GpstitchWorkerError::InvalidConfiguration(
+                "no supported system TrueType overlay font was found".to_string(),
+            )
+        })?;
+        command
+            .arg("--layout")
+            .arg(&claimed.layout)
+            .arg("--font")
+            .arg(overlay_font);
+        let result =
+            run_bounded_process(&mut command, MAX_RENDER_DURATION, MAX_PROCESS_OUTPUT_BYTES)
+                .map_err(|error| GpstitchWorkerError::Execution(error.to_string()))?;
+        if !result.status.success() {
             return Err(GpstitchWorkerError::Execution(bounded_text(&result.stderr)));
         }
         if !staging_output.is_file() || fs::metadata(staging_output)?.len() == 0 {
@@ -249,68 +259,6 @@ fn set_alignment_time(
     Ok(())
 }
 
-struct ProcessResult {
-    success: bool,
-    stderr: Vec<u8>,
-}
-
-fn run_bounded(mut command: Command) -> Result<ProcessResult, GpstitchWorkerError> {
-    let mut child = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| GpstitchWorkerError::Execution(error.to_string()))?;
-    let stdout = child.stdout.take().expect("piped GPStitch stdout");
-    let stderr = child.stderr.take().expect("piped GPStitch stderr");
-    let stdout_reader = thread::spawn(move || read_bounded(stdout));
-    let stderr_reader = thread::spawn(move || read_bounded(stderr));
-    let started = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if started.elapsed() < MAX_RENDER_DURATION => {
-                thread::sleep(Duration::from_millis(100));
-            }
-            Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(GpstitchWorkerError::Execution(
-                    "render exceeded the four-hour execution limit".to_string(),
-                ));
-            }
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(GpstitchWorkerError::Execution(error.to_string()));
-            }
-        }
-    };
-    let _stdout = stdout_reader
-        .join()
-        .map_err(|_| GpstitchWorkerError::Execution("stdout reader failed".to_string()))??;
-    let stderr = stderr_reader
-        .join()
-        .map_err(|_| GpstitchWorkerError::Execution("stderr reader failed".to_string()))??;
-    Ok(ProcessResult {
-        success: status.success(),
-        stderr,
-    })
-}
-
-fn read_bounded(reader: impl Read) -> Result<Vec<u8>, GpstitchWorkerError> {
-    let mut bytes = Vec::new();
-    reader
-        .take(MAX_PROCESS_OUTPUT_BYTES + 1)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > MAX_PROCESS_OUTPUT_BYTES {
-        return Err(GpstitchWorkerError::Execution(
-            "render process output exceeded 4 MiB".to_string(),
-        ));
-    }
-    Ok(bytes)
-}
-
 fn bounded_text(bytes: &[u8]) -> String {
     let value = String::from_utf8_lossy(bytes).trim().to_string();
     if value.is_empty() {
@@ -318,6 +266,20 @@ fn bounded_text(bytes: &[u8]) -> String {
     } else {
         value.chars().take(4_096).collect()
     }
+}
+
+fn overlay_font_path() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(windows) = std::env::var_os("WINDIR") {
+        let fonts = PathBuf::from(windows).join("Fonts");
+        candidates.push(fonts.join("arial.ttf"));
+        candidates.push(fonts.join("segoeui.ttf"));
+    }
+    candidates.extend([
+        PathBuf::from("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        PathBuf::from("/System/Library/Fonts/Supplemental/Arial.ttf"),
+    ]);
+    candidates.into_iter().find(|path| path.is_file())
 }
 
 fn bounded_error(error: &GpstitchWorkerError) -> String {
@@ -333,8 +295,8 @@ impl From<std::io::Error> for GpstitchWorkerError {
 #[cfg(test)]
 mod tests {
     use super::{
-        GpstitchExecutor, GpstitchWorkerError, GpstitchWorkerManager, GpstitchWorkerRequest,
-        PINNED_GPSTITCH_VERSION,
+        overlay_font_path, GpstitchExecutor, GpstitchWorkerError, GpstitchWorkerManager,
+        GpstitchWorkerRequest, PINNED_GPSTITCH_VERSION,
     };
     use crate::project_store::{
         create_project_at, import_media_at, import_route_at, read_gpstitch_render_status,
@@ -350,6 +312,12 @@ mod tests {
 
     struct FakeExecutor {
         calls: Mutex<Vec<Vec<String>>>,
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolves_an_existing_windows_overlay_font() {
+        assert!(overlay_font_path().is_some_and(|path| path.is_file()));
     }
 
     impl GpstitchExecutor for FakeExecutor {
@@ -522,3 +490,4 @@ mod tests {
         }
     }
 }
+use crate::bounded_process::run_bounded_process;
