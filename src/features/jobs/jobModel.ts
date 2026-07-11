@@ -10,6 +10,7 @@ export interface WorkstationJob {
   detail: string;
   mediaId?: string;
   routeId?: string;
+  featureSourceId?: string;
 }
 
 export interface NativeRouteMatchResult {
@@ -20,6 +21,16 @@ export interface NativeRouteMatchResult {
   detail: string;
   matcherUsed: string;
   route: import("../geo/projection").TimedRoutePoint[];
+}
+
+export interface NativeGisProjectionResult {
+  jobId: string;
+  featureSourceId: string;
+  routeId: string;
+  status: JobStatus;
+  progress: number;
+  detail: string;
+  projectedFeatures: import("../geo/projection").ProjectedRoadFeature[];
 }
 
 export interface NativeProxyJobResult {

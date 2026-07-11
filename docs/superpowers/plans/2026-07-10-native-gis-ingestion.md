@@ -30,11 +30,11 @@ normalized road features onto durable matched routes.
 
 ### Task 4: Frontend GIS Reconciliation
 
-- [ ] Add failing reducer/App tests for native import guard, import/start/poll,
+- [x] Add failing reducer/App tests for native import guard, import/start/poll,
   terminal errors, project switching, and source-specific reconciliation.
-- [ ] Implement native GIS inputs, DTO validation, durable polling, provenance,
+- [x] Implement native GIS inputs, DTO validation, durable polling, provenance,
   atomic reconciliation, and browser fallback preservation.
-- [ ] Run complete frontend tests/build and commit.
+- [x] Run complete frontend tests/build and commit.
 
 ### Task 5: Verification and Handoff
 

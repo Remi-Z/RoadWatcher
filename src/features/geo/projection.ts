@@ -13,6 +13,13 @@ export interface OfficialRoadFeature {
   latitude: number;
   longitude: number;
   sourceLayer: string;
+  featureSourceId?: string;
+  sourceFeatureId?: string;
+  geometryType?: "Point" | "LineString";
+  propertiesJson?: string;
+  sourcePath?: string;
+  sourceCrs?: "EPSG:4326" | "EPSG:3857";
+  normalizedCrs?: "EPSG:4326";
 }
 
 export interface ProjectedRoadFeature {
@@ -24,6 +31,8 @@ export interface ProjectedRoadFeature {
   confidence: number;
   reviewStatus: ProjectedFeatureReviewStatus;
   reviewNote: string;
+  featureSourceId?: string;
+  routeId?: string;
 }
 
 export function projectFeaturesOntoRoute(
@@ -63,7 +72,8 @@ function projectFeature(
       distanceMeters: projection.distanceMeters,
       confidence,
       reviewStatus: "needs_review",
-      reviewNote: ""
+      reviewNote: "",
+      ...(feature.featureSourceId ? { featureSourceId: feature.featureSourceId } : {})
     };
 
     if (!best || candidate.distanceMeters < best.distanceMeters) {

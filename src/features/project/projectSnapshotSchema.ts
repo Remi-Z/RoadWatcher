@@ -197,7 +197,8 @@ function parseJob(value: unknown, path: string): WorkstationJob {
     progress: boundedNumber(item.progress, `${path}.progress`, 0, 100),
     detail: stringValue(item.detail, `${path}.detail`),
     ...(item.mediaId === undefined ? {} : { mediaId: nonBlankString(item.mediaId, `${path}.mediaId`) }),
-    ...(item.routeId === undefined ? {} : { routeId: nonBlankString(item.routeId, `${path}.routeId`) })
+    ...(item.routeId === undefined ? {} : { routeId: nonBlankString(item.routeId, `${path}.routeId`) }),
+    ...(item.featureSourceId === undefined ? {} : { featureSourceId: nonBlankString(item.featureSourceId, `${path}.featureSourceId`) })
   };
 }
 
@@ -229,7 +230,14 @@ function parseOfficialFeature(value: unknown, path: string): OfficialRoadFeature
     kind: enumValue(item.kind, `${path}.kind`, ROAD_FEATURE_KINDS),
     latitude: boundedNumber(item.latitude, `${path}.latitude`, -90, 90),
     longitude: boundedNumber(item.longitude, `${path}.longitude`, -180, 180),
-    sourceLayer: nonBlankString(item.sourceLayer, `${path}.sourceLayer`)
+    sourceLayer: nonBlankString(item.sourceLayer, `${path}.sourceLayer`),
+    ...(item.featureSourceId === undefined ? {} : { featureSourceId: nonBlankString(item.featureSourceId, `${path}.featureSourceId`) }),
+    ...(item.sourceFeatureId === undefined ? {} : { sourceFeatureId: nonBlankString(item.sourceFeatureId, `${path}.sourceFeatureId`) }),
+    ...(item.geometryType === undefined ? {} : { geometryType: enumValue(item.geometryType, `${path}.geometryType`, ["Point", "LineString"] as const) }),
+    ...(item.propertiesJson === undefined ? {} : { propertiesJson: stringValue(item.propertiesJson, `${path}.propertiesJson`) }),
+    ...(item.sourcePath === undefined ? {} : { sourcePath: nonBlankString(item.sourcePath, `${path}.sourcePath`) }),
+    ...(item.sourceCrs === undefined ? {} : { sourceCrs: enumValue(item.sourceCrs, `${path}.sourceCrs`, ["EPSG:4326", "EPSG:3857"] as const) }),
+    ...(item.normalizedCrs === undefined ? {} : { normalizedCrs: enumValue(item.normalizedCrs, `${path}.normalizedCrs`, ["EPSG:4326"] as const) })
   };
 }
 
@@ -246,7 +254,9 @@ function parseProjectedFeature(value: unknown, path: string, legacy: boolean): P
       legacy && item.reviewStatus === undefined
         ? "needs_review"
         : enumValue(item.reviewStatus, `${path}.reviewStatus`, REVIEW_STATUSES),
-    reviewNote: legacy && item.reviewNote === undefined ? "" : stringValue(item.reviewNote, `${path}.reviewNote`)
+    reviewNote: legacy && item.reviewNote === undefined ? "" : stringValue(item.reviewNote, `${path}.reviewNote`),
+    ...(item.featureSourceId === undefined ? {} : { featureSourceId: nonBlankString(item.featureSourceId, `${path}.featureSourceId`) }),
+    ...(item.routeId === undefined ? {} : { routeId: nonBlankString(item.routeId, `${path}.routeId`) })
   };
 }
 

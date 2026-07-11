@@ -10,6 +10,8 @@ import { createGisProjectionJob } from "../geo/geoJsonImport";
 import { createValhallaMatchJob } from "../geo/gpxImport";
 import type { NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "../jobs/jobModel";
 import type { NativeRouteImport } from "../geo/nativeRouteRepository";
+import type { NativeGisProjectionResult } from "../jobs/jobModel";
+import type { NativeGisImport } from "../geo/nativeGisRepository";
 import {
   createImportedMediaAssets,
   createProxyJobsForImportedMedia,
@@ -94,6 +96,8 @@ export type WorkstationAction =
   | { type: "reconcile_proxy_job"; result: NativeProxyJobResult; attempt?: NativeCommandAttempt }
   | { type: "import_native_route"; imported: NativeRouteImport; attempt: NativeCommandAttempt }
   | { type: "reconcile_route_job"; result: NativeRouteMatchResult; attempt?: NativeCommandAttempt }
+  | { type: "import_native_gis"; imported: NativeGisImport; attempt: NativeCommandAttempt }
+  | { type: "reconcile_gis_job"; result: NativeGisProjectionResult; attempt?: NativeCommandAttempt }
   | {
       type: "import_media";
       files: BrowserMediaFile[];
@@ -315,6 +319,52 @@ export function workstationReducer(state: WorkstationState, action: WorkstationA
         projectedFeatures: completedRoute
           ? projectFeaturesOntoRoute(completedRoute, state.officialFeatures, 90).map(normalizeProjectedFeatureReview)
           : state.projectedFeatures,
+        nativeCommandAttempts: action.attempt
+          ? [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+          : state.nativeCommandAttempts
+      });
+    }
+    case "import_native_gis": {
+      const features: OfficialRoadFeature[] = action.imported.features.map((feature) => ({
+        ...feature,
+        featureSourceId: action.imported.featureSourceId,
+        sourcePath: action.imported.originalPath,
+        sourceCrs: action.imported.sourceCrs,
+        normalizedCrs: action.imported.normalizedCrs
+      }));
+      const officialFeatures = [...state.officialFeatures, ...features];
+      return withInvalidatedExport(state, {
+        officialFeatures,
+        projectedFeatures: projectFeaturesOntoRoute(state.route, officialFeatures, 90).map(normalizeProjectedFeatureReview),
+        jobs: [
+          ...state.jobs,
+          {
+            id: action.imported.projectionJobId,
+            featureSourceId: action.imported.featureSourceId,
+            type: "gis",
+            label: `Official GIS projection: ${action.imported.fileName}`,
+            status: "queued",
+            progress: 0,
+            detail: `${features.length} normalized features; native route projection queued`
+          }
+        ],
+        nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+      });
+    }
+    case "reconcile_gis_job": {
+      const retained = state.projectedFeatures.filter(
+        (feature) => feature.featureSourceId !== action.result.featureSourceId
+      );
+      return withInvalidatedExport(state, {
+        jobs: state.jobs.map((job) =>
+          job.id === action.result.jobId && job.featureSourceId === action.result.featureSourceId
+            ? { ...job, status: action.result.status, progress: action.result.progress, detail: action.result.detail }
+            : job
+        ),
+        projectedFeatures:
+          action.result.status === "complete"
+            ? [...retained, ...structuredClone(action.result.projectedFeatures)]
+            : state.projectedFeatures,
         nativeCommandAttempts: action.attempt
           ? [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
           : state.nativeCommandAttempts

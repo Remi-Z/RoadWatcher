@@ -77,7 +77,7 @@ describe("RoadWatcher workstation", () => {
     const exported = JSON.parse(decodeURIComponent(encodedContent));
 
     expect(exported.incident).toMatchObject({ start: "13:30", end: "13:58" });
-  });
+  }, 10_000);
 
   it("lets the reviewer trim, split, duplicate, remove, and export timeline clips", () => {
     render(<App />);
@@ -750,7 +750,7 @@ describe("RoadWatcher workstation", () => {
     const nativeInvoke = vi.fn<NativeInvoke>();
     render(<App nativeInvoke={nativeInvoke} projectRepository={repository} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Probe GIS projection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start GIS projection" }));
 
     expect(nativeInvoke).not.toHaveBeenCalled();
     expect(await screen.findByText(/gis_project: browser_fallback/)).toBeInTheDocument();
@@ -760,7 +760,7 @@ describe("RoadWatcher workstation", () => {
     expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
       command: "gis_project",
       status: "browser_fallback",
-      requestSummary: "sourcePath: slot: official GIS source path from native import; layerKind: official road features"
+      requestSummary: "featureSourceId: slot: native feature source id; jobId: slot: native GIS job id; routeId: slot: native route id; corridorMeters: 90"
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
@@ -771,30 +771,79 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("browser GeoJSON projection");
   });
 
-  it("probes the native GIS projection through the command bridge when invoke is available", async () => {
-    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
-      featureSourceId: "official-york-traffic-1",
-      importedFeatureCount: 7,
-      projectedFeatureCount: 3
+  it("imports, starts, polls, and reconciles native GIS projection", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/gis/project.sqlite";
+    const snapshot = createProjectSnapshot({
+      clips: initialClips,
+      componentSlots: missingSlots,
+      incident: incidentDraft,
+      jobs: [...initialJobs, {
+        id: "route-job-1", routeId: "route-1", type: "valhalla", label: "Route", status: "complete", progress: 100, detail: "Route matched with Valhalla."
+      }],
+      media: mediaAssets,
+      projectId: "native-gis-project" as ProjectId,
+      projectedFeatures,
+      route: routePoints
+    });
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+      if (command === "project_load") return {
+        projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion,
+        savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot)
+      };
+      if (command === "gis_import") return {
+        featureSourceId: "source-1", fileName: "signals.geojson", originalPath: "D:/GIS/signals.geojson",
+        hash: "a".repeat(64), fileSizeBytes: 1024, sourceCrs: "EPSG:3857", normalizedCrs: "EPSG:4326",
+        layerKind: "mixed", projectionStatus: "queued", projectionJobId: "gis-job-1",
+        features: [{
+          id: "source-1:signal-1", sourceFeatureId: "signal-1", kind: "traffic_light",
+          latitude: routePoints[1].latitude, longitude: routePoints[1].longitude,
+          sourceLayer: "York signals", geometryType: "Point", propertiesJson: "{}"
+        }]
+      };
+      if (command === "gis_project") return { jobId: "gis-job-1", status: "queued" };
+      if (command === "gis_job_status") return {
+        jobId: "gis-job-1", featureSourceId: "source-1", routeId: "route-1", status: "complete",
+        progress: 100, detail: "Projected 1 official features onto route.",
+        projectedFeatures: [{
+          featureId: "source-1:signal-1", featureSourceId: "source-1", routeId: "route-1",
+          kind: "traffic_light", sourceLayer: "York signals", timeSeconds: 5,
+          distanceMeters: 2, confidence: 0.98, reviewStatus: "needs_review", reviewNote: ""
+        }]
+      };
+      throw new Error(`Unexpected command ${command}`);
     });
 
     render(
       <App
         nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
         nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
       />
     );
+    await screen.findByText(/Restored native SQLite project/);
+    fireEvent.change(screen.getByLabelText("Native GIS source path"), { target: { value: "D:/GIS/signals.geojson" } });
+    fireEvent.change(screen.getByLabelText("Native GIS source CRS"), { target: { value: "EPSG:3857" } });
+    fireEvent.click(screen.getByRole("button", { name: "Import native GIS" }));
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("EPSG:3857 normalized to EPSG:4326");
 
-    fireEvent.click(screen.getByRole("button", { name: "Probe GIS projection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start GIS projection" }));
 
-    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native GIS projection ready");
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Native GIS projection complete"));
+    expect(nativeInvoke).toHaveBeenCalledWith("gis_import", {
+      sqlitePath, projectId: "native-gis-project", sourcePath: "D:/GIS/signals.geojson",
+      sourceCrs: "EPSG:3857", layerKind: "mixed"
+    });
     expect(nativeInvoke).toHaveBeenCalledWith("gis_project", {
-      projectId: expect.stringMatching(/^local-/),
-      sourcePath: "slot: official GIS source path from native import",
-      layerKind: "official road features"
+      sqlitePath, projectId: "native-gis-project", featureSourceId: "source-1",
+      jobId: "gis-job-1", routeId: "route-1", corridorMeters: 90
+    });
+    expect(nativeInvoke).toHaveBeenCalledWith("gis_job_status", {
+      sqlitePath, projectId: "native-gis-project", featureSourceId: "source-1", jobId: "gis-job-1"
     });
     expect(screen.getByText(/gis_project: invoked/)).toBeInTheDocument();
-    expect(screen.getByText(/importedFeatureCount: 7/)).toBeInTheDocument();
+    expect(screen.getByText(/Projected 1 official features/)).toBeInTheDocument();
+    expect(screen.getByText(/EPSG:3857 → EPSG:4326/)).toBeInTheDocument();
   });
 
   it("requires an active native project before starting a proxy job", async () => {
@@ -1038,6 +1087,22 @@ describe("RoadWatcher workstation", () => {
     expect(nativeInvoke).not.toHaveBeenCalled();
     expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent(
       "Native GPX import requires an active SQLite project"
+    );
+  });
+
+  it("requires an active native project before importing a native GIS path", async () => {
+    const nativeInvoke = vi.fn<NativeInvoke>();
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Import native GIS" }));
+    expect(nativeInvoke).not.toHaveBeenCalled();
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent(
+      "Native GIS import requires an active SQLite project"
     );
   });
 

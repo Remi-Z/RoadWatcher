@@ -167,7 +167,7 @@ function clearBlockingJobs() {
 }
 
 function requiredCommandAttempts() {
-  return (["project_create", "project_save", "project_load", "media_import", "gpx_import", "gpx_match", "gis_project", "ffmpeg_proxy"] as const).map((command, index) => ({
+  return (["project_create", "project_save", "project_load", "media_import", "gpx_import", "gpx_match", "gis_import", "gis_project", "ffmpeg_proxy"] as const).map((command, index) => ({
     id: `required-${command}`,
     command,
     status: "invoked" as const,

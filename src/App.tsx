@@ -53,12 +53,13 @@ import type { ComponentSlot, ComponentSlotStatus, IncidentDraft, MediaAsset, Pro
 import { parseOfficialFeaturesFromGeoJson } from "./features/geo/geoJsonImport";
 import { parseGpxTrack } from "./features/geo/gpxImport";
 import { createNativeRouteRepository } from "./features/geo/nativeRouteRepository";
+import { createNativeGisRepository } from "./features/geo/nativeGisRepository";
 import {
   type ProjectedFeatureReviewStatus,
   type ProjectedRoadFeature,
   type TimedRoutePoint
 } from "./features/geo/projection";
-import type { NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "./features/jobs/jobModel";
+import type { NativeGisProjectionResult, NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "./features/jobs/jobModel";
 import { createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
 import {
   createBrowserProjectRepository,
@@ -151,8 +152,11 @@ export function App({
   const [activeNativeSqlitePath, setActiveNativeSqlitePath] = useState(() => nativeProjectLocator.load());
   const [nativeMediaSourcePath, setNativeMediaSourcePath] = useState(NATIVE_MEDIA_SOURCE_PATH_SLOT);
   const [nativeGpxSourcePath, setNativeGpxSourcePath] = useState(NATIVE_GPX_PATH_SLOT);
+  const [nativeGisSourcePath, setNativeGisSourcePath] = useState(NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT);
+  const [nativeGisSourceCrs, setNativeGisSourceCrs] = useState<"EPSG:4326" | "EPSG:3857">("EPSG:4326");
   const [activeProxyJob, setActiveProxyJob] = useState<{ jobId: string; mediaId: string } | null>(null);
   const [activeRouteJob, setActiveRouteJob] = useState<{ jobId: string; routeId: string } | null>(null);
+  const [activeGisJob, setActiveGisJob] = useState<{ jobId: string; featureSourceId: string } | null>(null);
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
   const nativeHydrationPathRef = useRef<string | null>(null);
   const firstSlotReferenceInputRef = useRef<HTMLInputElement>(null);
@@ -288,6 +292,7 @@ export function App({
         if (result.status === "loaded") {
           setActiveProxyJob(null);
           setActiveRouteJob(null);
+          setActiveGisJob(null);
           dispatchWorkstation({ type: "replace_project", snapshot: result.snapshot, fallbackComponentSlots: missingSlots });
           dispatchWorkstation({ type: "record_native_attempt", attempt: loadAttempt });
           projectRepository.save(result.snapshot);
@@ -401,6 +406,50 @@ export function App({
       if (timer) clearTimeout(timer);
     };
   }, [activeNativeSqlitePath, activeRouteJob, nativeCommandBridge, projectId]);
+
+  useEffect(() => {
+    if (!activeGisJob || !activeNativeSqlitePath || nativeCommandBridge.status !== "ready") return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const monitored = activeGisJob;
+    const sqlitePath = activeNativeSqlitePath;
+    const poll = async () => {
+      const result = await nativeCommandBridge.invoke("gis_job_status", {
+        sqlitePath,
+        projectId,
+        featureSourceId: monitored.featureSourceId,
+        jobId: monitored.jobId
+      });
+      if (!active) return;
+      if (!result.ok) {
+        setActiveGisJob(null);
+        setAppStatus(`gis_job_status ${result.status}: ${result.message}`);
+        return;
+      }
+      const status = nativeGisProjectionResult(result.response);
+      if (!status || status.jobId !== monitored.jobId || status.featureSourceId !== monitored.featureSourceId) {
+        setActiveGisJob(null);
+        setAppStatus("gis_job_status invalid_response: GIS job response fields or identity are invalid.");
+        return;
+      }
+      dispatchWorkstation({ type: "reconcile_gis_job", result: status });
+      if (isTerminalGisStatus(status.status)) {
+        setActiveGisJob(null);
+        setAppStatus(
+          status.status === "complete"
+            ? `Native GIS projection complete: ${status.projectedFeatures.length} features`
+            : `Native GIS projection ${status.status}: ${status.detail}`
+        );
+        return;
+      }
+      timer = setTimeout(() => void poll(), 1_000);
+    };
+    void poll();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeGisJob, activeNativeSqlitePath, nativeCommandBridge, projectId]);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -546,6 +595,7 @@ export function App({
     setActiveNativeSqlitePath(null);
     setActiveProxyJob(null);
     setActiveRouteJob(null);
+    setActiveGisJob(null);
     nativeHydrationPathRef.current = null;
     dispatchWorkstation({ type: "reset_project", seed: createWorkstationSeed(projectIdFactory()) });
     setAppStatus(
@@ -609,6 +659,7 @@ export function App({
       setActiveNativeSqlitePath(project.sqlitePath);
       setActiveProxyJob(null);
       setActiveRouteJob(null);
+      setActiveGisJob(null);
       dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: missingSlots });
       dispatchWorkstation({ type: "record_native_attempt", attempt: saveAttempt });
       projectRepository.save(snapshot);
@@ -801,35 +852,88 @@ export function App({
 
   async function handleProbeGisProjection() {
     const requestedAtIso = new Date().toISOString();
-    const layerKind = "official road features";
+    const gisJob = jobs.find((job) => job.type === "gis" && job.featureSourceId && job.status === "queued");
+    const routeJob = [...jobs].reverse().find((job) => job.type === "valhalla" && job.routeId);
+    if (nativeCommandBridge.status === "ready" && !activeNativeSqlitePath) {
+      setAppStatus("Native GIS projection requires an active SQLite project. Create or reopen a native project first.");
+      return;
+    }
+    if (nativeCommandBridge.status === "ready" && !gisJob?.featureSourceId) {
+      setAppStatus("Import an official native GIS source before starting projection.");
+      return;
+    }
+    if (nativeCommandBridge.status === "ready" && !routeJob?.routeId) {
+      setAppStatus("Import a native GPX route before starting GIS projection.");
+      return;
+    }
+    const featureSourceId = gisJob?.featureSourceId ?? "slot: native feature source id";
+    const jobId = gisJob?.id ?? "slot: native GIS job id";
+    const routeId = routeJob?.routeId ?? "slot: native route id";
     const result = await nativeCommandBridge.invoke("gis_project", {
+      sqlitePath: activeNativeSqlitePath ?? "slot: active native SQLite path",
       projectId: createProjectSnapshot(currentSnapshotInput).projectId,
-      sourcePath: NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT,
-      layerKind
+      featureSourceId,
+      jobId,
+      routeId,
+      corridorMeters: 90
     });
+    const started = result.ok ? nativeGisStartResponse(result.response) : null;
     const resultSummary = result.ok
-      ? `featureSourceId: ${gisFeatureSourceId(result.response)}; importedFeatureCount: ${gisImportedFeatureCount(
-          result.response
-        )}; projectedFeatureCount: ${gisProjectedFeatureCount(result.response)}`
+      ? started
+        ? `jobId: ${started.jobId}; status: ${started.status}`
+        : "invalid_response; GIS projection start fields have invalid types"
       : `${result.status}; fallback: ${result.fallback}; browser official features: ${officialFeatures.length}`;
     const attempt: NativeCommandAttempt = {
       id: `gis-project-probe-${Date.now().toString(36)}`,
       command: result.command,
-      status: result.status,
+      status: result.ok && !started ? "invalid_response" : result.status,
       requestedAtIso,
-      requestSummary: `sourcePath: ${NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT}; layerKind: ${layerKind}`,
+      requestSummary: `featureSourceId: ${featureSourceId}; jobId: ${jobId}; routeId: ${routeId}; corridorMeters: 90`,
       resultSummary
     };
 
     dispatchWorkstation({ type: "record_native_attempt", attempt });
     invalidateLatestExport();
 
-    if (result.ok) {
-      setAppStatus(`Native GIS projection ready: ${gisFeatureSourceId(result.response)}`);
+    if (result.ok && started && started.jobId === jobId) {
+      setActiveGisJob({ jobId, featureSourceId });
+      setAppStatus(`Native GIS projection started: ${jobId}`);
       return;
     }
 
-    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
+    setAppStatus(
+      result.ok
+        ? "gis_project invalid_response: GIS start response fields or identity are invalid."
+        : `${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`
+    );
+  }
+
+  async function handleNativeGisImport() {
+    if (!activeNativeSqlitePath) {
+      setAppStatus("Native GIS import requires an active SQLite project. Create or reopen a native project first.");
+      return;
+    }
+    const requestedAtIso = new Date().toISOString();
+    const result = await createNativeGisRepository(nativeCommandBridge, activeNativeSqlitePath, projectId)
+      .importPath(nativeGisSourcePath, nativeGisSourceCrs, "mixed");
+    const attempt: NativeCommandAttempt = {
+      id: `gis-import-${Date.now().toString(36)}`,
+      command: "gis_import",
+      status: result.status === "imported" ? "invoked" : result.commandStatus,
+      requestedAtIso,
+      requestSummary: `sqlitePath: ${activeNativeSqlitePath}; sourcePath: ${nativeGisSourcePath}; sourceCrs: ${nativeGisSourceCrs}`,
+      resultSummary:
+        result.status === "imported"
+          ? `featureSourceId: ${result.featureSourceId}; features: ${result.features.length}; projectionJobId: ${result.projectionJobId}`
+          : result.message
+    };
+    if (result.status === "imported") {
+      dispatchWorkstation({ type: "import_native_gis", imported: result, attempt });
+      setAppStatus(`Native GIS imported: ${result.fileName}; ${result.sourceCrs} normalized to ${result.normalizedCrs}`);
+      return;
+    }
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
+    setAppStatus(`gis_import ${result.commandStatus}: ${result.message}`);
   }
 
   async function handleProbeFfmpegProxy() {
@@ -1031,6 +1135,7 @@ export function App({
   function applyProjectSnapshot(snapshot: ProjectSnapshot) {
     setActiveProxyJob(null);
     setActiveRouteJob(null);
+    setActiveGisJob(null);
     dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: missingSlots });
   }
 
@@ -1188,9 +1293,14 @@ export function App({
             nativeCommandAttempts={nativeCommandAttempts}
             nativeMediaSourcePath={nativeMediaSourcePath}
             nativeGpxSourcePath={nativeGpxSourcePath}
+            nativeGisSourcePath={nativeGisSourcePath}
+            nativeGisSourceCrs={nativeGisSourceCrs}
             nativeProjectRoot={nativeProjectRoot}
             onNativeMediaSourcePathChange={setNativeMediaSourcePath}
             onNativeGpxSourcePathChange={setNativeGpxSourcePath}
+            onNativeGisSourcePathChange={setNativeGisSourcePath}
+            onNativeGisSourceCrsChange={setNativeGisSourceCrs}
+            onNativeGisImport={handleNativeGisImport}
             readiness={reviewReadiness}
             onNativeProjectRootChange={handleNativeProjectRootChange}
             onProbeFfmpegProxy={handleProbeFfmpegProxy}
@@ -1238,7 +1348,11 @@ export function App({
 
         <section className="panel">
           <PanelHeader icon={<Bike size={18} />} title="Projected road features" meta="Review before export" />
-          <ProjectedFeatureList projectedFeatures={projectedRoadFeatures} onFeatureReviewChange={handleProjectedFeatureReviewChange} />
+          <ProjectedFeatureList
+            projectedFeatures={projectedRoadFeatures}
+            officialFeatures={officialFeatures}
+            onFeatureReviewChange={handleProjectedFeatureReviewChange}
+          />
         </section>
 
         {latestPacket && (
@@ -1306,9 +1420,14 @@ function buildGeneratedArtifactManifest({
 
 function ReviewReadinessPanel({
   nativeCommandAttempts,
+  nativeGisSourceCrs,
+  nativeGisSourcePath,
   nativeGpxSourcePath,
   nativeMediaSourcePath,
   nativeProjectRoot,
+  onNativeGisImport,
+  onNativeGisSourceCrsChange,
+  onNativeGisSourcePathChange,
   onNativeGpxImport,
   onNativeGpxSourcePathChange,
   onNativeMediaSourcePathChange,
@@ -1322,9 +1441,14 @@ function ReviewReadinessPanel({
   readiness
 }: {
   nativeCommandAttempts: NativeCommandAttempt[];
+  nativeGisSourceCrs: "EPSG:4326" | "EPSG:3857";
+  nativeGisSourcePath: string;
   nativeGpxSourcePath: string;
   nativeMediaSourcePath: string;
   nativeProjectRoot: string;
+  onNativeGisImport: () => void;
+  onNativeGisSourceCrsChange: (value: "EPSG:4326" | "EPSG:3857") => void;
+  onNativeGisSourcePathChange: (value: string) => void;
   onNativeGpxImport: () => void;
   onNativeGpxSourcePathChange: (value: string) => void;
   onNativeMediaSourcePathChange: (value: string) => void;
@@ -1416,9 +1540,32 @@ function ReviewReadinessPanel({
           <Route size={15} />
           Start GPX matcher
         </button>
+        <label className="native-root-field">
+          <span>Native GIS source path</span>
+          <input
+            aria-label="Native GIS source path"
+            value={nativeGisSourcePath}
+            onChange={(event) => onNativeGisSourcePathChange(event.target.value)}
+          />
+        </label>
+        <label className="native-root-field">
+          <span>Native GIS source CRS</span>
+          <select
+            aria-label="Native GIS source CRS"
+            value={nativeGisSourceCrs}
+            onChange={(event) => onNativeGisSourceCrsChange(event.target.value as "EPSG:4326" | "EPSG:3857")}
+          >
+            <option value="EPSG:4326">EPSG:4326</option>
+            <option value="EPSG:3857">EPSG:3857</option>
+          </select>
+        </label>
+        <button type="button" className="button secondary native-probe-button" onClick={onNativeGisImport}>
+          <Upload size={15} />
+          Import native GIS
+        </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeGisProjection}>
           <MapPinned size={15} />
-          Probe GIS projection
+          Start GIS projection
         </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeFfmpegProxy}>
           <FileVideo size={15} />
@@ -1866,18 +2013,22 @@ function JobList({
 
 function ProjectedFeatureList({
   projectedFeatures,
+  officialFeatures,
   onFeatureReviewChange
 }: {
   projectedFeatures: ProjectedRoadFeature[];
+  officialFeatures: import("./features/geo/projection").OfficialRoadFeature[];
   onFeatureReviewChange: (featureId: string, field: keyof Pick<ProjectedRoadFeature, "reviewStatus" | "reviewNote">, value: string) => void;
 }) {
   return (
     <div className="feature-review-list">
-      {projectedFeatures.map((feature) => (
-        <article className="feature-review-row" key={feature.featureId}>
+      {projectedFeatures.map((feature) => {
+        const source = officialFeatures.find((candidate) => candidate.id === feature.featureId);
+        return <article className="feature-review-row" key={feature.featureId}>
           <div>
             <strong>{formatFeatureKind(feature.kind)}</strong>
             <span>{feature.sourceLayer}</span>
+            {source?.sourceCrs && <small>{`${source.sourceCrs} → ${source.normalizedCrs} · ${source.sourcePath}`}</small>}
           </div>
           <div>
             <span>{Math.round(feature.timeSeconds)}s</span>
@@ -1905,8 +2056,8 @@ function ProjectedFeatureList({
               />
             </label>
           </div>
-        </article>
-      ))}
+        </article>;
+      })}
     </div>
   );
 }
@@ -2181,28 +2332,51 @@ function isTerminalRouteStatus(status: WorkstationJob["status"]): boolean {
   return status === "complete" || status === "failed" || status === "blocked" || status === "cancelled";
 }
 
-function gisFeatureSourceId(response: unknown): string {
-  if (response && typeof response === "object" && "featureSourceId" in response) {
-    return String((response as { featureSourceId: unknown }).featureSourceId);
-  }
-
-  return "(feature source id unavailable)";
+function nativeGisStartResponse(response: unknown): { jobId: string; status: string } | null {
+  if (!response || typeof response !== "object") return null;
+  const value = response as Record<string, unknown>;
+  return typeof value.jobId === "string" && typeof value.status === "string"
+    ? { jobId: value.jobId, status: value.status }
+    : null;
 }
 
-function gisImportedFeatureCount(response: unknown): string {
-  if (response && typeof response === "object" && "importedFeatureCount" in response) {
-    return String((response as { importedFeatureCount: unknown }).importedFeatureCount);
+function nativeGisProjectionResult(response: unknown): NativeGisProjectionResult | null {
+  if (!response || typeof response !== "object") return null;
+  const value = response as Record<string, unknown>;
+  const statuses: WorkstationJob["status"][] = ["queued", "running", "complete", "failed", "blocked", "cancelled"];
+  if (
+    typeof value.jobId !== "string" || typeof value.featureSourceId !== "string" || typeof value.routeId !== "string" ||
+    typeof value.status !== "string" || !statuses.includes(value.status as WorkstationJob["status"]) ||
+    typeof value.progress !== "number" || !Number.isFinite(value.progress) || value.progress < 0 || value.progress > 100 ||
+    typeof value.detail !== "string" || !Array.isArray(value.projectedFeatures)
+  ) return null;
+  const projectedFeatures: ProjectedRoadFeature[] = [];
+  for (const feature of value.projectedFeatures) {
+    if (!feature || typeof feature !== "object") return null;
+    const item = feature as Record<string, unknown>;
+    if (
+      typeof item.featureId !== "string" || item.featureSourceId !== value.featureSourceId || item.routeId !== value.routeId ||
+      typeof item.kind !== "string" || typeof item.sourceLayer !== "string" ||
+      typeof item.timeSeconds !== "number" || !Number.isFinite(item.timeSeconds) || item.timeSeconds < 0 ||
+      typeof item.distanceMeters !== "number" || !Number.isFinite(item.distanceMeters) || item.distanceMeters < 0 ||
+      typeof item.confidence !== "number" || !Number.isFinite(item.confidence) || item.confidence < 0 || item.confidence > 1 ||
+      item.reviewStatus !== "needs_review" || typeof item.reviewNote !== "string"
+    ) return null;
+    projectedFeatures.push(item as unknown as ProjectedRoadFeature);
   }
-
-  return "(imported feature count unavailable)";
+  return {
+    jobId: value.jobId,
+    featureSourceId: value.featureSourceId,
+    routeId: value.routeId,
+    status: value.status as WorkstationJob["status"],
+    progress: value.progress,
+    detail: value.detail,
+    projectedFeatures
+  };
 }
 
-function gisProjectedFeatureCount(response: unknown): string {
-  if (response && typeof response === "object" && "projectedFeatureCount" in response) {
-    return String((response as { projectedFeatureCount: unknown }).projectedFeatureCount);
-  }
-
-  return "(projected feature count unavailable)";
+function isTerminalGisStatus(status: WorkstationJob["status"]): boolean {
+  return status === "complete" || status === "failed" || status === "blocked" || status === "cancelled";
 }
 
 function nativeProxyStartResponse(response: unknown): { jobId: string; status: string } | null {

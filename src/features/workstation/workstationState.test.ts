@@ -475,6 +475,74 @@ describe("workstation state", () => {
     expect(withGis.jobs.at(-1)).toMatchObject({ type: "gis", label: "Official GIS projection: current-crosswalks.geojson" });
     expect(withGis.nativeCommandAttempts[0]).toBe(gisAttempt);
   });
+
+  it("imports native GIS provenance and reconciles only its projected rows", () => {
+    const state = createInitialWorkstationState({ seed: createSeed(FIRST_PROJECT_ID) });
+    const imported = {
+      featureSourceId: "source-native-1",
+      fileName: "signals.geojson",
+      originalPath: "D:/GIS/signals.geojson",
+      hash: "hash",
+      fileSizeBytes: 100,
+      sourceCrs: "EPSG:3857" as const,
+      normalizedCrs: "EPSG:4326" as const,
+      layerKind: "traffic_light",
+      features: [{
+        id: "source-native-1:signal-1",
+        sourceFeatureId: "signal-1",
+        kind: "traffic_light" as const,
+        latitude: routePoints[1].latitude,
+        longitude: routePoints[1].longitude,
+        sourceLayer: "York signals",
+        geometryType: "Point" as const,
+        propertiesJson: "{}"
+      }],
+      projectionStatus: "queued" as const,
+      projectionJobId: "gis-job-native-1"
+    };
+    const withImport = workstationReducer(state, {
+      type: "import_native_gis",
+      imported,
+      attempt: nativeAttempt("gis-import", "gis_import")
+    });
+    expect(withImport.officialFeatures.at(-1)).toMatchObject({
+      id: "source-native-1:signal-1",
+      featureSourceId: "source-native-1",
+      sourceFeatureId: "signal-1"
+    });
+    expect(withImport.jobs.at(-1)).toMatchObject({
+      id: "gis-job-native-1",
+      featureSourceId: "source-native-1",
+      status: "queued"
+    });
+    const unrelated = withImport.projectedFeatures.filter((feature) => feature.featureSourceId !== "source-native-1");
+    const projected = {
+      featureId: "source-native-1:signal-1",
+      featureSourceId: "source-native-1",
+      routeId: "route-1",
+      kind: "traffic_light" as const,
+      sourceLayer: "York signals",
+      timeSeconds: 4,
+      distanceMeters: 2,
+      confidence: 0.98,
+      reviewStatus: "needs_review" as const,
+      reviewNote: ""
+    };
+    const next = workstationReducer(withImport, {
+      type: "reconcile_gis_job",
+      result: {
+        jobId: "gis-job-native-1",
+        featureSourceId: "source-native-1",
+        routeId: "route-1",
+        status: "complete",
+        progress: 100,
+        detail: "Projected 1 official features onto route.",
+        projectedFeatures: [projected]
+      }
+    });
+    expect(next.jobs.at(-1)).toMatchObject({ status: "complete", progress: 100 });
+    expect(next.projectedFeatures).toEqual([...unrelated, projected]);
+  });
 });
 
 function createSeed(projectId: ProjectId): WorkstationSeed {
@@ -493,7 +561,7 @@ function createSeed(projectId: ProjectId): WorkstationSeed {
   };
 }
 
-function nativeAttempt(id: string, command: "gpx_import" | "gpx_match" | "gis_project") {
+function nativeAttempt(id: string, command: "gpx_import" | "gpx_match" | "gis_import" | "gis_project") {
   return {
     id,
     command,
