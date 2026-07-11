@@ -49,6 +49,7 @@ pub struct ProcessOutput {
     pub stderr: String,
 }
 
+#[cfg(test)]
 impl ProcessOutput {
     pub fn success(stdout: &str) -> Self {
         Self {
@@ -532,7 +533,9 @@ fn thumbnail_arguments(source_path: &Path, output_pattern: &Path) -> Vec<String>
         "-i".to_string(),
         source_path.to_string_lossy().into_owned(),
         "-vf".to_string(),
-        "fps=1/5,scale=320:-2".to_string(),
+        "fps=fps=1/5:start_time=0:eof_action=pass,scale=320:-2".to_string(),
+        "-pix_fmt".to_string(),
+        "yuvj420p".to_string(),
         output_pattern.to_string_lossy().into_owned(),
     ]
 }
@@ -552,7 +555,7 @@ fn stderr_tail(value: &str) -> String {
 mod tests {
     use super::{
         parse_probe_json, progress_percent, run_proxy_job, select_encoder, ProcessOutput,
-        ProcessRunner, ProxyWorkerError, ProxyWorkerManager,
+        ProcessRunner, ProxyWorkerError, ProxyWorkerManager, SystemProcessRunner,
     };
     use crate::project_store::{
         create_project_at, import_media_at, read_proxy_job_status, MediaImportRequest,
@@ -741,6 +744,58 @@ mod tests {
         }
     }
 
+    #[test]
+    #[ignore = "requires installed ffmpeg and ffprobe binaries"]
+    fn real_ffmpeg_smoke_creates_proxy_thumbnails_and_terminal_metadata() {
+        let fixture = ProxyFixture::new_empty_source();
+        let generated = std::process::Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=320x180:r=24",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:sample_rate=48000",
+                "-t",
+                "0.5",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+                fixture.source_path().to_str().unwrap(),
+            ])
+            .status()
+            .unwrap();
+        assert!(generated.success());
+        fixture.import_source();
+
+        run_proxy_job(
+            &SystemProcessRunner,
+            &fixture.request,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap();
+
+        let status = read_proxy_job_status(
+            &fixture.request.sqlite_path,
+            &fixture.request.project_id,
+            &fixture.request.job_id,
+        )
+        .unwrap();
+        assert_eq!(status.status, "complete");
+        assert!(status.duration_seconds > 0.0);
+        assert!(!status.video_codec.is_empty());
+        eprintln!("real FFmpeg smoke encoder: {}", status.video_codec);
+        assert!(Path::new(&status.proxy_path).is_file());
+        assert!(fs::read_dir(&status.thumbnail_directory)
+            .unwrap()
+            .next()
+            .is_some());
+    }
+
     struct FakeRunner {
         mode: FakeMode,
         calls: Mutex<Vec<String>>,
@@ -868,6 +923,13 @@ mod tests {
 
     impl ProxyFixture {
         fn new() -> Self {
+            let fixture = Self::new_empty_source();
+            fs::write(fixture.source_path(), b"source").unwrap();
+            fixture.import_source();
+            fixture
+        }
+
+        fn new_empty_source() -> Self {
             let root = std::env::temp_dir()
                 .join(format!("roadwatcher-proxy-worker-test-{}", Uuid::new_v4()));
             fs::create_dir_all(&root).unwrap();
@@ -883,18 +945,6 @@ mod tests {
                 1_788_000_000,
             )
             .unwrap();
-            let source_path = root.join("source.mp4");
-            fs::write(&source_path, b"source").unwrap();
-            import_media_at(
-                MediaImportRequest {
-                    sqlite_path: PathBuf::from(&created.sqlite_path),
-                    project_id: project_id.to_string(),
-                    source_path,
-                },
-                media_id,
-                job_id,
-            )
-            .unwrap();
             Self {
                 root,
                 request: ProxyJobRequest {
@@ -906,6 +956,23 @@ mod tests {
                     binary_directory: String::new(),
                 },
             }
+        }
+
+        fn source_path(&self) -> PathBuf {
+            self.root.join("source.mp4")
+        }
+
+        fn import_source(&self) {
+            import_media_at(
+                MediaImportRequest {
+                    sqlite_path: self.request.sqlite_path.clone(),
+                    project_id: self.request.project_id.clone(),
+                    source_path: self.source_path(),
+                },
+                Uuid::parse_str(&self.request.media_id).unwrap(),
+                Uuid::parse_str(&self.request.job_id).unwrap(),
+            )
+            .unwrap();
         }
 
         fn partial_proxy_path(&self) -> PathBuf {
