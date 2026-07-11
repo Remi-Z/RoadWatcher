@@ -149,14 +149,18 @@ matcher provenance, identified GIS sources/features/projections, CRS provenance,
 cancellation, and stale-running recovery. It also adds durable export-manifest
 and artifact records. Project load fails abandoned `staging` exports and removes
 only flat files from the exact confined `exports/.staging-<export-id>` directory;
-completed export history is immutable. The atomic file writer is the next slice.
+completed export history is immutable.
+The `native_export` command now validates the canonical packet/snapshot envelope,
+writes synced create-new files in a confined staging directory, hashes bytes read
+back from disk, publishes with an atomic directory rename, and transactionally
+finalizes the manifest. The frontend still needs to invoke and render this result.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
 and retains browser storage as recovery fallback. Native media/proxy,
 GPX/map-matching, and official GeoJSON projection workflows are complete; the
-next native slice is writing evidence packets and snapshots to native export
-files instead of browser data URLs.
+next native slice is reconciling the implemented native evidence export command
+into the UI and hiding browser data URLs only after verified native success.
 
 ## Slots You Need To Fill
 

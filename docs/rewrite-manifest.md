@@ -414,9 +414,10 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement the atomic native evidence writer and `native_export` command;
-   schema-v6 durable manifest/artifact tables and confined stale recovery are
-   complete (20 focused project-store tests passed on 2026-07-10).
+1. Integrate the implemented `native_export` command through a strict frontend
+   contract/adapter and reconcile verified paths into the export UI. The atomic
+   writer, schema-v6 manifest/artifact store, and confined stale recovery are
+   complete (52 Rust tests passed; one installed-FFmpeg smoke ignored).
 2. Verify toolchain:
    - `node --version`
    - `npm --version`

@@ -495,27 +495,33 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   commands, schema version 6 migrations, streaming SHA-256, durable background
   jobs, transactional raw/matched routes, and identified GIS source/projection
   persistence. Schema v6 includes export manifests/artifacts and confined stale
-  staging recovery; the native export writer is not registered yet.
+  staging recovery. The registered `native_export` command validates bounded
+  canonical artifacts, writes/syncs/hashes them, publishes by atomic rename, and
+  finalizes paths and metadata transactionally.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
 
 ## Next Best Implementation Slice
 
-The schema-v6 native-export foundation is complete. Focused verification on
-2026-07-10 passed all 20 project-store tests. Coverage includes v5 migration,
-manifest/artifact table creation, confined flat staging cleanup, refusal of
-nested staging content, stale-state failure recording, and preservation of
-completed export history. The suite used a short-path temporary Cargo target to
-avoid the known Windows build-script problem with the workspace path's space.
+The native export writer and schema-v6 foundation are complete. Full Rust
+verification on 2026-07-10 passed 52 tests with only the installed-FFmpeg smoke
+intentionally ignored. Coverage includes exact artifact content/hash/size,
+manifest and database agreement, traversal/case-duplicate/malformed JSON/project
+identity rejection before writes, collision non-overwrite cleanup, v5 migration,
+confined stale cleanup, nested-entry refusal, and immutable completed history.
+The suite used a short-path temporary Cargo target to avoid the known Windows
+build-script problem with the workspace path's space.
 
-1. Implement the validated atomic native export writer and `native_export`
-   command against the durable schema-v6 manifest store.
-2. Add a native file picker that populates the implemented media/GPX source
+1. Add the strict TypeScript `native_export` contract/adapter and reconcile it
+   into the existing canonical packet export action.
+2. Render verified native paths/hashes/sizes and hide browser data links only
+   after native success; preserve explicit fallback and failure behavior.
+3. Add a native file picker that populates the implemented media/GPX source
    paths without changing the store contracts.
-3. Replace seeded demo data with command-backed state after native media/project
+4. Replace seeded demo data with command-backed state after native media/project
    selection exists, keeping the seed only for empty projects.
-4. Add GDAL/PostGIS import for production GIS containers and arbitrary CRSs.
+5. Add GDAL/PostGIS import for production GIS containers and arbitrary CRSs.
 
 ## Boundaries To Preserve
 

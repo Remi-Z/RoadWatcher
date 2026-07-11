@@ -14,11 +14,11 @@ with a durable, recoverable export manifest.
 
 ### Task 2: Atomic Native Export Writer
 
-- [ ] Add failing tests for exact output/hash/size, validation, traversal,
+- [x] Add failing tests for exact output/hash/size, validation, traversal,
   duplicates, malformed JSON, identity mismatch, cleanup, and non-overwrite.
-- [ ] Implement validated staging, sync, rename, durable finalization, and
+- [x] Implement validated staging, sync, rename, durable finalization, and
   `native_export` Tauri command.
-- [ ] Run Rust regression tests and commit.
+- [x] Run Rust regression tests and commit.
 
 ### Task 3: Frontend Native Export Reconciliation
 

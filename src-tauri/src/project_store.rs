@@ -47,6 +47,36 @@ pub struct ProjectLoadResponse {
     pub snapshot_json: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct ExportManifestStartRequest {
+    pub sqlite_path: PathBuf,
+    pub export_id: String,
+    pub project_id: String,
+    pub file_base_name: String,
+    pub created_at_unix: i64,
+    pub staging_directory: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExportArtifactRecord {
+    pub file_name: String,
+    pub mime_type: String,
+    pub sha256: String,
+    pub byte_size: i64,
+    pub final_path: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExportManifestCompletionRequest {
+    pub sqlite_path: PathBuf,
+    pub export_id: String,
+    pub project_id: String,
+    pub final_directory: String,
+    pub manifest_path: String,
+    pub manifest_json: String,
+    pub artifacts: Vec<ExportArtifactRecord>,
+}
+
 #[derive(Debug)]
 pub struct MediaImportRequest {
     pub sqlite_path: PathBuf,
@@ -306,6 +336,8 @@ pub enum ProjectStoreError {
     InvalidProxyJobState(String),
     #[error("System clock is before the Unix epoch.")]
     InvalidSystemClock,
+    #[error("Export manifest was not found in staging state for the supplied project identity.")]
+    ExportManifestNotStaging,
 }
 
 pub fn create_project(
@@ -455,6 +487,87 @@ pub fn load_project_snapshot(sqlite_path: &Path) -> Result<ProjectLoadResponse, 
         Err(rusqlite::Error::QueryReturnedNoRows) => Err(ProjectStoreError::SnapshotMissing),
         Err(error) => Err(error.into()),
     }
+}
+
+pub fn begin_export_manifest(
+    request: &ExportManifestStartRequest,
+) -> Result<(), ProjectStoreError> {
+    let connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    connection.execute(
+        "INSERT INTO export_manifests
+         (id, project_id, file_base_name, created_at_unix, status, staging_directory)
+         VALUES (?1, ?2, ?3, ?4, 'staging', ?5)",
+        params![
+            request.export_id,
+            request.project_id,
+            request.file_base_name,
+            request.created_at_unix,
+            request.staging_directory
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn complete_export_manifest(
+    request: &ExportManifestCompletionRequest,
+) -> Result<(), ProjectStoreError> {
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    for artifact in &request.artifacts {
+        transaction.execute(
+            "INSERT INTO export_artifacts
+             (export_id, project_id, file_name, mime_type, sha256, byte_size, final_path)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                request.export_id,
+                request.project_id,
+                artifact.file_name,
+                artifact.mime_type,
+                artifact.sha256,
+                artifact.byte_size,
+                artifact.final_path
+            ],
+        )?;
+    }
+    let updated = transaction.execute(
+        "UPDATE export_manifests
+         SET status = 'complete', final_directory = ?3, manifest_path = ?4,
+             manifest_json = ?5, failure_detail = ''
+         WHERE id = ?1 AND project_id = ?2 AND status = 'staging'",
+        params![
+            request.export_id,
+            request.project_id,
+            request.final_directory,
+            request.manifest_path,
+            request.manifest_json
+        ],
+    )?;
+    if updated != 1 {
+        return Err(ProjectStoreError::ExportManifestNotStaging);
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn fail_export_manifest(
+    sqlite_path: &Path,
+    project_id: &str,
+    export_id: &str,
+    failure_detail: &str,
+) -> Result<(), ProjectStoreError> {
+    let connection = open_project_database(sqlite_path)?;
+    verify_project_identity(&connection, project_id)?;
+    let updated = connection.execute(
+        "UPDATE export_manifests SET status = 'failed', failure_detail = ?3
+         WHERE id = ?1 AND project_id = ?2 AND status = 'staging'",
+        params![export_id, project_id, failure_detail],
+    )?;
+    if updated != 1 {
+        return Err(ProjectStoreError::ExportManifestNotStaging);
+    }
+    Ok(())
 }
 
 pub fn import_media(request: MediaImportRequest) -> Result<MediaImportResponse, ProjectStoreError> {

@@ -1,5 +1,8 @@
 use gis_import::{import_gis as store_import_gis, GisImportRequest};
 use gis_projector::GisProjectorManager;
+use native_export::{
+    export_native as store_export_native, NativeExportRequest, NativeExportResponse,
+};
 use project_store::{
     create_project, import_media as store_import_media, load_project_snapshot,
     read_proxy_job_status, save_project_snapshot, MediaImportRequest, MediaImportResponse,
@@ -13,6 +16,7 @@ use std::path::PathBuf;
 
 mod gis_import;
 mod gis_projector;
+mod native_export;
 mod project_store;
 mod proxy_worker;
 mod route_import;
@@ -42,6 +46,22 @@ fn project_save(sqlite_path: String, snapshot_json: String) -> Result<ProjectSav
 #[tauri::command]
 fn project_load(sqlite_path: String) -> Result<ProjectLoadResponse, String> {
     load_project_snapshot(&PathBuf::from(sqlite_path)).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn native_export(
+    sqlite_path: String,
+    project_id: String,
+    file_base_name: String,
+    artifacts_json: String,
+) -> Result<NativeExportResponse, String> {
+    store_export_native(NativeExportRequest {
+        sqlite_path: PathBuf::from(sqlite_path),
+        project_id,
+        file_base_name,
+        artifacts_json,
+    })
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -231,6 +251,7 @@ pub fn run() {
             project_create,
             project_save,
             project_load,
+            native_export,
             media_import,
             gpx_import,
             gis_import,
