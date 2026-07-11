@@ -11,6 +11,7 @@ describe("native command contracts", () => {
       "media_import",
       "gpx_import",
       "gpx_match",
+      "gpx_job_status",
       "gis_project",
       "ffmpeg_proxy",
       "job_status",
@@ -70,6 +71,25 @@ describe("native command contracts", () => {
         "matchJobId"
       ]
     });
+    expect(nativeCommandContracts.find((contract) => contract.command === "gpx_match")).toMatchObject({
+      implementation: "implemented",
+      readinessRequired: true,
+      requestFields: [
+        "sqlitePath",
+        "projectId",
+        "routeId",
+        "jobId",
+        "matcher",
+        "valhallaEndpoint",
+        "osrmEndpoint"
+      ],
+      responseFields: ["jobId", "status"]
+    });
+    expect(nativeCommandContracts.find((contract) => contract.command === "gpx_job_status")).toMatchObject({
+      implementation: "implemented",
+      readinessRequired: false,
+      requestFields: ["sqlitePath", "projectId", "routeId", "jobId"]
+    });
     expect(nativeCommandContracts.find((contract) => contract.command === "job_status")).toMatchObject({
       implementation: "implemented",
       readinessRequired: false,
@@ -98,8 +118,16 @@ describe("native command contracts", () => {
 
     expect(runtime.commandSlots.map((slot) => slot.tauriCommand)).toEqual(nativeCommandContracts.map((contract) => contract.command));
     expect(runtime.commandSlots.find((slot) => slot.id === "gpx-match")).toMatchObject({
-      requestFields: ["projectId", "gpxPath", "matcher"],
-      responseFields: ["routeId", "matchedPointCount", "projectedFeatureCount"]
+      requestFields: [
+        "sqlitePath",
+        "projectId",
+        "routeId",
+        "jobId",
+        "matcher",
+        "valhallaEndpoint",
+        "osrmEndpoint"
+      ],
+      responseFields: ["jobId", "status"]
     });
   });
 });

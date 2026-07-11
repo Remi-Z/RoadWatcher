@@ -6,11 +6,13 @@ use project_store::{
 };
 use proxy_worker::{ProxyStartResponse, ProxyWorkerManager};
 use route_import::{import_gpx as store_import_gpx, GpxImportRequest};
+use route_matcher::{RouteMatcherManager, RouteMatcherRequest};
 use std::path::PathBuf;
 
 mod project_store;
 mod proxy_worker;
 mod route_import;
+mod route_matcher;
 
 #[tauri::command]
 fn project_create(
@@ -63,6 +65,48 @@ fn gpx_import(
         project_id,
         source_path: PathBuf::from(source_path),
     })
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn gpx_match(
+    state: tauri::State<'_, RouteMatcherManager>,
+    sqlite_path: String,
+    project_id: String,
+    route_id: String,
+    job_id: String,
+    matcher: String,
+    valhalla_endpoint: String,
+    osrm_endpoint: String,
+) -> Result<route_matcher::RouteMatchStartResponse, String> {
+    state
+        .start(RouteMatcherRequest {
+            store: project_store::RouteMatchRequest {
+                sqlite_path: PathBuf::from(sqlite_path),
+                project_id,
+                route_id,
+                job_id,
+            },
+            matcher,
+            valhalla_endpoint,
+            osrm_endpoint,
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn gpx_job_status(
+    sqlite_path: String,
+    project_id: String,
+    route_id: String,
+    job_id: String,
+) -> Result<project_store::RouteMatchStatus, String> {
+    project_store::read_route_match_status(
+        &PathBuf::from(sqlite_path),
+        &project_id,
+        &route_id,
+        &job_id,
+    )
     .map_err(|error| error.to_string())
 }
 
@@ -121,12 +165,15 @@ fn job_cancel(
 pub fn run() {
     tauri::Builder::default()
         .manage(ProxyWorkerManager::default())
+        .manage(RouteMatcherManager::default())
         .invoke_handler(tauri::generate_handler![
             project_create,
             project_save,
             project_load,
             media_import,
             gpx_import,
+            gpx_match,
+            gpx_job_status,
             ffmpeg_proxy,
             job_status,
             job_cancel

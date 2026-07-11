@@ -24,7 +24,7 @@ describe("native runtime environment", () => {
     expect(runtime.summary).toContain("Tauri runtime detected");
     expect(runtime.commandSlots.find((slot) => slot.tauriCommand === "project_create")?.state).toBe("implemented_tauri_command");
     expect(runtime.commandSlots.find((slot) => slot.tauriCommand === "media_import")?.state).toBe("implemented_tauri_command");
-    expect(runtime.commandSlots.find((slot) => slot.tauriCommand === "gpx_match")?.state).toBe("planned_tauri_command");
+    expect(runtime.commandSlots.find((slot) => slot.tauriCommand === "gpx_match")?.state).toBe("implemented_tauri_command");
   });
 
   it("reports a ready bridge when a Tauri invoke adapter has been resolved", () => {

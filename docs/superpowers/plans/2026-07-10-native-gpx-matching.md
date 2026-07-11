@@ -22,11 +22,11 @@ through the native RoadWatcher project.
 
 ### Task 3: Durable Map-Match Worker
 
-- [ ] Add failing tests for Valhalla success, OSRM success, Valhalla-to-OSRM
+- [x] Add failing tests for Valhalla success, OSRM success, Valhalla-to-OSRM
   fallback, missing configuration, malformed response, and guarded completion.
-- [ ] Implement injectable HTTP transport, response normalization, cumulative
+- [x] Implement injectable HTTP transport, response normalization, cumulative
   distance time interpolation, and serialized background manager.
-- [ ] Register `gpx_match` and `gpx_job_status`; commit.
+- [x] Register `gpx_match` and `gpx_job_status`; commit.
 
 ### Task 4: Frontend Native Route Reconciliation
 

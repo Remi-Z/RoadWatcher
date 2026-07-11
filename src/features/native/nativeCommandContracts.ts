@@ -5,6 +5,7 @@ export type NativeCommandName =
   | "media_import"
   | "gpx_import"
   | "gpx_match"
+  | "gpx_job_status"
   | "gis_project"
   | "ffmpeg_proxy"
   | "job_status"
@@ -103,12 +104,31 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "gpx-match",
     label: "GPX matching",
     command: "gpx_match",
-    implementation: "planned",
+    implementation: "implemented",
     readinessRequired: true,
-    requestFields: ["projectId", "gpxPath", "matcher"],
-    responseFields: ["routeId", "matchedPointCount", "projectedFeatureCount"],
+    requestFields: [
+      "sqlitePath",
+      "projectId",
+      "routeId",
+      "jobId",
+      "matcher",
+      "valhallaEndpoint",
+      "osrmEndpoint"
+    ],
+    responseFields: ["jobId", "status"],
     fallback: "browser GPX parsing and queued Valhalla job",
     ownerAction: "Persist GPX tracks and call Valhalla first, with OSRM Match as fallback."
+  },
+  {
+    id: "gpx-job-status",
+    label: "GPX match job status",
+    command: "gpx_job_status",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["sqlitePath", "projectId", "routeId", "jobId"],
+    responseFields: ["jobId", "routeId", "status", "progress", "detail", "matcherUsed", "route"],
+    fallback: "browser route state",
+    ownerAction: "Poll durable native map-match progress and matched route output."
   },
   {
     id: "gis-project",
