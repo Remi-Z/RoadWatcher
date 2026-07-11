@@ -253,4 +253,6 @@ version 4.
 - Provide a local ONNX vehicle model and labels file for the CV sidecar.
 
 See [docs/rewrite-manifest.md](docs/rewrite-manifest.md) for the implementation
-handoff and next-agent roadmap.
+handoff and next-agent roadmap. The evidence-backed distinction between completed
+development functionality and open public-release gates is in
+[docs/project-completion-audit.md](docs/project-completion-audit.md).

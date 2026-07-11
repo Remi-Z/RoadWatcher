@@ -546,6 +546,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `sidecars/roadwatcher-gpstitch/` - pinned GPStitch v0.18.0 upstream submodule;
   keep the gitlink, lockfile, and GPL-3.0-or-later license intact.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
+- `docs/project-completion-audit.md` - requirement-by-requirement evidence and
+  the exact external gates that keep the signed public release incomplete.
 
 ## Latest Completed Implementation Slice
 
@@ -605,6 +607,9 @@ without a shell, canonicalizes source/model/label identities, caps process outpu
 rejects mismatched aggregates, and records terminal blocked/failed states. Full
 default Rust verification passes 70 tests; the managed-uv and installed-FFmpeg
 smokes also pass when explicitly enabled.
+The final App-only rerun passes all 68 integration tests without the former
+React asynchronous-update warnings; affected tests now await the native export
+fallback they intentionally trigger.
 
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep

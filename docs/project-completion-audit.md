@@ -1,0 +1,75 @@
+# RoadWatcher Project Completion Audit
+
+Date: 2026-07-11
+Audited branch: `dev`
+Audited through: `00cb649`
+
+## Result
+
+RoadWatcher is feature-complete for its documented development configuration:
+the React/Tauri workstation, durable native workflows, browser fallbacks,
+sidecars, packaging boundary, runtime preparation/preflight, and release-policy
+enforcement are implemented and verified. It is not yet a signed, validated
+public Windows release. `release-manifest.json` correctly keeps
+`publicReleaseReady` false.
+
+The remaining acceptance gates require external artifacts or infrastructure
+that are not present in this workspace or on this machine. They must not be
+replaced with mocks or toy files in final release evidence.
+
+## Requirement Evidence
+
+| Requirement | Authoritative evidence | Audit state |
+| --- | --- | --- |
+| Honest production initialization and portable project state | Snapshot parser/migrations, empty-project integration coverage, 68 App tests | Proven complete |
+| Durable local project storage | SQLite schema/migration/store tests; create/save/load command integration | Proven complete |
+| Referenced media, proxy, thumbnails, progress, cancellation, recovery | Native media/proxy code and Rust tests; explicitly enabled real FFmpeg smoke | Proven complete |
+| GPX import and Valhalla/OSRM matching behavior | Real GPX parse/import test; transport/fallback/identity Rust tests; strict frontend polling | Adapter complete; live local-service evidence missing |
+| Production GIS containers, CRS normalization, projection, review | GDAL boundary tests, durable import/projection tests, frontend reconciliation | Adapter complete; installed-GDAL evidence missing |
+| Local conservative CV scanning and reviewer decisions | Locked sidecar tests, synthetic tensor/OpenCV coverage, durable CV Rust/frontend tests | Pipeline complete; compatible real detector/video evidence missing |
+| GPStitch telemetry render and provenance | Pinned v0.18.0 source/license, durable worker tests, real locked/offline fixture render | Proven complete |
+| Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
+| Installed runtime preparation and preflight | Ten-component strict preflight, managed-environment tests, explicitly enabled real uv smoke | Proven complete for external-runtime model |
+| Windows source/license packaging | Runtime verifier, Rust build gate, fresh NSIS archive inspection | Proven complete |
+| Version/signing/update/release policy | Bundled release manifest, Rust build gate, three Node positive/negative verifier tests | Proven complete as development policy |
+| Installed app startup evidence | Fresh debug NSIS build and development-host startup JSON evidence | Tool proven; clean-VM evidence missing |
+| Public Windows release | Stable + signed + clean-machine-passed aggregate required by verifier | Not achieved |
+
+## Current Verification
+
+- Frontend: 27 files / 173 tests pass.
+- App integration: 68 tests pass without React asynchronous-update warnings.
+- Rust: 70 default tests pass; managed-uv and installed-FFmpeg real smokes also
+  pass when enabled separately.
+- `npm run build`, `npm run verify:release`, `cargo check`, and the fresh debug
+  NSIS build pass.
+- The current debug installer is 3,985,023 bytes with SHA-256
+  `C401819BC524819D65621E78F7C9CE6671ADCFED3E0834B856C1D96F0C68B4BB`.
+- Archive inspection contains the `0.1.0` executable, release/runtime manifests,
+  notices, GPL text, and audited sidecar resources.
+
+## Required External Gates
+
+1. Acquire and configure the intended Windows code-signing identity.
+2. Build the exact candidate/stable artifact, validate both installer and
+   installed executable signatures, and run `docs/windows-release-validation.md`
+   on a clean supported Windows VM.
+3. Supply a compatible licensed YOLO-style ONNX detector, labels, and
+   representative video; retain a real end-to-end CV result.
+4. Supply approved GDAL/OGR binaries and representative non-GeoJSON datasets;
+   retain installed normalization/import evidence.
+5. Supply the intended York/GTA Valhalla data/service or approved OSRM service;
+   retain a live route-match result and fallback evidence if in release scope.
+
+Only after the required release-scope gates pass may the release commit set the
+channel/signing/clean-machine fields so `publicReleaseReady` becomes true.
+
+## Explicitly Non-Blocking
+
+- PostGIS/spatial indexing is conditional on dataset scale; SQLite is the
+  implemented authoritative model.
+- React Konva and MapLibre upgrades are conditional on dense timeline/offline
+  basemap requirements; the current tested timeline/map surfaces are functional.
+- Automatic RoadWatch submission is intentionally out of scope. Evidence stays
+  reviewer-controlled and is never auto-submitted.
+- An automatic updater is intentionally absent under the manual-download policy.

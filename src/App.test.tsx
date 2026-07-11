@@ -760,6 +760,7 @@ describe("RoadWatcher workstation", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Native export failed"));
 
     const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
     expect(exportPanel).not.toBeNull();
@@ -932,6 +933,7 @@ describe("RoadWatcher workstation", () => {
     })));
 
     fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Native export failed"));
     const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
     expect(exportPanel as HTMLElement).toHaveTextContent("Local CV Findings");
     expect(exportPanel as HTMLElement).toHaveTextContent("Confirmed by reviewer.");
@@ -975,6 +977,7 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByText("GPStitch 0.18.0")).toBeInTheDocument();
     expect(screen.getByText(`Hash ${"a".repeat(64)}`)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Native export failed"));
     const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
     expect(exportPanel as HTMLElement).toHaveTextContent("GPStitch Telemetry Renders");
     expect(exportPanel as HTMLElement).toHaveTextContent("render-1.mp4");
