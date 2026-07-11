@@ -7,10 +7,10 @@ through the native RoadWatcher project.
 
 ### Task 1: Schema-v4 Route Store
 
-- [ ] Add failing migration/import tests for route assets, raw points, route-job
+- [x] Add failing migration/import tests for route assets, raw points, route-job
   identity, rollback, and stale-running recovery.
-- [ ] Add schema v4 and guarded route store DTOs/operations.
-- [ ] Run focused Rust tests and commit.
+- [x] Add schema v4 and guarded route store DTOs/operations.
+- [x] Run focused Rust tests and commit.
 
 ### Task 2: Native GPX Parser and Import Command
 

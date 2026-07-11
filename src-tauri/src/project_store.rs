@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
 
-const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 3;
+const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 4;
 
 #[derive(Debug)]
 pub struct ProjectCreateRequest {
@@ -66,6 +66,35 @@ pub struct MediaImportResponse {
     pub detected_start: String,
     pub proxy_status: String,
     pub proxy_job_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutePoint {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub time_seconds: f64,
+}
+
+#[derive(Debug)]
+pub struct RouteImportRequest {
+    pub sqlite_path: PathBuf,
+    pub project_id: String,
+    pub source_path: PathBuf,
+    pub points: Vec<RoutePoint>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteImportResponse {
+    pub route_id: String,
+    pub file_name: String,
+    pub original_path: String,
+    pub hash: String,
+    pub file_size_bytes: u64,
+    pub route: Vec<RoutePoint>,
+    pub match_status: String,
+    pub match_job_id: String,
 }
 
 #[derive(Clone, Debug)]
@@ -146,6 +175,10 @@ pub enum ProjectStoreError {
     InvalidMediaSource(String),
     #[error("Media source is too large for SQLite byte-size metadata: {0}")]
     MediaSourceTooLarge(String),
+    #[error("GPX source must be an existing regular file: {0}")]
+    InvalidRouteSource(String),
+    #[error("GPX route points are invalid: {0}")]
+    InvalidRoutePoints(String),
     #[error("Unsupported proxy profile: {0}")]
     InvalidProxyProfile(String),
     #[error("Proxy job was not found for the supplied project/media identity.")]
@@ -306,6 +339,120 @@ pub fn load_project_snapshot(sqlite_path: &Path) -> Result<ProjectLoadResponse, 
 
 pub fn import_media(request: MediaImportRequest) -> Result<MediaImportResponse, ProjectStoreError> {
     import_media_at(request, Uuid::new_v4(), Uuid::new_v4())
+}
+
+pub fn import_route_at(
+    request: RouteImportRequest,
+    route_id: Uuid,
+    job_id: Uuid,
+    imported_at_unix: i64,
+) -> Result<RouteImportResponse, ProjectStoreError> {
+    validate_route_points(&request.points)?;
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    let database_id = project_id(&connection)?;
+    if database_id != request.project_id {
+        return Err(ProjectStoreError::ProjectIdentityMismatch {
+            snapshot_id: request.project_id,
+            database_id,
+        });
+    }
+    let metadata = fs::metadata(&request.source_path)
+        .map_err(|_| ProjectStoreError::InvalidRouteSource(path_string(&request.source_path)))?;
+    if !metadata.is_file() {
+        return Err(ProjectStoreError::InvalidRouteSource(path_string(
+            &request.source_path,
+        )));
+    }
+    let file_size_bytes = metadata.len();
+    let file_size_sql = i64::try_from(file_size_bytes)
+        .map_err(|_| ProjectStoreError::MediaSourceTooLarge(path_string(&request.source_path)))?;
+    let file_name = request
+        .source_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| ProjectStoreError::InvalidRouteSource(path_string(&request.source_path)))?
+        .to_string();
+    let hash = sha256_file(&request.source_path)?;
+    let route_id = route_id.to_string();
+    let job_id = job_id.to_string();
+    let original_path = path_string(&request.source_path);
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO route_assets (
+           id, project_id, file_name, original_path, hash, file_size_bytes,
+           imported_at_unix, matcher_preference, match_status, matcher_used
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'Valhalla', 'queued', '')",
+        params![
+            route_id,
+            database_id,
+            file_name,
+            original_path,
+            hash,
+            file_size_sql,
+            imported_at_unix
+        ],
+    )?;
+    {
+        let mut statement = transaction.prepare(
+            "INSERT INTO route_points
+             (project_id, route_id, point_set, sequence, latitude, longitude, time_seconds)
+             VALUES (?1, ?2, 'raw', ?3, ?4, ?5, ?6)",
+        )?;
+        for (sequence, point) in request.points.iter().enumerate() {
+            statement.execute(params![
+                database_id,
+                route_id,
+                sequence as i64,
+                point.latitude,
+                point.longitude,
+                point.time_seconds
+            ])?;
+        }
+    }
+    transaction.execute(
+        "INSERT INTO jobs
+         (id, project_id, media_id, route_id, job_type, label, status, progress, detail, cancellation_requested)
+         VALUES (?1, ?2, '', ?3, 'valhalla', ?4, 'queued', 0, 'Native GPX imported; local map match queued.', 0)",
+        params![job_id, database_id, route_id, format!("Valhalla match: {file_name}")],
+    )?;
+    transaction.commit()?;
+    Ok(RouteImportResponse {
+        route_id,
+        file_name,
+        original_path,
+        hash,
+        file_size_bytes,
+        route: request.points,
+        match_status: "queued".to_string(),
+        match_job_id: job_id,
+    })
+}
+
+fn validate_route_points(points: &[RoutePoint]) -> Result<(), ProjectStoreError> {
+    if points.len() < 2 {
+        return Err(ProjectStoreError::InvalidRoutePoints(
+            "at least two timed points are required".to_string(),
+        ));
+    }
+    let mut previous_time = -1.0;
+    for point in points {
+        if !point.latitude.is_finite()
+            || !point.longitude.is_finite()
+            || !point.time_seconds.is_finite()
+            || !(-90.0..=90.0).contains(&point.latitude)
+            || !(-180.0..=180.0).contains(&point.longitude)
+            || point.time_seconds < 0.0
+            || point.time_seconds <= previous_time
+        {
+            return Err(ProjectStoreError::InvalidRoutePoints(
+                "coordinates and normalized times must be finite, in range, and strictly increasing"
+                    .to_string(),
+            ));
+        }
+        previous_time = point.time_seconds;
+    }
+    Ok(())
 }
 
 pub fn import_media_at(
@@ -654,6 +801,9 @@ fn migrate_database(connection: &mut Connection) -> Result<(), ProjectStoreError
         if version <= 2 {
             transaction.execute_batch(PROXY_JOB_MIGRATION_SQL)?;
         }
+        if version <= 3 {
+            transaction.execute_batch(ROUTE_ASSET_MIGRATION_SQL)?;
+        }
         transaction.execute(
             "UPDATE schema_info SET version = ?1",
             params![PROJECT_DATABASE_SCHEMA_VERSION],
@@ -704,7 +854,7 @@ fn path_string(path: &Path) -> String {
 const SCHEMA_SQL: &str = r#"
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;
 
 CREATE TABLE schema_info (
     version INTEGER NOT NULL CHECK (version > 0)
@@ -735,6 +885,7 @@ CREATE TABLE jobs (
     id TEXT PRIMARY KEY NOT NULL,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     media_id TEXT NOT NULL DEFAULT '',
+    route_id TEXT NOT NULL DEFAULT '',
     job_type TEXT NOT NULL,
     label TEXT NOT NULL,
     status TEXT NOT NULL,
@@ -753,14 +904,29 @@ CREATE TABLE timeline_clips (
     label TEXT NOT NULL
 );
 
+CREATE TABLE route_assets (
+    id TEXT PRIMARY KEY NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    original_path TEXT NOT NULL,
+    hash TEXT NOT NULL DEFAULT '',
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    imported_at_unix INTEGER NOT NULL DEFAULT 0,
+    matcher_preference TEXT NOT NULL DEFAULT 'Valhalla',
+    match_status TEXT NOT NULL DEFAULT 'queued',
+    matcher_used TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE route_points (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    route_id TEXT NOT NULL REFERENCES route_assets(id) ON DELETE CASCADE,
+    point_set TEXT NOT NULL CHECK (point_set IN ('raw', 'matched')),
     sequence INTEGER NOT NULL,
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
     time_seconds REAL NOT NULL,
-    UNIQUE(project_id, sequence)
+    UNIQUE(route_id, point_set, sequence)
 );
 
 CREATE TABLE official_features (
@@ -834,13 +1000,60 @@ WHERE job_type = 'proxy' AND status = 'running';
 UPDATE media_assets SET proxy_status = 'queued' WHERE proxy_status = 'running';
 "#;
 
+const ROUTE_ASSET_MIGRATION_SQL: &str = r#"
+CREATE TABLE route_assets (
+    id TEXT PRIMARY KEY NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    original_path TEXT NOT NULL,
+    hash TEXT NOT NULL DEFAULT '',
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    imported_at_unix INTEGER NOT NULL DEFAULT 0,
+    matcher_preference TEXT NOT NULL DEFAULT 'Valhalla',
+    match_status TEXT NOT NULL DEFAULT 'queued',
+    matcher_used TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO route_assets
+    (id, project_id, file_name, original_path, match_status, matcher_used)
+SELECT 'legacy-' || project_id, project_id, 'Legacy snapshot route', '', 'complete', 'snapshot'
+FROM route_points GROUP BY project_id;
+ALTER TABLE route_points RENAME TO route_points_v3;
+CREATE TABLE route_points (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    route_id TEXT NOT NULL REFERENCES route_assets(id) ON DELETE CASCADE,
+    point_set TEXT NOT NULL CHECK (point_set IN ('raw', 'matched')),
+    sequence INTEGER NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    time_seconds REAL NOT NULL,
+    UNIQUE(route_id, point_set, sequence)
+);
+INSERT INTO route_points
+    (project_id, route_id, point_set, sequence, latitude, longitude, time_seconds)
+SELECT project_id, 'legacy-' || project_id, 'raw', sequence, latitude, longitude, time_seconds
+FROM route_points_v3;
+DROP TABLE route_points_v3;
+ALTER TABLE jobs ADD COLUMN route_id TEXT NOT NULL DEFAULT '';
+UPDATE jobs SET route_id = 'legacy-' || project_id
+WHERE job_type IN ('valhalla', 'osrm') AND route_id = ''
+  AND EXISTS (SELECT 1 FROM route_assets WHERE route_assets.id = 'legacy-' || jobs.project_id);
+UPDATE jobs
+SET status = 'queued', progress = 0,
+    detail = 'Route match recovered after restart.', cancellation_requested = 0
+WHERE job_type IN ('valhalla', 'osrm') AND status = 'running';
+UPDATE route_assets SET match_status = 'queued'
+WHERE id IN (SELECT route_id FROM jobs WHERE job_type IN ('valhalla', 'osrm') AND status = 'queued');
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::{
         claim_proxy_job, complete_proxy_job, create_project_at, fail_proxy_job, import_media_at,
-        load_project_snapshot, read_proxy_job_status, request_proxy_job_cancel,
-        save_project_snapshot, update_proxy_progress, MediaImportRequest, ProjectCreateRequest,
-        ProjectSaveRequest, ProjectStoreError, ProxyCompletion, ProxyJobRequest,
+        import_route_at, load_project_snapshot, open_project_database, read_proxy_job_status,
+        request_proxy_job_cancel, save_project_snapshot, update_proxy_progress, MediaImportRequest,
+        ProjectCreateRequest, ProjectSaveRequest, ProjectStoreError, ProxyCompletion,
+        ProxyJobRequest, RouteImportRequest, RoutePoint,
     };
     use rusqlite::Connection;
     use std::collections::BTreeSet;
@@ -889,7 +1102,7 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(schema_version, 3);
+        assert_eq!(schema_version, 4);
         assert_eq!(
             metadata,
             (
@@ -912,6 +1125,7 @@ mod tests {
             "media_assets",
             "jobs",
             "timeline_clips",
+            "route_assets",
             "route_points",
             "official_features",
             "projected_features",
@@ -921,6 +1135,155 @@ mod tests {
         ] {
             assert!(table_names.contains(table), "missing table {table}");
         }
+    }
+
+    #[test]
+    fn imports_route_asset_raw_points_and_match_job_atomically() {
+        let root = TestRoot::new();
+        let project_id = Uuid::parse_str("aaaaaaaa-1111-4111-8111-111111111111").unwrap();
+        let route_id = Uuid::parse_str("bbbbbbbb-2222-4222-8222-222222222222").unwrap();
+        let job_id = Uuid::parse_str("cccccccc-3333-4333-8333-333333333333").unwrap();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Native route".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let source_path = root.path().join("drive.gpx");
+        fs::write(&source_path, b"fixture-gpx").unwrap();
+        let points = vec![
+            RoutePoint {
+                latitude: 43.1,
+                longitude: -79.2,
+                time_seconds: 0.0,
+            },
+            RoutePoint {
+                latitude: 43.2,
+                longitude: -79.1,
+                time_seconds: 7.5,
+            },
+        ];
+
+        let imported = import_route_at(
+            RouteImportRequest {
+                sqlite_path: PathBuf::from(&created.sqlite_path),
+                project_id: project_id.to_string(),
+                source_path: source_path.clone(),
+                points: points.clone(),
+            },
+            route_id,
+            job_id,
+            1_788_000_001,
+        )
+        .unwrap();
+
+        assert_eq!(imported.route_id, route_id.to_string());
+        assert_eq!(imported.match_job_id, job_id.to_string());
+        assert_eq!(imported.route, points);
+        assert_eq!(imported.file_size_bytes, 11);
+        assert_eq!(imported.hash.len(), 64);
+
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        let route_row: (String, String, String) = connection
+            .query_row(
+                "SELECT original_path, match_status, matcher_used FROM route_assets WHERE id = ?1",
+                [route_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            route_row,
+            (
+                source_path.to_string_lossy().into_owned(),
+                "queued".to_string(),
+                "".to_string()
+            )
+        );
+        let stored_points: Vec<(String, f64)> = connection
+            .prepare("SELECT point_set, time_seconds FROM route_points WHERE route_id = ?1 ORDER BY sequence")
+            .unwrap()
+            .query_map([route_id.to_string()], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            stored_points,
+            vec![("raw".to_string(), 0.0), ("raw".to_string(), 7.5)]
+        );
+        let job_link: (String, String, String) = connection
+            .query_row(
+                "SELECT route_id, job_type, status FROM jobs WHERE id = ?1",
+                [job_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            job_link,
+            (
+                route_id.to_string(),
+                "valhalla".to_string(),
+                "queued".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn route_import_identity_failure_leaves_no_partial_rows() {
+        let root = TestRoot::new();
+        let project_id = Uuid::new_v4();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Route rollback".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let source_path = root.path().join("drive.gpx");
+        fs::write(&source_path, b"fixture-gpx").unwrap();
+
+        let result = import_route_at(
+            RouteImportRequest {
+                sqlite_path: PathBuf::from(&created.sqlite_path),
+                project_id: Uuid::nil().to_string(),
+                source_path,
+                points: vec![
+                    RoutePoint {
+                        latitude: 43.1,
+                        longitude: -79.2,
+                        time_seconds: 0.0,
+                    },
+                    RoutePoint {
+                        latitude: 43.2,
+                        longitude: -79.1,
+                        time_seconds: 1.0,
+                    },
+                ],
+            },
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            1_788_000_001,
+        );
+        assert!(matches!(
+            result,
+            Err(ProjectStoreError::ProjectIdentityMismatch { .. })
+        ));
+
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        let routes: i64 = connection
+            .query_row("SELECT COUNT(*) FROM route_assets", [], |row| row.get(0))
+            .unwrap();
+        let points: i64 = connection
+            .query_row("SELECT COUNT(*) FROM route_points", [], |row| row.get(0))
+            .unwrap();
+        let jobs: i64 = connection
+            .query_row("SELECT COUNT(*) FROM jobs", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!((routes, points, jobs), (0, 0, 0));
     }
 
     #[test]
@@ -1015,8 +1378,8 @@ mod tests {
         let schema_version: i64 = connection
             .query_row("SELECT version FROM schema_info", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(user_version, 3);
-        assert_eq!(schema_version, 3);
+        assert_eq!(user_version, 4);
+        assert_eq!(schema_version, 4);
     }
 
     #[test]
@@ -1084,7 +1447,7 @@ mod tests {
             load_project_snapshot(Path::new(&created.sqlite_path)),
             Err(ProjectStoreError::UnsupportedDatabaseVersion {
                 found: 99,
-                supported: 3
+                supported: 4
             })
         ));
     }
@@ -1243,7 +1606,13 @@ mod tests {
                    label TEXT NOT NULL, status TEXT NOT NULL, progress REAL NOT NULL DEFAULT 0,
                    detail TEXT NOT NULL DEFAULT ''
                  );
-                 INSERT INTO jobs VALUES ('job-v2', '99999999-9999-4999-8999-999999999999', 'proxy', 'Auto proxy: v2.mp4', 'running', 44, 'interrupted');",
+                 INSERT INTO jobs VALUES ('job-v2', '99999999-9999-4999-8999-999999999999', 'proxy', 'Auto proxy: v2.mp4', 'running', 44, 'interrupted');
+                 CREATE TABLE route_points (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL,
+                   sequence INTEGER NOT NULL, latitude REAL NOT NULL,
+                   longitude REAL NOT NULL, time_seconds REAL NOT NULL,
+                   UNIQUE(project_id, sequence)
+                 );",
             )
             .unwrap();
         drop(connection);
@@ -1282,7 +1651,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
         let media_columns: BTreeSet<String> = connection
             .prepare("PRAGMA table_info(media_assets)")
             .unwrap()
@@ -1301,6 +1670,68 @@ mod tests {
             .map(Result::unwrap)
             .collect();
         assert!(job_columns.contains("cancellation_requested"));
+        assert!(job_columns.contains("route_id"));
+    }
+
+    #[test]
+    fn migrates_v3_route_points_and_recovers_stale_match_jobs() {
+        let root = TestRoot::new();
+        let sqlite_path = root.path().join("v3-route.sqlite");
+        let connection = Connection::open(&sqlite_path).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA user_version = 3;
+                 CREATE TABLE schema_info (version INTEGER NOT NULL);
+                 INSERT INTO schema_info VALUES (3);
+                 CREATE TABLE projects (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, created_at_unix INTEGER NOT NULL);
+                 INSERT INTO projects VALUES ('route-project', 'Legacy route', 0);
+                 CREATE TABLE route_points (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL,
+                   sequence INTEGER NOT NULL, latitude REAL NOT NULL,
+                   longitude REAL NOT NULL, time_seconds REAL NOT NULL,
+                   UNIQUE(project_id, sequence)
+                 );
+                 INSERT INTO route_points (project_id, sequence, latitude, longitude, time_seconds)
+                 VALUES ('route-project', 0, 43.1, -79.2, 0), ('route-project', 1, 43.2, -79.1, 5);
+                 CREATE TABLE jobs (
+                   id TEXT PRIMARY KEY, project_id TEXT NOT NULL, media_id TEXT NOT NULL DEFAULT '',
+                   job_type TEXT NOT NULL, label TEXT NOT NULL, status TEXT NOT NULL,
+                   progress REAL NOT NULL DEFAULT 0, detail TEXT NOT NULL DEFAULT '',
+                   cancellation_requested INTEGER NOT NULL DEFAULT 0
+                 );
+                 INSERT INTO jobs VALUES ('route-job', 'route-project', '', 'valhalla', 'Match', 'running', 50, 'interrupted', 0);",
+            )
+            .unwrap();
+        drop(connection);
+
+        drop(open_project_database(&sqlite_path).unwrap());
+        let connection = Connection::open(&sqlite_path).unwrap();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 4);
+        let migrated: (String, String, f64) = connection
+            .query_row(
+                "SELECT route_id, point_set, time_seconds FROM route_points WHERE sequence = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            migrated,
+            ("legacy-route-project".to_string(), "raw".to_string(), 5.0)
+        );
+        let recovered: (String, String, f64, String) = connection
+            .query_row(
+                "SELECT route_id, status, progress, detail FROM jobs WHERE id = 'route-job'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(recovered.0, "legacy-route-project");
+        assert_eq!(recovered.1, "queued");
+        assert_eq!(recovered.2, 0.0);
+        assert!(recovered.3.contains("recovered after restart"));
     }
 
     #[test]
