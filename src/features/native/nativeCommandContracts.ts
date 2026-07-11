@@ -12,6 +12,7 @@ export type NativeCommandName =
   | "ffmpeg_proxy"
   | "job_status"
   | "job_cancel"
+  | "native_export"
   | "cv_scan";
 export type NativeCommandImplementation = "implemented" | "planned";
 
@@ -221,6 +222,17 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     responseFields: ["jobId", "mediaId", "status", "progress", "detail"],
     fallback: "leave browser fallback jobs unchanged",
     ownerAction: "Signal and persist cancellation for an active native proxy process."
+  },
+  {
+    id: "native-export",
+    label: "Native evidence export",
+    command: "native_export",
+    implementation: "implemented",
+    readinessRequired: true,
+    requestFields: ["sqlitePath", "projectId", "fileBaseName", "artifactsJson"],
+    responseFields: ["exportId", "exportDirectory", "manifestPath", "artifacts"],
+    fallback: "browser data-URL evidence downloads",
+    ownerAction: "Publish canonical evidence artifacts atomically with verified hashes and a durable manifest."
   },
   {
     id: "cv-scan",

@@ -93,6 +93,7 @@ export type WorkstationAction =
       value: string;
     }
   | { type: "record_native_attempt"; attempt: NativeCommandAttempt }
+  | { type: "record_native_export_attempt"; attempt: NativeCommandAttempt }
   | { type: "reconcile_proxy_job"; result: NativeProxyJobResult; attempt?: NativeCommandAttempt }
   | { type: "import_native_route"; imported: NativeRouteImport; attempt: NativeCommandAttempt }
   | { type: "reconcile_route_job"; result: NativeRouteMatchResult; attempt?: NativeCommandAttempt }
@@ -240,6 +241,11 @@ export function workstationReducer(state: WorkstationState, action: WorkstationA
       return withInvalidatedExport(state, {
         nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
       });
+    case "record_native_export_attempt":
+      return {
+        ...state,
+        nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+      };
     case "reconcile_proxy_job": {
       const result = action.result;
       const completedDuration = result.status === "complete" && result.durationSeconds > 0 ? result.durationSeconds : null;

@@ -18,6 +18,7 @@ describe("native command contracts", () => {
       "ffmpeg_proxy",
       "job_status",
       "job_cancel",
+      "native_export",
       "cv_scan"
     ]);
 
@@ -118,6 +119,12 @@ describe("native command contracts", () => {
       readinessRequired: false,
       requestFields: ["sqlitePath", "projectId", "mediaId", "jobId"]
     });
+    expect(nativeCommandContracts.find((contract) => contract.command === "native_export")).toMatchObject({
+      implementation: "implemented",
+      readinessRequired: true,
+      requestFields: ["sqlitePath", "projectId", "fileBaseName", "artifactsJson"],
+      responseFields: ["exportId", "exportDirectory", "manifestPath", "artifacts"]
+    });
 
     expect(nativeCommandContracts.filter((contract) => contract.readinessRequired).map((contract) => contract.command)).toEqual([
       "project_create",
@@ -128,7 +135,8 @@ describe("native command contracts", () => {
       "gpx_match",
       "gis_import",
       "gis_project",
-      "ffmpeg_proxy"
+      "ffmpeg_proxy",
+      "native_export"
     ]);
   });
 

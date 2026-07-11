@@ -22,16 +22,16 @@ with a durable, recoverable export manifest.
 
 ### Task 3: Frontend Native Export Reconciliation
 
-- [ ] Add failing adapter/App tests for native success, fallback, failure,
+- [x] Add failing adapter/App tests for native success, fallback, failure,
   invalid response, path rendering, link hiding, and edit invalidation.
-- [ ] Implement strict export adapter and integrate canonical artifacts into the
+- [x] Implement strict export adapter and integrate canonical artifacts into the
   existing export action without duplicating packet-building logic.
-- [ ] Run complete frontend tests/build and commit.
+- [x] Run complete frontend tests/build and commit.
 
 ### Task 4: Verification and Handoff
 
-- [ ] Run `pnpm test`, `pnpm build`, `cargo fmt --check`,
+- [x] Run `pnpm test`, `pnpm build`, `cargo fmt --check`,
   `cargo test --offline --all-targets`, and `git diff --check`.
-- [ ] Update README, handoff, manifest, and this plan with exact evidence and
+- [x] Update README, handoff, manifest, and this plan with exact evidence and
   remaining file-picker/demo/CV/GPStitch work.
-- [ ] Commit documentation and advance the roadmap.
+- [x] Commit documentation and advance the roadmap.

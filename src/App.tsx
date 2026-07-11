@@ -72,6 +72,11 @@ import {
 } from "./features/project/nativeProjectLocator";
 import { createNativeProjectRepository } from "./features/project/nativeProjectRepository";
 import {
+  exportNativeArtifacts,
+  type NativeExportInputArtifact,
+  type NativeExportSuccess
+} from "./features/project/nativeExportRepository";
+import {
   createNativeSetupChecklistArtifact,
   createPacketArtifacts,
   createProjectSnapshotArtifact,
@@ -158,6 +163,8 @@ export function App({
   const [activeRouteJob, setActiveRouteJob] = useState<{ jobId: string; routeId: string } | null>(null);
   const [activeGisJob, setActiveGisJob] = useState<{ jobId: string; featureSourceId: string } | null>(null);
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
+  const [latestNativeExport, setLatestNativeExport] = useState<NativeExportSuccess | null>(null);
+  const exportGenerationRef = useRef(0);
   const nativeHydrationPathRef = useRef<string | null>(null);
   const firstSlotReferenceInputRef = useRef<HTMLInputElement>(null);
   const sensors = useSensors(
@@ -222,6 +229,13 @@ export function App({
     projectedFeatures: projectedRoadFeatures,
     route
   };
+
+  useEffect(() => {
+    if (!latestPacket || !latestProjectSnapshot) {
+      exportGenerationRef.current += 1;
+      setLatestNativeExport(null);
+    }
+  }, [latestPacket, latestProjectSnapshot]);
 
   useEffect(() => {
     if (nativeRuntimeStatus) {
@@ -582,10 +596,52 @@ export function App({
     );
   }
 
-  function handleExportPacket() {
+  async function handleExportPacket() {
     const snapshot = createProjectSnapshot(currentSnapshotInput);
     const packet = buildEvidencePacket(snapshot, { runtimeStatus: activeNativeRuntimeStatus });
+    const artifacts = [
+      createProjectSnapshotArtifact(snapshot),
+      createNativeSetupChecklistArtifact(packet),
+      ...createPacketArtifacts(packet)
+    ].map(({ fileName, mimeType, content }) => ({
+      fileName,
+      mimeType: mimeType as NativeExportInputArtifact["mimeType"],
+      content
+    }));
+    const generation = exportGenerationRef.current + 1;
+    exportGenerationRef.current = generation;
+    setLatestNativeExport(null);
     dispatchWorkstation({ type: "set_export", snapshot, packet });
+
+    if (activeNativeSqlitePath && nativeCommandBridge.status === "ready") {
+      const requestedAtIso = new Date().toISOString();
+      const result = await exportNativeArtifacts(nativeCommandBridge, {
+        sqlitePath: activeNativeSqlitePath,
+        projectId: snapshot.projectId,
+        fileBaseName: packet.fileBaseName,
+        artifacts
+      });
+      if (exportGenerationRef.current !== generation) return;
+      const attempt: NativeCommandAttempt = {
+        id: `native-export-${Date.now().toString(36)}`,
+        command: "native_export",
+        status: result.status === "exported" ? "invoked" : result.commandStatus,
+        requestedAtIso,
+        requestSummary: `${artifacts.length} artifacts; sqlitePath: ${activeNativeSqlitePath}`,
+        resultSummary:
+          result.status === "exported"
+            ? `manifestPath: ${result.manifestPath}`
+            : result.message
+      };
+      dispatchWorkstation({ type: "record_native_export_attempt", attempt });
+      if (result.status === "exported") {
+        setLatestNativeExport(result);
+        setAppStatus(`Native evidence export complete: ${result.exportDirectory}`);
+      } else {
+        setAppStatus(`Native export failed; browser downloads remain available: ${result.message}`);
+      }
+      return;
+    }
     setAppStatus(`Export packet preview ready: ${packet.fileBaseName}.json`);
   }
 
@@ -675,6 +731,9 @@ export function App({
       setAppStatus("Native media import requires an active SQLite project. Create or reopen a native project first.");
       return;
     }
+    // Invalidate before awaiting native I/O so an older export cannot win a
+    // completion race against this workstation mutation.
+    invalidateLatestExport();
     const requestedAtIso = new Date().toISOString();
     const result = await nativeCommandBridge.invoke("media_import", {
       projectId: createProjectSnapshot(currentSnapshotInput).projectId,
@@ -1140,6 +1199,8 @@ export function App({
   }
 
   function invalidateLatestExport(statusMessage = "Draft changed since last export; regenerate packet to refresh downloads.") {
+    exportGenerationRef.current += 1;
+    setLatestNativeExport(null);
     if (statusMessage && (latestPacket || latestProjectSnapshot)) {
       setAppStatus(statusMessage);
     }
@@ -1371,12 +1432,29 @@ export function App({
               </ul>
             </div>
             <div className="export-file-list">
-              {latestGeneratedArtifacts.map(({ artifact }) => (
-                <a key={artifact.fileName} href={artifact.href} download={artifact.fileName}>
-                  <Download size={14} />
-                  {artifact.fileName}
-                </a>
-              ))}
+              {latestNativeExport ? (
+                <div className="native-export-result" aria-label="Verified native export">
+                  <strong>Verified native export</strong>
+                  <span>{latestNativeExport.exportDirectory}</span>
+                  <span>Manifest: {latestNativeExport.manifestPath}</span>
+                  <ul>
+                    {latestNativeExport.artifacts.map((artifact) => (
+                      <li key={artifact.fileName}>
+                        <span>{artifact.fileName}</span>
+                        <span>{artifact.byteSize.toLocaleString()} bytes · SHA-256 {artifact.sha256}</span>
+                        <span>{artifact.path}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                latestGeneratedArtifacts.map(({ artifact }) => (
+                  <a key={artifact.fileName} href={artifact.href} download={artifact.fileName}>
+                    <Download size={14} />
+                    {artifact.fileName}
+                  </a>
+                ))
+              )}
             </div>
             <pre>{latestPacket.summaryMarkdown}</pre>
           </section>

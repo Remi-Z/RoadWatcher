@@ -150,17 +150,21 @@ cancellation, and stale-running recovery. It also adds durable export-manifest
 and artifact records. Project load fails abandoned `staging` exports and removes
 only flat files from the exact confined `exports/.staging-<export-id>` directory;
 completed export history is immutable.
-The `native_export` command now validates the canonical packet/snapshot envelope,
+The `native_export` command validates the canonical packet/snapshot envelope,
 writes synced create-new files in a confined staging directory, hashes bytes read
 back from disk, publishes with an atomic directory rename, and transactionally
-finalizes the manifest. The frontend still needs to invoke and render this result.
+finalizes the manifest. The frontend invokes it for active native projects,
+strictly validates returned metadata, renders verified paths/hashes/sizes, hides
+browser data links only after success, preserves fallback links on failure, and
+invalidates current results after later workstation edits.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
 and retains browser storage as recovery fallback. Native media/proxy,
 GPX/map-matching, and official GeoJSON projection workflows are complete; the
-next native slice is reconciling the implemented native evidence export command
-into the UI and hiding browser data URLs only after verified native success.
+next native slice is a native file picker for the implemented path-based import
+commands, followed by replacing seeded demo data with command-backed empty-state
+hydration.
 
 ## Slots You Need To Fill
 

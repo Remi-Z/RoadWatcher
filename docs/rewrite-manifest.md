@@ -414,10 +414,11 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Integrate the implemented `native_export` command through a strict frontend
-   contract/adapter and reconcile verified paths into the export UI. The atomic
-   writer, schema-v6 manifest/artifact store, and confined stale recovery are
-   complete (52 Rust tests passed; one installed-FFmpeg smoke ignored).
+1. Add a native file picker for the implemented path-based media/GPX/GIS import
+   commands. Native evidence export is complete end to end: strict frontend
+   adapter, verified paths/hashes/sizes, success-only link hiding, atomic writer,
+   schema-v6 store, and stale recovery (147 frontend tests and 52 Rust tests pass;
+   one installed-FFmpeg smoke is intentionally ignored).
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -429,9 +430,9 @@ network/DNS access.
    - `pnpm build`
 4. Run Tauri commands with a temp target in this managed workspace; debug MSI
    and NSIS bundling is verified.
-5. Reconcile the completed native writer into packet export and replace browser
-   data-URL links after verified native success; command-backed SQLite
-   project save/load and export-manifest persistence are complete.
+5. Use verified native export files for active SQLite projects; browser data-URL
+   links remain only as explicit fallback. Project save/load and export-manifest
+   persistence are complete.
 6. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
    demo fallback only for empty projects.
 7. Add a native file picker for the implemented import-by-reference command.

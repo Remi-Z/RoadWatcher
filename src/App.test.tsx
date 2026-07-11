@@ -322,6 +322,73 @@ describe("RoadWatcher workstation", () => {
     expect(restored.jobs).toHaveLength(initialJobs.length);
   });
 
+  it("publishes native artifacts, hides data links, and invalidates verified paths after edits", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/export/project.sqlite";
+    const snapshot = createProjectSnapshot({
+      clips: initialClips,
+      componentSlots: missingSlots,
+      incident: incidentDraft,
+      jobs: initialJobs,
+      media: mediaAssets,
+      projectId: "native-export-project" as ProjectId,
+      projectedFeatures
+    });
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command, request) => {
+      if (command === "project_load") {
+        return {
+          projectId: snapshot.projectId,
+          schemaVersion: snapshot.schemaVersion,
+          savedAtIso: snapshot.savedAtIso,
+          snapshotJson: serializeSnapshot(snapshot)
+        };
+      }
+      if (command === "native_export") {
+        const artifacts = JSON.parse(request.artifactsJson as string) as Array<{
+          fileName: string; mimeType: string; content: string;
+        }>;
+        return {
+          exportId: "export-verified",
+          exportDirectory: "D:/RoadWatcherProjects/export/exports/packet-export-verified",
+          manifestPath: "D:/RoadWatcherProjects/export/exports/packet-export-verified/manifest.json",
+          artifacts: artifacts.map((artifact) => ({
+            fileName: artifact.fileName,
+            mimeType: artifact.mimeType,
+            sha256: "b".repeat(64),
+            byteSize: new TextEncoder().encode(artifact.content).length,
+            path: `D:/RoadWatcherProjects/export/exports/packet-export-verified/${artifact.fileName}`
+          }))
+        };
+      }
+      throw new Error(`Unexpected command ${command}`);
+    });
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+    await screen.findByText(/Restored native SQLite project/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+    const verified = await screen.findByLabelText("Verified native export");
+    expect(verified).toHaveTextContent("manifest.json");
+    expect(verified).toHaveTextContent(`SHA-256 ${"b".repeat(64)}`);
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section") as HTMLElement;
+    expect(within(exportPanel).queryByRole("link")).not.toBeInTheDocument();
+    expect(nativeInvoke).toHaveBeenCalledWith("native_export", expect.objectContaining({
+      sqlitePath,
+      projectId: snapshot.projectId,
+      fileBaseName: expect.any(String),
+      artifactsJson: expect.any(String)
+    }));
+
+    fireEvent.change(screen.getByLabelText("Location notes"), { target: { value: "Updated after export" } });
+    expect(screen.queryByRole("heading", { name: "Latest export packet" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Verified native export")).not.toBeInTheDocument();
+  });
+
   it("invalidates the export preview when the incident draft changes after export", () => {
     render(<App />);
 
@@ -662,7 +729,7 @@ describe("RoadWatcher workstation", () => {
       projectId: "native-route-project" as ProjectId,
       projectedFeatures
     });
-    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command, request) => {
       if (command === "project_load") {
         return {
           projectId: snapshot.projectId,
@@ -785,7 +852,7 @@ describe("RoadWatcher workstation", () => {
       projectedFeatures,
       route: routePoints
     });
-    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command, request) => {
       if (command === "project_load") return {
         projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion,
         savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot)
@@ -1116,7 +1183,7 @@ describe("RoadWatcher workstation", () => {
       projectId: "native-media-project" as ProjectId,
       projectedFeatures
     });
-    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command, request) => {
       if (command === "project_load") {
         return {
           projectId: snapshot.projectId,
@@ -1136,6 +1203,21 @@ describe("RoadWatcher workstation", () => {
           detectedStart: "",
           proxyStatus: "queued",
           proxyJobId: "proxy-job-front"
+        };
+      }
+      if (command === "native_export") {
+        const artifacts = JSON.parse(request.artifactsJson as string) as Array<{ fileName: string; mimeType: string; content: string }>;
+        return {
+          exportId: "export-before-media",
+          exportDirectory: "D:/RoadWatcherProjects/native-media/exports/export-before-media",
+          manifestPath: "D:/RoadWatcherProjects/native-media/exports/export-before-media/manifest.json",
+          artifacts: artifacts.map((artifact) => ({
+            fileName: artifact.fileName,
+            mimeType: artifact.mimeType,
+            sha256: "a".repeat(64),
+            byteSize: new TextEncoder().encode(artifact.content).length,
+            path: `D:/RoadWatcherProjects/native-media/exports/export-before-media/${artifact.fileName}`
+          }))
         };
       }
       throw new Error(`Unexpected command ${command}`);
@@ -1158,7 +1240,9 @@ describe("RoadWatcher workstation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Import native media" }));
 
-    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native media imported by reference");
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Native media imported by reference")
+    );
     expect(nativeInvoke).toHaveBeenCalledWith("media_import", {
       sqlitePath,
       projectId: "native-media-project",
