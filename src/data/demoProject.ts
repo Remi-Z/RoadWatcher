@@ -143,6 +143,7 @@ export const incidentDraft: IncidentDraft = {
 export function createDemoWorkstationSeed(projectId: ProjectId): WorkstationSeed {
   return {
     clips: initialClips,
+    cvFindings: [],
     componentSlots: missingSlots,
     incident: incidentDraft,
     jobs: initialJobs,

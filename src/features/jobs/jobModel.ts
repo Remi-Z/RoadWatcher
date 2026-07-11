@@ -47,6 +47,43 @@ export interface NativeProxyJobResult {
   videoCodec: string;
 }
 
+export type CvFindingReviewStatus = "needs_review" | "included" | "excluded";
+
+export interface CvFindingReview {
+  id: string;
+  scanId: string;
+  mediaId: string;
+  label: string;
+  confidence: number;
+  timeSeconds: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  frameWidth: number;
+  frameHeight: number;
+  engine: string;
+  modelPath: string;
+  labelsPath: string;
+  reviewStatus: CvFindingReviewStatus;
+  reviewNote: string;
+}
+
+export interface NativeCvScanResult {
+  scanId: string;
+  jobId: string;
+  mediaId: string;
+  status: JobStatus;
+  progress: number;
+  detail: string;
+  engine: string;
+  modelPath: string;
+  labelsPath: string;
+  findingCount: number;
+  reviewRequired: boolean;
+  findings: CvFindingReview[];
+}
+
 export function startJob(job: WorkstationJob): WorkstationJob {
   return {
     ...job,

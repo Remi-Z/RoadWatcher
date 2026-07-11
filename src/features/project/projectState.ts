@@ -1,6 +1,6 @@
 import type { ComponentSlot, IncidentDraft, MediaAsset, ProjectId } from "../../domain/projectModels";
 import { normalizeProjectedFeatureReview, type OfficialRoadFeature, type ProjectedRoadFeature, type TimedRoutePoint } from "../geo/projection";
-import type { WorkstationJob } from "../jobs/jobModel";
+import type { CvFindingReview, WorkstationJob } from "../jobs/jobModel";
 import type { NativeCommandName } from "../native/nativeCommandContracts";
 import type { NativeRuntimeStatus } from "../native/runtimeEnvironment";
 import type { TimelineClip } from "../timeline/timelineModel";
@@ -35,6 +35,7 @@ export interface NativeCommandAttempt {
 
 export interface ProjectSnapshotInput {
   clips: TimelineClip[];
+  cvFindings?: CvFindingReview[];
   componentSlots?: ComponentSlot[];
   incident: IncidentDraft;
   jobs: WorkstationJob[];
@@ -51,6 +52,7 @@ export interface ProjectSnapshot extends ProjectSnapshotInput {
   schemaVersion: typeof PROJECT_SCHEMA_VERSION;
   projectId: ProjectId;
   componentSlots: ComponentSlot[];
+  cvFindings: CvFindingReview[];
   nativeCommandAttempts: NativeCommandAttempt[];
   nativeProjectRoot: string;
   route: TimedRoutePoint[];
@@ -67,6 +69,7 @@ export interface EvidencePacket {
     savedAtIso: string;
     incident: IncidentDraft;
     clips: TimelineClip[];
+    cvFindings: CvFindingReview[];
     componentSlots: ComponentSlot[];
     nativeCommandAttempts: NativeCommandAttempt[];
     nativeProjectRoot: string;
@@ -91,6 +94,7 @@ export function createProjectSnapshot(input: ProjectSnapshotInput): ProjectSnaps
     projectId: input.projectId,
     savedAtIso: new Date().toISOString(),
     clips: structuredClone(input.clips),
+    cvFindings: structuredClone(input.cvFindings ?? []),
     componentSlots: structuredClone(input.componentSlots ?? []),
     incident: structuredClone(input.incident),
     jobs: structuredClone(input.jobs),
@@ -113,7 +117,8 @@ export function restoreProjectSnapshot(snapshot: ProjectSnapshot): ProjectSnapsh
     componentSlots: structuredClone(snapshot.componentSlots ?? []),
     nativeCommandAttempts: structuredClone(snapshot.nativeCommandAttempts ?? []),
     nativeProjectRoot: snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT,
-    projectedFeatures: structuredClone(snapshot.projectedFeatures ?? []).map(normalizeProjectedFeatureReview)
+    projectedFeatures: structuredClone(snapshot.projectedFeatures ?? []).map(normalizeProjectedFeatureReview),
+    cvFindings: structuredClone(snapshot.cvFindings ?? [])
   };
 }
 
@@ -134,6 +139,7 @@ export function buildEvidencePacket(snapshot: ProjectSnapshot, options: Evidence
     savedAtIso: snapshot.savedAtIso,
     incident: structuredClone(snapshot.incident),
     clips: structuredClone(snapshot.clips),
+    cvFindings: structuredClone(snapshot.cvFindings ?? []),
     componentSlots: structuredClone(snapshot.componentSlots ?? []),
     nativeCommandAttempts: structuredClone(snapshot.nativeCommandAttempts ?? []),
     nativeProjectRoot: snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT,
@@ -163,6 +169,16 @@ function buildMarkdown(packet: EvidencePacket["summaryJson"]): string {
         `- ${feature.kind.replace("_", " ")} at ${Math.round(feature.timeSeconds)}s (${feature.sourceLayer}, confidence ${feature.confidence.toFixed(
           2
         )}; review ${feature.reviewStatus}${feature.reviewNote.trim() ? `; note: ${feature.reviewNote.trim()}` : ""})`
+    )
+    .join("\n");
+  const cvLines = packet.cvFindings
+    .map(
+      (finding) =>
+        `- ${finding.label} at ${finding.timeSeconds.toFixed(1)}s (confidence ${finding.confidence.toFixed(
+          2
+        )}; review ${finding.reviewStatus}; engine ${finding.engine}; model ${finding.modelPath}; labels ${finding.labelsPath}${
+          finding.reviewNote.trim() ? `; note: ${finding.reviewNote.trim()}` : ""
+        })`
     )
     .join("\n");
 
@@ -250,6 +266,9 @@ ${routeSummaryLines}
 
 ## Projected Road Features
 ${featureLines || "- No projected features saved."}
+
+## Local CV Findings
+${cvLines || "- No CV findings saved."}
 
 ## Referenced Source Media
 ${mediaLines || "- No media references saved."}

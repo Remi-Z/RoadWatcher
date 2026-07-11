@@ -1,11 +1,11 @@
 import type { ComponentSlot, IncidentDraft, MediaAsset, ProjectId } from "../../domain/projectModels";
 import type { OfficialRoadFeature, ProjectedRoadFeature, TimedRoutePoint } from "../geo/projection";
-import type { WorkstationJob } from "../jobs/jobModel";
+import type { CvFindingReview, WorkstationJob } from "../jobs/jobModel";
 import type { NativeCommandName } from "../native/nativeCommandContracts";
 import type { TimelineClip } from "../timeline/timelineModel";
 import type { NativeCommandAttempt, ProjectSnapshot } from "./projectState";
 
-export const PROJECT_SCHEMA_VERSION = 2 as const;
+export const PROJECT_SCHEMA_VERSION = 3 as const;
 export const DEFAULT_NATIVE_PROJECT_ROOT = "slot: native project root";
 
 export type SnapshotParseIssueCode =
@@ -48,12 +48,19 @@ const NATIVE_COMMANDS = [
   "project_save",
   "project_load",
   "media_import",
+  "gpx_import",
   "gpx_match",
+  "gpx_job_status",
+  "gis_import",
   "gis_project",
+  "gis_job_status",
   "ffmpeg_proxy",
   "job_status",
   "job_cancel",
-  "cv_scan"
+  "native_export",
+  "cv_scan",
+  "cv_job_status",
+  "cv_finding_review"
 ] as const;
 const NATIVE_ATTEMPT_STATUSES = [
   "invoked",
@@ -106,6 +113,7 @@ function parseSnapshotValue(value: unknown): ProjectSnapshot {
     projectId: nonBlankString(root.projectId, "projectId") as ProjectId,
     savedAtIso: isoDateString(root.savedAtIso, "savedAtIso"),
     clips: parseArray(root.clips, "clips", parseTimelineClip),
+    cvFindings: parseOptionalArray(root.cvFindings, "cvFindings", parseCvFinding, sourceVersion < 3),
     componentSlots: parseOptionalArray(root.componentSlots, "componentSlots", parseComponentSlot, legacy),
     incident: parseIncident(root.incident, "incident"),
     jobs: parseArray(root.jobs, "jobs", parseJob),
@@ -260,6 +268,33 @@ function parseProjectedFeature(value: unknown, path: string, legacy: boolean): P
   };
 }
 
+function parseCvFinding(value: unknown, path: string): CvFindingReview {
+  const item = record(value, path);
+  const frameWidth = finiteNumber(item.frameWidth, `${path}.frameWidth`, 1);
+  const frameHeight = finiteNumber(item.frameHeight, `${path}.frameHeight`, 1);
+  const x = finiteNumber(item.x, `${path}.x`, 0);
+  const y = finiteNumber(item.y, `${path}.y`, 0);
+  const width = finiteNumber(item.width, `${path}.width`, Number.MIN_VALUE);
+  const height = finiteNumber(item.height, `${path}.height`, Number.MIN_VALUE);
+  if (x + width > frameWidth || y + height > frameHeight) {
+    fail("invalid_range", path, "CV finding box must remain inside its frame.");
+  }
+  return {
+    id: nonBlankString(item.id, `${path}.id`),
+    scanId: nonBlankString(item.scanId, `${path}.scanId`),
+    mediaId: nonBlankString(item.mediaId, `${path}.mediaId`),
+    label: nonBlankString(item.label, `${path}.label`),
+    confidence: boundedNumber(item.confidence, `${path}.confidence`, 0, 1),
+    timeSeconds: finiteNumber(item.timeSeconds, `${path}.timeSeconds`, 0),
+    x, y, width, height, frameWidth, frameHeight,
+    engine: nonBlankString(item.engine, `${path}.engine`),
+    modelPath: nonBlankString(item.modelPath, `${path}.modelPath`),
+    labelsPath: nonBlankString(item.labelsPath, `${path}.labelsPath`),
+    reviewStatus: enumValue(item.reviewStatus, `${path}.reviewStatus`, REVIEW_STATUSES),
+    reviewNote: stringValue(item.reviewNote, `${path}.reviewNote`)
+  };
+}
+
 function validateAggregate(snapshot: ProjectSnapshot): void {
   assertUnique(snapshot.media.map((item) => item.id), "media");
   assertUnique(snapshot.clips.map((item) => item.id), "clips");
@@ -267,6 +302,7 @@ function validateAggregate(snapshot: ProjectSnapshot): void {
   assertUnique(snapshot.componentSlots.map((item) => item.id), "componentSlots");
   assertUnique(snapshot.nativeCommandAttempts.map((item) => item.id), "nativeCommandAttempts");
   assertUnique(snapshot.officialFeatures.map((item) => item.id), "officialFeatures");
+  assertUnique(snapshot.cvFindings.map((item) => item.id), "cvFindings");
 
   const mediaById = new Map(snapshot.media.map((item) => [item.id, item]));
   for (const [index, clip] of snapshot.clips.entries()) {
@@ -279,6 +315,11 @@ function validateAggregate(snapshot: ProjectSnapshot): void {
     }
     if (media.durationSeconds > 0 && clip.sourceOutSeconds > media.durationSeconds) {
       fail("invalid_range", `clips[${index}].sourceOutSeconds`, "Clip exceeds known media duration.");
+    }
+  }
+  for (const [index, finding] of snapshot.cvFindings.entries()) {
+    if (!mediaById.has(finding.mediaId)) {
+      fail("dangling_reference", `cvFindings[${index}].mediaId`, `Unknown media ${finding.mediaId}.`);
     }
   }
 }
@@ -316,8 +357,8 @@ function parseOptionalArray<T>(
   return parseArray(value, path, parseItem);
 }
 
-function schemaVersion(value: unknown): 1 | typeof PROJECT_SCHEMA_VERSION {
-  if (value === 1 || value === PROJECT_SCHEMA_VERSION) {
+function schemaVersion(value: unknown): 1 | 2 | typeof PROJECT_SCHEMA_VERSION {
+  if (value === 1 || value === 2 || value === PROJECT_SCHEMA_VERSION) {
     return value;
   }
   if (typeof value === "number" && Number.isFinite(value)) {

@@ -57,7 +57,7 @@ describe("project state", () => {
       projectedFeatures
     });
 
-    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.schemaVersion).toBe(3);
     expect(snapshot.projectId).toMatch(/^local-/);
     expect(snapshot.incident.plate).toBe("ABC1234");
     expect(snapshot.officialFeatures).toHaveLength(3);

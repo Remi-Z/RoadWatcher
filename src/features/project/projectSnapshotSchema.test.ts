@@ -77,14 +77,48 @@ describe("project snapshot schema", () => {
     expect(result).toMatchObject({
       ok: true,
       snapshot: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         projectId: "local-legacy-review",
         componentSlots: [],
         nativeCommandAttempts: [],
         route: [],
-        officialFeatures: []
+        officialFeatures: [],
+        cvFindings: []
       }
     });
+  });
+
+  it("migrates version 2 and preserves version 3 CV review provenance", () => {
+    expect(parseSnapshot(JSON.stringify(validSnapshotV2()))).toMatchObject({ schemaVersion: 3, cvFindings: [] });
+    const current = {
+      ...validSnapshotV2(),
+      schemaVersion: 3,
+      cvFindings: [{
+        id: "finding-1", scanId: "scan-1", mediaId: mediaAssets[0].id, label: "car",
+        confidence: 0.91, timeSeconds: 2, x: 10, y: 20, width: 30, height: 40,
+        frameWidth: 1920, frameHeight: 1080, engine: "onnxruntime-cpu",
+        modelPath: "D:/models/traffic.onnx", labelsPath: "D:/models/labels.txt",
+        reviewStatus: "included", reviewNote: "Confirmed by reviewer."
+      }]
+    };
+
+    expect(parseSnapshot(JSON.stringify(current)).cvFindings[0]).toMatchObject({
+      scanId: "scan-1", reviewStatus: "included", reviewNote: "Confirmed by reviewer."
+    });
+  });
+
+  it("rejects invalid CV finding geometry and media identity", () => {
+    const finding = {
+      id: "finding-1", scanId: "scan-1", mediaId: mediaAssets[0].id, label: "car",
+      confidence: 0.91, timeSeconds: 2, x: 90, y: 20, width: 30, height: 40,
+      frameWidth: 100, frameHeight: 100, engine: "onnxruntime-cpu",
+      modelPath: "model.onnx", labelsPath: "labels.txt", reviewStatus: "needs_review", reviewNote: ""
+    };
+    expect(tryParseSnapshot(JSON.stringify({ ...validSnapshotV2(), schemaVersion: 3, cvFindings: [finding] })))
+      .toMatchObject({ ok: false, issue: { code: "invalid_range", path: "cvFindings[0]" } });
+    expect(tryParseSnapshot(JSON.stringify({ ...validSnapshotV2(), schemaVersion: 3,
+      cvFindings: [{ ...finding, x: 10, mediaId: "missing" }] })))
+      .toMatchObject({ ok: false, issue: { code: "dangling_reference", path: "cvFindings[0].mediaId" } });
   });
 
   it.each([

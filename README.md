@@ -13,7 +13,7 @@ canonical project-facing types now live under `src/domain/`; seeded demo data is
 only a fixture consumer of those models rather than their production owner. New
 projects receive one opaque local ID that is preserved across saves, exports,
 imports, and incident edits; clearing the workspace creates a new identity. The
-portable snapshot boundary now emits schema version 2, migrates version-1 files,
+portable snapshot boundary now emits schema version 3, migrates version-1/2 files,
 and rejects malformed fields, duplicate IDs, dangling media references, and
 invalid clip ranges before state is restored. Browser draft loading distinguishes
 missing, corrupt, unsupported, and unavailable storage, and surfaces recovery
@@ -68,8 +68,8 @@ The readiness panel also includes tested project-store, native media import, GPX
 matcher, GIS projection, FFmpeg proxy, and local CV actions. Project
 create/save/load, `media_import`, `ffmpeg_proxy`, `job_status`, `job_cancel`,
 `gpx_import`, `gpx_match`, `gpx_job_status`, `gis_import`, `gis_project`, and
-`gis_job_status` are implemented; `cv_scan` bridge paths report
-the browser fallback otherwise; the native project root and CV model slot remain
+`gis_job_status`, `cv_scan`, `cv_job_status`, and `cv_finding_review` are
+implemented; the native project root and separate CV model/labels slots remain
 editable, saved in portable project snapshots, and included in exports/setup
 checklists. Probe
 attempts are also recorded in the readiness panel and carried into saved drafts
@@ -84,11 +84,10 @@ verification command, and the top Slots action focuses the first install/data
 slot so those references are quick to fill before export. The Tauri and Python
 sidecar slots are scaffolded, but the Tauri dev path, GPStitch, Valhalla,
 production GIS and CV model data still need to be filled
-before the native workflow can be wired end to end. Rust/Cargo is installed and
-the application lockfile is tracked. Native builds in this checkout remain
-blocked because generated Cargo/Tauri build processes cannot write back under
-the managed `Documents` workspace; using a temporary Cargo target lets dependency
-compilation advance until Tauri needs to generate permissions in `src-tauri/`.
+before every production workflow can run end to end. Rust/Cargo is installed and
+the application lockfile is tracked. Rust tests in this checkout use a temporary
+short target such as `C:\tmp\roadwatcher-target` because Rust 1.96 dependency
+probes fail under the workspace path containing a space.
 
 ## Run The Current Web App
 
@@ -159,13 +158,15 @@ browser data links only after success, preserves fallback links on failure, and
 invalidates current results after later workstation edits.
 Schema v7 adds durable CV scan provenance and bounded finding rows linked to
 project/media/job identities, atomic completion, reviewer decision fields, and
-interrupted-job recovery. The asynchronous sidecar manager is the next slice.
+interrupted-job recovery. The asynchronous sidecar manager, strict frontend
+polling, reviewer UI, SQLite review persistence, and snapshot/export
+reconciliation are implemented.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
 and retains browser storage as recovery fallback. Native media/proxy,
-GPX/map-matching, and official GeoJSON projection workflows are complete; the
-The official Tauri dialog plugin now provides scoped, single-file media/GPX/GIS
+GPX/map-matching, official GeoJSON projection, and local CV workflows are
+complete. The official Tauri dialog plugin now provides scoped, single-file media/GPX/GIS
 selection with purpose-specific filters. Choose actions populate the existing
 paths without auto-importing or copying originals; browser mode retains manual
 path entry. Production startup and clear now create an honest empty project with
@@ -178,8 +179,11 @@ using ONNX Runtime CPU and OpenCV headless. It emits time/bounding-box/model
 provenance as conservative findings and has a locked Python environment. Durable
 Rust execution is now registered: it queues schema-v7 state, launches locked
 offline `uv` without a shell, validates canonical provenance and bounded JSON,
-and atomically publishes findings. Frontend polling and reviewer reconciliation
-remain the next CV slice.
+and atomically publishes findings. The frontend now polls identified jobs,
+rejects mismatched responses, presents conservative findings for explicit
+include/exclude decisions, persists decisions to SQLite, and exports engine,
+model, labels, geometry, confidence, and reviewer provenance in snapshot schema
+version 3.
 
 ## Slots You Need To Fill
 

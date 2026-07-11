@@ -124,6 +124,28 @@ fn cv_job_status(
 }
 
 #[tauri::command]
+fn cv_finding_review(
+    sqlite_path: String,
+    project_id: String,
+    media_id: String,
+    scan_id: String,
+    finding_id: String,
+    review_status: String,
+    review_note: String,
+) -> Result<project_store::CvFindingReviewResponse, String> {
+    project_store::review_cv_finding(&project_store::CvFindingReviewRequest {
+        sqlite_path: PathBuf::from(sqlite_path),
+        project_id,
+        media_id,
+        scan_id,
+        finding_id,
+        review_status,
+        review_note,
+    })
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn media_import(
     sqlite_path: String,
     project_id: String,
@@ -315,6 +337,7 @@ pub fn run() {
             native_export,
             cv_scan,
             cv_job_status,
+            cv_finding_review,
             media_import,
             gpx_import,
             gis_import,

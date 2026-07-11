@@ -15,7 +15,7 @@ describe("native project repository", () => {
       ok: true,
       status: "invoked",
       command: "project_save",
-      response: { projectId: PROJECT_ID, schemaVersion: 2, savedAtIso: snapshot.savedAtIso }
+      response: { projectId: PROJECT_ID, schemaVersion: 3, savedAtIso: snapshot.savedAtIso }
     });
     const repository = createNativeProjectRepository({ invoke } as Pick<NativeCommandBridge, "invoke">, SQLITE_PATH);
 
@@ -25,7 +25,7 @@ describe("native project repository", () => {
       sqlitePath: SQLITE_PATH,
       snapshotJson: serializeSnapshot(snapshot)
     });
-    expect(result).toMatchObject({ status: "saved", projectId: PROJECT_ID, schemaVersion: 2 });
+    expect(result).toMatchObject({ status: "saved", projectId: PROJECT_ID, schemaVersion: 3 });
   });
 
   it("loads only snapshots accepted by the versioned parser", async () => {
@@ -36,7 +36,7 @@ describe("native project repository", () => {
       command: "project_load",
       response: {
         projectId: PROJECT_ID,
-        schemaVersion: 2,
+        schemaVersion: 3,
         savedAtIso: snapshot.savedAtIso,
         snapshotJson: serializeSnapshot(snapshot)
       }
@@ -81,7 +81,7 @@ function repositoryReturning(snapshotJson: string) {
     ok: true,
     status: "invoked",
     command: "project_load",
-    response: { projectId: PROJECT_ID, schemaVersion: 2, savedAtIso: "2026-07-10T12:00:00.000Z", snapshotJson }
+    response: { projectId: PROJECT_ID, schemaVersion: 3, savedAtIso: "2026-07-10T12:00:00.000Z", snapshotJson }
   });
   return createNativeProjectRepository({ invoke } as Pick<NativeCommandBridge, "invoke">, SQLITE_PATH);
 }

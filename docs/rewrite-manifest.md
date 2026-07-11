@@ -23,7 +23,7 @@ Build a Windows-first, local-first evidence workstation:
 - Replaced incident-derived project IDs with one opaque local identity per
   project. Saves, exported snapshots, and imported snapshots preserve that ID;
   clearing the workspace starts a new identity.
-- Added a schema-version-2 snapshot boundary with complete nested-field and enum
+- Added a schema-version-3 snapshot boundary with complete nested-field and enum
   validation, version-1 migration, duplicate-ID/dangling-reference/range checks,
   and structured parse issues while preserving the existing throwing API.
 - Added structured browser repository recovery outcomes for loaded, missing,
@@ -181,10 +181,9 @@ Build a Windows-first, local-first evidence workstation:
 - Replaced the media probe with active-project import by reference. An editable
   source path is sent with `sqlitePath` and `projectId`; typed native metadata is
   applied through one atomic reducer transition.
-- Added a readiness-panel local CV scan probe that routes the selected media and
-  editable CV model slot through the planned `cv_scan` bridge path, recording
-  browser fallback attempts in readiness, saved drafts, and evidence packet
-  exports until the Python sidecar and ONNX/labels paths are wired.
+- Added readiness-panel local CV controls with separate model/labels paths,
+  implemented scan/status polling, reviewer reconciliation, identity-guarded
+  SQLite updates, and auditable browser fallback attempts.
 - Added a readiness-panel GPX matcher probe that routes an explicit persisted
   GPX path slot through the planned `gpx_match` bridge path, recording browser
   fallback attempts in readiness, saved drafts, and evidence packet exports
@@ -358,15 +357,16 @@ network/DNS access.
 - The native runtime boundary detects Tauri shell globals and lists implemented
   versus planned DTOs. Project create/save/load, media import, durable FFmpeg,
   native GPX import, Valhalla/OSRM matching, official GeoJSON import/projection,
-  and status polling are implemented; CV handlers remain planned.
+  and status polling are implemented. Local CV start/status/reviewer handlers
+  are also implemented with strict identity and aggregate validation.
 - The native command bridge is dependency-injected and tested. The app calls
   project-store, media import, FFmpeg proxy/status/cancel, GPX import/match/status,
-  GIS import/project/status, and CV-scan paths through the bridge; the CV handler still needs
-  implementation. Browser mode returns explicit fallback results. Required
+  GIS import/project/status, and CV scan/status/reviewer paths through the
+  bridge. Browser mode returns explicit fallback results. Required
   request fields are validated before Tauri invoke is called, and required
   response fields are validated before native data is accepted. The browser-safe
-  Tauri invoke adapter is wired for runtime readiness and packet export status,
-  but Rust command handlers still need implementation. The UI project-store
+  Tauri invoke adapter is wired for runtime readiness and packet export status.
+  The UI project-store
   probe uses the editable native project root field; it defaults to
   `slot: native project root` until the native project-folder picker/storage
   flow exists. Project-store and CV probe attempts are logged in browser state
@@ -397,8 +397,10 @@ network/DNS access.
 - Shapefile/GeoPackage/FileGDB and arbitrary CRS normalization are not implemented;
   the native GeoJSON EPSG:4326/EPSG:3857 workflow is implemented.
 - The CV sidecar implements bounded YOLO-style ONNX Runtime/OpenCV frame
-  scanning and conservative finding JSON. Durable Rust execution, polling, and
-  reviewer reconciliation are not implemented yet; browser fallback remains.
+  scanning and conservative finding JSON. Durable Rust execution, strict
+  polling, reviewer reconciliation, SQLite decision persistence, portable
+  snapshot schema v3, and evidence exports are implemented; browser fallback
+  remains explicit when no native runtime is available.
 - RoadWatch browser automation remains deferred.
 
 ## User-Filled Slots
@@ -415,14 +417,10 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement strict frontend CV start/status polling and reviewer reconciliation.
-   The schema-v7 store and asynchronous locked/offline sidecar worker are complete
-   (57 Rust tests pass; one installed-FFmpeg smoke is ignored).
-   Production empty-project hydration is
-   complete: no implicit demo evidence, explicit fixture injection, actionable
-   empty regions, and real export readiness. Verification passed 157 frontend
-   tests and the production build; the Rust baseline remains 52 passing tests
-   with one installed-FFmpeg smoke ignored.
+1. Implement GDAL/PROJ or PostGIS ingestion for production GIS containers and
+   arbitrary CRS transformation. Local CV execution/reconciliation is complete:
+   verification passes 163 frontend tests, 57 Rust tests (one installed-FFmpeg
+   smoke ignored), four locked/offline Python tests, and the production build.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`

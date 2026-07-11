@@ -548,6 +548,7 @@ describe("workstation state", () => {
 function createSeed(projectId: ProjectId): WorkstationSeed {
   return {
     clips: initialClips,
+    cvFindings: [],
     componentSlots: missingSlots,
     incident: incidentDraft,
     jobs: initialJobs,

@@ -1,6 +1,6 @@
 # RoadWatcher Rewrite Handoff
 
-Last updated: 2026-07-10
+Last updated: 2026-07-11
 
 ## Current State
 
@@ -13,9 +13,10 @@ The runnable app today is the React/Vite evidence workstation:
 - Project identity is generated once as an opaque local ID, survives incident
   edits/save/export/import cycles, and is regenerated only when clearing into a
   new project.
-- Portable snapshots now emit schema version 2. A dedicated parser validates
+- Portable snapshots now emit schema version 3. A dedicated parser validates
   every persisted field and aggregate clip/media invariants, migrates version-1
-  snapshots with safe defaults, and returns structured recovery issues.
+  snapshots with safe defaults, migrates version-2 snapshots with empty CV
+  findings, and returns structured recovery issues.
 - Browser repository loads now report `loaded`, `missing`, `corrupt`,
   `unsupported`, or `unavailable`; startup keeps seeded state usable while
   showing the precise recovery condition. Schema-declaring project imports no
@@ -32,9 +33,9 @@ The runnable app today is the React/Vite evidence workstation:
   schema-version/project metadata plus foundational tables. Offline Rust tests
   pass. The `project_create` Tauri wrapper is registered and returns the exact
   `projectId`/`projectDirectory`/`sqlitePath` contract.
-- Native command metadata now distinguishes implemented `project_create` from
-  planned media/GPX/GIS/FFmpeg/CV commands. A successful probe records invoked
-  evidence; browser fallback behavior remains unchanged.
+- Native command metadata describes the implemented project, media, GPX, GIS,
+  FFmpeg, export, and CV commands. Successful calls record invoked evidence;
+  browser fallback behavior remains unchanged.
 - Added final RoadWatcher PNG/ICO app icon assets, removing Tauri's missing
   Windows resource blocker; generated Tauri schemas are ignored.
 - `src/features/workstation/workstationState.ts` now defines the pure atomic
@@ -153,10 +154,10 @@ The runnable app today is the React/Vite evidence workstation:
   planned `ffmpeg_proxy` bridge path with the explicit `review-proxy` profile,
   recording browser fallback attempts in readiness, saved drafts, and packet
   exports until native proxy/thumbnail jobs are wired.
-- Readiness-panel local CV scan probe that routes the selected media and
-  editable CV model slot through the planned `cv_scan` bridge path, recording
-  browser fallback attempts in readiness, saved drafts, and packet exports until
-  the Python sidecar and ONNX/labels paths are wired.
+- Readiness-panel local CV controls route selected media and separate model/label
+  paths through implemented `cv_scan`/`cv_job_status` commands. Findings are
+  reconciled into reviewer-editable rows, decisions persist through
+  `cv_finding_review`, and browser fallback attempts remain auditable.
 - Projected road-feature review rows with timing, confidence, and provenance.
 - Editable projected road-feature review status/notes, carried into snapshots
   and exported evidence packets.
@@ -501,7 +502,7 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   UI reconciliation are implemented with verified metadata rendering, browser
   fallback retention, success-only link hiding, and stale-result race guards.
   Schema v7 also persists identified CV scans/findings with atomic terminal
-  publication and interrupted-job recovery; process execution is not wired yet.
+  publication, interrupted-job recovery, and identity-guarded reviewer updates.
 - `sidecars/roadwatcher-cv/` - real bounded YOLO-style ONNX/video scanner with
   ONNX Runtime CPU, OpenCV headless, locked dependencies, and pipeline/CLI tests.
   Native durable execution is registered through `cv_scan`/`cv_job_status`.
@@ -517,10 +518,12 @@ an explicit test/demo dependency. Empty regions have actionable guidance,
 decorative route evidence is suppressed, blank plates use a placeholder rather
 than stored text, and packet export is disabled until media plus a clip exist.
 
-Final verification on 2026-07-11 passed 157 frontend tests across 24 files, the
-production Vite build, TypeScript project compilation, and `git diff --check`.
-The Rust baseline remains 52 passing tests with only the installed-FFmpeg smoke
-intentionally ignored; this frontend-only state boundary did not alter Rust.
+Final verification on 2026-07-11 passed 163 frontend tests across 25 files, the
+production Vite build, TypeScript project compilation, four locked/offline
+Python sidecar tests, and 57 Rust tests with only the installed-FFmpeg smoke
+intentionally ignored. Rust verification uses `C:\tmp\roadwatcher-target` to
+avoid a Rust 1.96 dependency-probe failure under the workspace path containing
+a space.
 The suite used a short-path temporary Cargo target to avoid the known Windows
 build-script problem with the workspace path's space.
 
@@ -538,10 +541,14 @@ without a shell, canonicalizes source/model/label identities, caps process outpu
 rejects mismatched aggregates, and records terminal blocked/failed states. Full
 Rust verification passes 57 tests with only the installed-FFmpeg smoke ignored.
 
-1. Add strict TypeScript CV start/status adapters and poll durable findings.
-2. Reconcile findings into explicit reviewer decisions and exports.
-3. Add GDAL/PostGIS import for production GIS containers and arbitrary CRSs.
-4. Implement the GPStitch integration boundary.
+1. Add GDAL/PROJ or PostGIS import for production GIS containers and arbitrary
+   CRSs while retaining source/projection identity guards.
+2. Implement the GPStitch integration boundary and its licensing/packaging
+   posture.
+3. Package/document FFmpeg, the CV sidecar environment, and user-supplied model
+   discovery for Windows distribution.
+4. Add real-model/video, live matcher, and installed-binary smoke coverage at
+   the end of the implementation cycle.
 
 ## Boundaries To Preserve
 

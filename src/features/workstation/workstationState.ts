@@ -8,7 +8,7 @@ import type {
 import { normalizeProjectedFeatureReview, projectFeaturesOntoRoute } from "../geo/projection";
 import { createGisProjectionJob } from "../geo/geoJsonImport";
 import { createValhallaMatchJob } from "../geo/gpxImport";
-import type { NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "../jobs/jobModel";
+import type { CvFindingReview, CvFindingReviewStatus, NativeCvScanResult, NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "../jobs/jobModel";
 import type { NativeRouteImport } from "../geo/nativeRouteRepository";
 import type { NativeGisProjectionResult } from "../jobs/jobModel";
 import type { NativeGisImport } from "../geo/nativeGisRepository";
@@ -35,6 +35,7 @@ import {
 
 export interface WorkstationSeed {
   clips: TimelineClip[];
+  cvFindings: CvFindingReview[];
   componentSlots: ComponentSlot[];
   incident: IncidentDraft;
   jobs: WorkstationJob[];
@@ -94,6 +95,9 @@ export type WorkstationAction =
     }
   | { type: "record_native_attempt"; attempt: NativeCommandAttempt }
   | { type: "record_native_export_attempt"; attempt: NativeCommandAttempt }
+  | { type: "start_cv_scan"; job: WorkstationJob; attempt: NativeCommandAttempt }
+  | { type: "reconcile_cv_scan"; result: NativeCvScanResult; attempt?: NativeCommandAttempt }
+  | { type: "review_cv_finding"; findingId: string; status: CvFindingReviewStatus; note: string }
   | { type: "reconcile_proxy_job"; result: NativeProxyJobResult; attempt?: NativeCommandAttempt }
   | { type: "import_native_route"; imported: NativeRouteImport; attempt: NativeCommandAttempt }
   | { type: "reconcile_route_job"; result: NativeRouteMatchResult; attempt?: NativeCommandAttempt }
@@ -246,6 +250,27 @@ export function workstationReducer(state: WorkstationState, action: WorkstationA
         ...state,
         nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
       };
+    case "start_cv_scan":
+      return withInvalidatedExport(state, {
+        jobs: [...state.jobs.filter((job) => job.id !== action.job.id), action.job],
+        nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+      });
+    case "reconcile_cv_scan":
+      return withInvalidatedExport(state, {
+        jobs: state.jobs.map((job) => job.id === action.result.jobId
+          ? { ...job, status: action.result.status, progress: action.result.progress, detail: action.result.detail }
+          : job),
+        cvFindings: action.result.status === "complete" ? structuredClone(action.result.findings) : state.cvFindings,
+        nativeCommandAttempts: action.attempt
+          ? [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+          : state.nativeCommandAttempts
+      });
+    case "review_cv_finding":
+      return withInvalidatedExport(state, {
+        cvFindings: state.cvFindings.map((finding) => finding.id === action.findingId
+          ? { ...finding, reviewStatus: action.status, reviewNote: action.note }
+          : finding)
+      });
     case "reconcile_proxy_job": {
       const result = action.result;
       const completedDuration = result.status === "complete" && result.durationSeconds > 0 ? result.durationSeconds : null;
@@ -430,6 +455,7 @@ function stateFromSnapshot(snapshot: ProjectSnapshot, fallbackComponentSlots: Co
   const cloned = structuredClone(snapshot);
   return {
     clips: cloned.clips,
+    cvFindings: cloned.cvFindings,
     componentSlots: cloned.componentSlots.length > 0 ? cloned.componentSlots : structuredClone(fallbackComponentSlots),
     incident: cloned.incident,
     jobs: cloned.jobs,

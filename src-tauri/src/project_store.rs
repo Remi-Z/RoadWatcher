@@ -293,6 +293,26 @@ pub struct CvScanStatus {
 }
 
 #[derive(Clone, Debug)]
+pub struct CvFindingReviewRequest {
+    pub sqlite_path: PathBuf,
+    pub project_id: String,
+    pub media_id: String,
+    pub scan_id: String,
+    pub finding_id: String,
+    pub review_status: String,
+    pub review_note: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CvFindingReviewResponse {
+    pub scan_id: String,
+    pub finding_id: String,
+    pub review_status: String,
+    pub review_note: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct ProxyJobRequest {
     pub sqlite_path: PathBuf,
     pub project_id: String,
@@ -936,9 +956,10 @@ pub fn update_gis_projection_progress(
             "invalid progress".to_string(),
         ));
     }
-    let connection = open_project_database(&request.sqlite_path)?;
+    let mut connection = open_project_database(&request.sqlite_path)?;
     verify_project_identity(&connection, &request.project_id)?;
-    let changed = connection.execute(
+    let transaction = connection.transaction()?;
+    let changed = transaction.execute(
         "UPDATE jobs SET progress = ?1, detail = ?2
          WHERE id = ?3 AND project_id = ?4 AND feature_source_id = ?5
            AND route_id = ?6 AND status = 'running'",
@@ -1795,6 +1816,58 @@ pub fn read_cv_scan_status(request: &CvScanRequest) -> Result<CvScanStatus, Proj
     Ok(status)
 }
 
+pub fn review_cv_finding(
+    request: &CvFindingReviewRequest,
+) -> Result<CvFindingReviewResponse, ProjectStoreError> {
+    if !matches!(
+        request.review_status.as_str(),
+        "needs_review" | "included" | "excluded"
+    ) || request.review_note.len() > 4_000
+    {
+        return Err(ProjectStoreError::InvalidCvScan(
+            "finding review status or note is invalid".to_string(),
+        ));
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let changed = transaction.execute(
+        "UPDATE cv_findings SET review_status = ?1, review_note = ?2
+         WHERE id = ?3 AND scan_id = ?4 AND project_id = ?5 AND media_id = ?6
+           AND EXISTS (SELECT 1 FROM cv_scans
+                       WHERE cv_scans.id = cv_findings.scan_id
+                         AND cv_scans.project_id = cv_findings.project_id
+                         AND cv_scans.media_id = cv_findings.media_id
+                         AND cv_scans.status = 'complete')",
+        params![
+            request.review_status,
+            request.review_note,
+            request.finding_id,
+            request.scan_id,
+            request.project_id,
+            request.media_id
+        ],
+    )?;
+    if changed != 1 {
+        return Err(ProjectStoreError::CvScanJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE cv_scans SET review_required = EXISTS(
+             SELECT 1 FROM cv_findings
+             WHERE cv_findings.scan_id = cv_scans.id
+               AND cv_findings.review_status = 'needs_review'
+         ) WHERE id = ?1 AND project_id = ?2 AND media_id = ?3",
+        params![request.scan_id, request.project_id, request.media_id],
+    )?;
+    transaction.commit()?;
+    Ok(CvFindingReviewResponse {
+        scan_id: request.scan_id.clone(),
+        finding_id: request.finding_id.clone(),
+        review_status: request.review_status.clone(),
+        review_note: request.review_note.clone(),
+    })
+}
+
 fn validate_cv_scan_request(request: &CvScanRequest) -> Result<(), ProjectStoreError> {
     for (label, path) in [
         ("ONNX model", &request.model_path),
@@ -2638,11 +2711,11 @@ mod tests {
         fail_proxy_job, fail_route_match_job, import_feature_source_at, import_media_at,
         import_route_at, load_project_snapshot, open_project_database, queue_cv_scan,
         read_cv_scan_status, read_proxy_job_status, read_route_match_status,
-        request_proxy_job_cancel, save_project_snapshot, update_proxy_progress,
-        update_route_match_progress, CvFinding, CvScanRequest, FeatureImportRequest,
-        MediaImportRequest, NormalizedOfficialFeature, ProjectCreateRequest, ProjectSaveRequest,
-        ProjectStoreError, ProxyCompletion, ProxyJobRequest, RouteImportRequest, RouteMatchRequest,
-        RoutePoint,
+        request_proxy_job_cancel, review_cv_finding, save_project_snapshot, update_proxy_progress,
+        update_route_match_progress, CvFinding, CvFindingReviewRequest, CvScanRequest,
+        FeatureImportRequest, MediaImportRequest, NormalizedOfficialFeature, ProjectCreateRequest,
+        ProjectSaveRequest, ProjectStoreError, ProxyCompletion, ProxyJobRequest,
+        RouteImportRequest, RouteMatchRequest, RoutePoint,
     };
     use rusqlite::{params, Connection};
     use std::collections::BTreeSet;
@@ -3814,6 +3887,44 @@ mod tests {
         assert_eq!(complete.finding_count, 2);
         assert!(complete.review_required);
         assert_eq!(complete.findings, findings);
+        let reviewed = review_cv_finding(&CvFindingReviewRequest {
+            sqlite_path: request.sqlite_path.clone(),
+            project_id: request.project_id.clone(),
+            media_id: request.media_id.clone(),
+            scan_id: request.scan_id.clone(),
+            finding_id: "finding-1".to_string(),
+            review_status: "included".to_string(),
+            review_note: "Confirmed by reviewer.".to_string(),
+        })
+        .unwrap();
+        assert_eq!(reviewed.review_status, "included");
+        let persisted = read_cv_scan_status(&request).unwrap();
+        assert_eq!(persisted.findings[0].review_status, "included");
+        assert_eq!(persisted.findings[0].review_note, "Confirmed by reviewer.");
+        assert!(persisted.review_required);
+        review_cv_finding(&CvFindingReviewRequest {
+            sqlite_path: request.sqlite_path.clone(),
+            project_id: request.project_id.clone(),
+            media_id: request.media_id.clone(),
+            scan_id: request.scan_id.clone(),
+            finding_id: "finding-2".to_string(),
+            review_status: "excluded".to_string(),
+            review_note: String::new(),
+        })
+        .unwrap();
+        assert!(!read_cv_scan_status(&request).unwrap().review_required);
+        assert!(matches!(
+            review_cv_finding(&CvFindingReviewRequest {
+                sqlite_path: request.sqlite_path.clone(),
+                project_id: request.project_id.clone(),
+                media_id: request.media_id.clone(),
+                scan_id: request.scan_id.clone(),
+                finding_id: "finding-1".to_string(),
+                review_status: "accepted".to_string(),
+                review_note: String::new(),
+            }),
+            Err(ProjectStoreError::InvalidCvScan(_))
+        ));
         assert!(matches!(
             fail_cv_scan(&request, "failed", "late failure"),
             Err(ProjectStoreError::CvScanJobNotFound)

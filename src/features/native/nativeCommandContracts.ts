@@ -13,7 +13,9 @@ export type NativeCommandName =
   | "job_status"
   | "job_cancel"
   | "native_export"
-  | "cv_scan";
+  | "cv_scan"
+  | "cv_job_status"
+  | "cv_finding_review";
 export type NativeCommandImplementation = "implemented" | "planned";
 
 export interface NativeCommandContract {
@@ -238,11 +240,33 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "cv-scan",
     label: "Local CV scan",
     command: "cv_scan",
-    implementation: "planned",
+    implementation: "implemented",
     readinessRequired: false,
-    requestFields: ["projectId", "mediaId", "modelPath", "labelsPath"],
-    responseFields: ["jobId", "findingCount", "reviewRequired"],
+    requestFields: ["sqlitePath", "projectId", "mediaId", "modelPath", "labelsPath", "uvExecutable", "sidecarDirectory", "confidenceThreshold", "sampleIntervalSeconds", "maxFindings"],
+    responseFields: ["scanId", "jobId", "status", "findingCount", "reviewRequired"],
     fallback: "editable reviewer notes only",
     ownerAction: "Launch the Python sidecar with configured ONNX model and labels."
+  },
+  {
+    id: "cv-job-status",
+    label: "Local CV scan status",
+    command: "cv_job_status",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["sqlitePath", "projectId", "mediaId", "scanId", "jobId"],
+    responseFields: ["scanId", "jobId", "mediaId", "status", "progress", "detail", "engine", "modelPath", "labelsPath", "findingCount", "reviewRequired", "findings"],
+    fallback: "editable reviewer notes only",
+    ownerAction: "Poll durable local CV progress and reviewer-required findings."
+  },
+  {
+    id: "cv-finding-review",
+    label: "Local CV finding review",
+    command: "cv_finding_review",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["sqlitePath", "projectId", "mediaId", "scanId", "findingId", "reviewStatus", "reviewNote"],
+    responseFields: ["scanId", "findingId", "reviewStatus", "reviewNote"],
+    fallback: "portable snapshot reviewer decisions",
+    ownerAction: "Persist reviewer decisions for local CV suggestions in the active SQLite project."
   }
 ];

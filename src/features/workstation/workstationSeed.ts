@@ -21,6 +21,7 @@ export function createEmptyWorkstationSeed(
 ): WorkstationSeed {
   return {
     clips: [],
+    cvFindings: [],
     componentSlots: componentSlots.map((slot) => ({ ...slot })),
     incident: { ...emptyIncidentDraft },
     jobs: [],

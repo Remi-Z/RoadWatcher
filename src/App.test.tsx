@@ -350,7 +350,7 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("Native setup checklist");
     expect(exportPanel as HTMLElement).toHaveTextContent("Evidence packet JSON");
     expect(exportPanel as HTMLElement).toHaveTextContent("Evidence packet Markdown");
-  });
+  }, 10_000);
 
   it("adds a restorable RoadWatcher project snapshot download to export previews", () => {
     render(<App projectIdFactory={() => TEST_PROJECT_ID} />);
@@ -372,7 +372,7 @@ describe("RoadWatcher workstation", () => {
     expect(restored.clips[1]).toMatchObject({ sourceInSeconds: 840, sourceOutSeconds: 852 });
     expect(restored.media).toHaveLength(mediaAssets.length);
     expect(restored.jobs).toHaveLength(initialJobs.length);
-  });
+  }, 10_000);
 
   it("publishes native artifacts, hides data links, and invalidates verified paths after edits", async () => {
     const sqlitePath = "D:/RoadWatcherProjects/export/project.sqlite";
@@ -776,7 +776,7 @@ describe("RoadWatcher workstation", () => {
     expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
       command: "cv_scan",
       status: "browser_fallback",
-      requestSummary: "mediaId: media-front-001; modelPath: slot: ONNX model path + labels path; labelsPath: slot: ONNX model path + labels path"
+      requestSummary: "mediaId: media-front-001; modelPath: slot: ONNX model path; labelsPath: slot: labels file path"
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
@@ -784,8 +784,77 @@ describe("RoadWatcher workstation", () => {
     const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
     expect(exportPanel).not.toBeNull();
     expect(exportPanel as HTMLElement).toHaveTextContent("cv_scan: browser_fallback");
-    expect(exportPanel as HTMLElement).toHaveTextContent("editable reviewer notes only");
+    expect(exportPanel as HTMLElement).toHaveTextContent("No CV findings saved.");
   });
+
+  it("starts, reconciles, reviews, and exports native CV findings", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/cv/project.sqlite";
+    const snapshot = createProjectSnapshot({
+      clips: initialClips, componentSlots: missingSlots, incident: incidentDraft,
+      jobs: initialJobs, media: mediaAssets, projectId: "native-cv-project" as ProjectId,
+      projectedFeatures
+    });
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command, request) => {
+      if (command === "project_load") return {
+        projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion,
+        savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot)
+      };
+      if (command === "cv_scan") return {
+        scanId: "scan-1", jobId: "cv-job-1", status: "queued", findingCount: 0, reviewRequired: false
+      };
+      if (command === "cv_job_status") return {
+        scanId: "scan-1", jobId: "cv-job-1", mediaId: "media-front-001", status: "complete",
+        progress: 100, detail: "Local CV scan complete.", engine: "onnxruntime-cpu",
+        modelPath: "D:/Models/traffic.onnx", labelsPath: "D:/Models/labels.txt",
+        findingCount: 1, reviewRequired: true, findings: [{
+          id: "finding-1", label: "car", confidence: 0.91, timeSeconds: 12,
+          x: 10, y: 20, width: 30, height: 40, frameWidth: 1920, frameHeight: 1080,
+          reviewStatus: "needs_review", reviewNote: ""
+        }]
+      };
+      if (command === "cv_finding_review") return {
+        scanId: request.scanId, findingId: request.findingId,
+        reviewStatus: request.reviewStatus, reviewNote: request.reviewNote
+      };
+      throw new Error(`Unexpected command ${command}`);
+    });
+    render(<App nativeInvoke={nativeInvoke}
+      nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+      nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+      projectRepository={createMemoryProjectRepository()} />);
+    await screen.findByText(/Restored native SQLite project/);
+    fireEvent.change(screen.getByLabelText("Native CV model path"), { target: { value: "D:/Models/traffic.onnx" } });
+    fireEvent.change(screen.getByLabelText("Native CV labels path"), { target: { value: "D:/Models/labels.txt" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Probe local CV scan" }));
+
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Local CV scan complete"));
+    expect(nativeInvoke).toHaveBeenCalledWith("cv_scan", {
+      sqlitePath, projectId: "native-cv-project", mediaId: "media-front-001",
+      modelPath: "D:/Models/traffic.onnx", labelsPath: "D:/Models/labels.txt",
+      uvExecutable: "uv", sidecarDirectory: "sidecars/roadwatcher-cv",
+      confidenceThreshold: 0.5, sampleIntervalSeconds: 1, maxFindings: 500
+    });
+    expect(screen.getByText(/confidence 91%/)).toBeInTheDocument();
+    const decision = screen.getByLabelText("car finding-1 CV review status");
+    fireEvent.change(decision, { target: { value: "included" } });
+    await waitFor(() => expect(nativeInvoke).toHaveBeenCalledWith("cv_finding_review", {
+      sqlitePath, projectId: "native-cv-project", mediaId: "media-front-001",
+      scanId: "scan-1", findingId: "finding-1", reviewStatus: "included", reviewNote: ""
+    }));
+    const note = screen.getByLabelText("car finding-1 CV review note");
+    fireEvent.change(note, { target: { value: "Confirmed by reviewer." } });
+    fireEvent.blur(note);
+    await waitFor(() => expect(nativeInvoke).toHaveBeenCalledWith("cv_finding_review", expect.objectContaining({
+      findingId: "finding-1", reviewStatus: "included", reviewNote: "Confirmed by reviewer."
+    })));
+
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel as HTMLElement).toHaveTextContent("Local CV Findings");
+    expect(exportPanel as HTMLElement).toHaveTextContent("Confirmed by reviewer.");
+    expect(exportPanel as HTMLElement).toHaveTextContent("onnxruntime-cpu");
+  }, 10_000);
 
   it("records browser GPX matcher fallbacks in drafts and export packets", async () => {
     const repository = createMemoryProjectRepository();

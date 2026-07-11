@@ -50,7 +50,8 @@ import {
   type ProjectedRoadFeature,
   type TimedRoutePoint
 } from "./features/geo/projection";
-import type { NativeGisProjectionResult, NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "./features/jobs/jobModel";
+import type { CvFindingReview, CvFindingReviewStatus, NativeGisProjectionResult, NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "./features/jobs/jobModel";
+import { createNativeCvRepository } from "./features/jobs/nativeCvRepository";
 import { createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
 import {
   createBrowserProjectRepository,
@@ -111,6 +112,9 @@ const NATIVE_MEDIA_SOURCE_PATH_SLOT = "slot: native media source path from file 
 const NATIVE_GPX_PATH_SLOT = "slot: persisted GPX path from native import";
 const NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT = "slot: official GIS source path from native import";
 const REVIEW_PROXY_PROFILE = "review-proxy";
+const NATIVE_CV_MODEL_PATH_SLOT = "slot: ONNX model path";
+const NATIVE_CV_LABELS_PATH_SLOT = "slot: labels file path";
+const NATIVE_CV_SIDECAR_DIRECTORY = "sidecars/roadwatcher-cv";
 
 export function App({
   nativeInvoke,
@@ -139,6 +143,7 @@ export function App({
   );
   const {
     clips,
+    cvFindings,
     componentSlots,
     incident: draft,
     jobs,
@@ -160,9 +165,12 @@ export function App({
   const [nativeGpxSourcePath, setNativeGpxSourcePath] = useState(NATIVE_GPX_PATH_SLOT);
   const [nativeGisSourcePath, setNativeGisSourcePath] = useState(NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT);
   const [nativeGisSourceCrs, setNativeGisSourceCrs] = useState<"EPSG:4326" | "EPSG:3857">("EPSG:4326");
+  const [nativeCvModelPath, setNativeCvModelPath] = useState(NATIVE_CV_MODEL_PATH_SLOT);
+  const [nativeCvLabelsPath, setNativeCvLabelsPath] = useState(NATIVE_CV_LABELS_PATH_SLOT);
   const [activeProxyJob, setActiveProxyJob] = useState<{ jobId: string; mediaId: string } | null>(null);
   const [activeRouteJob, setActiveRouteJob] = useState<{ jobId: string; routeId: string } | null>(null);
   const [activeGisJob, setActiveGisJob] = useState<{ jobId: string; featureSourceId: string } | null>(null);
+  const [activeCvJob, setActiveCvJob] = useState<{ scanId: string; jobId: string; mediaId: string } | null>(null);
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
   const [latestNativeExport, setLatestNativeExport] = useState<NativeExportSuccess | null>(null);
   const exportGenerationRef = useRef(0);
@@ -219,6 +227,7 @@ export function App({
   });
   const currentSnapshotInput = {
     clips,
+    cvFindings,
     componentSlots,
     incident: draft,
     jobs,
@@ -466,6 +475,41 @@ export function App({
     };
   }, [activeGisJob, activeNativeSqlitePath, nativeCommandBridge, projectId]);
 
+  useEffect(() => {
+    if (!activeCvJob || !activeNativeSqlitePath) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const repository = createNativeCvRepository(nativeCommandBridge, {
+      sqlitePath: activeNativeSqlitePath,
+      projectId,
+      mediaId: activeCvJob.mediaId,
+      modelPath: nativeCvModelPath,
+      labelsPath: nativeCvLabelsPath,
+      uvExecutable: "uv",
+      sidecarDirectory: NATIVE_CV_SIDECAR_DIRECTORY
+    });
+    const poll = async () => {
+      const response = await repository.status(activeCvJob.scanId, activeCvJob.jobId);
+      if (!active) return;
+      if (response.status !== "loaded") {
+        setActiveCvJob(null);
+        setAppStatus(`CV status unavailable: ${response.message}`);
+        return;
+      }
+      dispatchWorkstation({ type: "reconcile_cv_scan", result: response.result });
+      if (["complete", "failed", "blocked", "cancelled"].includes(response.result.status)) {
+        setActiveCvJob(null);
+        setAppStatus(response.result.status === "complete"
+          ? `Local CV scan complete: ${response.result.findingCount} findings require review.`
+          : `Local CV scan ${response.result.status}: ${response.result.detail}`);
+        return;
+      }
+      timer = setTimeout(() => void poll(), 1_000);
+    };
+    void poll();
+    return () => { active = false; if (timer) clearTimeout(timer); };
+  }, [activeCvJob, activeNativeSqlitePath, nativeCommandBridge, nativeCvLabelsPath, nativeCvModelPath, projectId]);
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) {
@@ -676,6 +720,7 @@ export function App({
     setActiveProxyJob(null);
     setActiveRouteJob(null);
     setActiveGisJob(null);
+    setActiveCvJob(null);
     nativeHydrationPathRef.current = null;
     dispatchWorkstation({ type: "reset_project", seed: workstationSeedFactory(projectIdFactory()) });
     setAppStatus(
@@ -740,6 +785,7 @@ export function App({
       setActiveProxyJob(null);
       setActiveRouteJob(null);
       setActiveGisJob(null);
+      setActiveCvJob(null);
       dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: defaultComponentSlots });
       dispatchWorkstation({ type: "record_native_attempt", attempt: saveAttempt });
       projectRepository.save(snapshot);
@@ -817,33 +863,66 @@ export function App({
   async function handleProbeCvScan() {
     const requestedAtIso = new Date().toISOString();
     const mediaId = selectedClip?.mediaId ?? primaryMedia?.id ?? "slot: media id";
-    const cvSlotReference = componentSlots.find((slot) => slot.id === "cv-model")?.reference ?? "slot: ONNX model path + labels path";
-    const result = await nativeCommandBridge.invoke("cv_scan", {
-      projectId: createProjectSnapshot(currentSnapshotInput).projectId,
-      mediaId,
-      modelPath: cvSlotReference,
-      labelsPath: cvSlotReference
-    });
-    const attempt: NativeCommandAttempt = {
-      id: `cv-scan-${Date.now().toString(36)}`,
-      command: result.command,
-      status: result.status,
-      requestedAtIso,
-      requestSummary: `mediaId: ${mediaId}; modelPath: ${cvSlotReference}; labelsPath: ${cvSlotReference}`,
-      resultSummary: result.ok
-        ? `jobId: ${cvJobId(result.response)}; findings: ${cvFindingCount(result.response)}; reviewRequired: ${cvReviewRequired(result.response)}`
-        : `${result.status}; fallback: ${result.fallback}`
-    };
-
-    dispatchWorkstation({ type: "record_native_attempt", attempt });
-    invalidateLatestExport();
-
-    if (result.ok) {
-      setAppStatus(`Local CV scan queued: ${cvJobId(result.response)}`);
+    if (nativeCommandBridge.status === "ready" && (!activeNativeSqlitePath || !primaryMedia)) {
+      setAppStatus("Local CV scan requires an active SQLite project with imported media.");
       return;
     }
+    const config = {
+      sqlitePath: activeNativeSqlitePath ?? "slot: active project SQLite path",
+      projectId: createProjectSnapshot(currentSnapshotInput).projectId,
+      mediaId,
+      modelPath: nativeCvModelPath,
+      labelsPath: nativeCvLabelsPath,
+      uvExecutable: "uv",
+      sidecarDirectory: NATIVE_CV_SIDECAR_DIRECTORY
+    };
+    const result = await createNativeCvRepository(nativeCommandBridge, config).start();
+    const attempt: NativeCommandAttempt = {
+      id: `cv-scan-${Date.now().toString(36)}`,
+      command: "cv_scan",
+      status: result.status === "started" ? "invoked" : result.commandStatus,
+      requestedAtIso,
+      requestSummary: `mediaId: ${mediaId}; modelPath: ${nativeCvModelPath}; labelsPath: ${nativeCvLabelsPath}`,
+      resultSummary: result.status === "started"
+        ? `scanId: ${result.scanId}; jobId: ${result.jobId}; findings: ${result.findingCount}; reviewRequired: ${result.reviewRequired}`
+        : result.message
+    };
+    if (result.status === "started") {
+      dispatchWorkstation({ type: "start_cv_scan", job: {
+        id: result.jobId, mediaId, type: "cv", label: "Local CV scan", status: "queued",
+        progress: 0, detail: "CV scan queued for local ONNX inference."
+      }, attempt });
+      setActiveCvJob({ scanId: result.scanId, jobId: result.jobId, mediaId });
+      setAppStatus(`Local CV scan queued: ${result.jobId}`);
+      return;
+    }
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
+    invalidateLatestExport();
+    setAppStatus(`cv_scan ${result.commandStatus}: ${result.message}`);
+  }
 
-    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
+  async function handleCvFindingReview(
+    findingId: string,
+    status: CvFindingReviewStatus,
+    note: string,
+    persist: boolean
+  ) {
+    dispatchWorkstation({ type: "review_cv_finding", findingId, status, note });
+    if (!persist || nativeCommandBridge.status !== "ready" || !activeNativeSqlitePath) return;
+    const finding = cvFindings.find((candidate) => candidate.id === findingId);
+    if (!finding) return;
+    const result = await createNativeCvRepository(nativeCommandBridge, {
+      sqlitePath: activeNativeSqlitePath,
+      projectId,
+      mediaId: finding.mediaId,
+      modelPath: finding.modelPath,
+      labelsPath: finding.labelsPath,
+      uvExecutable: "uv",
+      sidecarDirectory: NATIVE_CV_SIDECAR_DIRECTORY
+    }).review({ id: finding.id, scanId: finding.scanId, reviewStatus: status, reviewNote: note });
+    setAppStatus(result.status === "saved"
+      ? `Saved ${finding.label} reviewer decision to the native project.`
+      : `cv_finding_review ${result.commandStatus}: ${result.message}`);
   }
 
   async function handleProbeGpxMatch() {
@@ -1219,6 +1298,7 @@ export function App({
     setActiveProxyJob(null);
     setActiveRouteJob(null);
     setActiveGisJob(null);
+    setActiveCvJob(null);
     dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: defaultComponentSlots });
   }
 
@@ -1377,12 +1457,16 @@ export function App({
           />
           <ReviewReadinessPanel
             nativeCommandAttempts={nativeCommandAttempts}
+            nativeCvModelPath={nativeCvModelPath}
+            nativeCvLabelsPath={nativeCvLabelsPath}
             nativeMediaSourcePath={nativeMediaSourcePath}
             nativeGpxSourcePath={nativeGpxSourcePath}
             nativeGisSourcePath={nativeGisSourcePath}
             nativeGisSourceCrs={nativeGisSourceCrs}
             nativeProjectRoot={nativeProjectRoot}
             onNativeMediaSourcePathChange={setNativeMediaSourcePath}
+            onNativeCvModelPathChange={setNativeCvModelPath}
+            onNativeCvLabelsPathChange={setNativeCvLabelsPath}
             onNativeGpxSourcePathChange={setNativeGpxSourcePath}
             onNativeGisSourcePathChange={setNativeGisSourcePath}
             onNativeGisSourceCrsChange={setNativeGisSourceCrs}
@@ -1424,6 +1508,13 @@ export function App({
               </article>
             ))}
           </div>
+        </section>
+
+        <section className="panel">
+          <PanelHeader icon={<CircleDot size={18} />} title="Local CV findings" meta="Suggestions require reviewer decisions" />
+          <CvFindingList findings={cvFindings}
+            onReview={(findingId, status, note) => void handleCvFindingReview(findingId, status, note, false)}
+            onPersist={(findingId, status, note) => void handleCvFindingReview(findingId, status, note, true)} />
         </section>
 
         <section className="panel">
@@ -1527,12 +1618,16 @@ function buildGeneratedArtifactManifest({
 
 function ReviewReadinessPanel({
   nativeCommandAttempts,
+  nativeCvModelPath,
+  nativeCvLabelsPath,
   nativeGisSourceCrs,
   nativeGisSourcePath,
   nativeGpxSourcePath,
   nativeMediaSourcePath,
   nativeProjectRoot,
   onNativeGisImport,
+  onNativeCvModelPathChange,
+  onNativeCvLabelsPathChange,
   onNativeGisSelect,
   onNativeGisSourceCrsChange,
   onNativeGisSourcePathChange,
@@ -1551,12 +1646,16 @@ function ReviewReadinessPanel({
   readiness
 }: {
   nativeCommandAttempts: NativeCommandAttempt[];
+  nativeCvModelPath: string;
+  nativeCvLabelsPath: string;
   nativeGisSourceCrs: "EPSG:4326" | "EPSG:3857";
   nativeGisSourcePath: string;
   nativeGpxSourcePath: string;
   nativeMediaSourcePath: string;
   nativeProjectRoot: string;
   onNativeGisImport: () => void;
+  onNativeCvModelPathChange: (value: string) => void;
+  onNativeCvLabelsPathChange: (value: string) => void;
   onNativeGisSelect: () => void;
   onNativeGisSourceCrsChange: (value: "EPSG:4326" | "EPSG:3857") => void;
   onNativeGisSourcePathChange: (value: string) => void;
@@ -1696,6 +1795,14 @@ function ReviewReadinessPanel({
           <FileVideo size={15} />
           Start native proxy
         </button>
+        <label className="native-root-field">
+          <span>Native CV model path</span>
+          <input aria-label="Native CV model path" value={nativeCvModelPath} onChange={(event) => onNativeCvModelPathChange(event.target.value)} />
+        </label>
+        <label className="native-root-field">
+          <span>Native CV labels path</span>
+          <input aria-label="Native CV labels path" value={nativeCvLabelsPath} onChange={(event) => onNativeCvLabelsPathChange(event.target.value)} />
+        </label>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeCvScan}>
           <Gauge size={15} />
           Probe local CV scan
@@ -2197,6 +2304,41 @@ function ProjectedFeatureList({
       })}
     </div>
   );
+}
+
+function CvFindingList({ findings, onReview, onPersist }: {
+  findings: CvFindingReview[];
+  onReview: (findingId: string, status: CvFindingReviewStatus, note: string) => void;
+  onPersist: (findingId: string, status: CvFindingReviewStatus, note: string) => void;
+}) {
+  if (findings.length === 0) {
+    return <p className="empty-state">No local CV findings. Configure a model and scan imported media.</p>;
+  }
+  return <div className="feature-review-list" aria-label="CV finding reviews">
+    {findings.map((finding) => <article className="feature-review-row" key={finding.id}>
+      <div>
+        <strong>{finding.label}</strong>
+        <span>{finding.timeSeconds.toFixed(1)}s · confidence {Math.round(finding.confidence * 100)}%</span>
+        <small>{finding.engine} · {finding.modelPath}</small>
+        <small>Box {Math.round(finding.x)},{Math.round(finding.y)} {Math.round(finding.width)}×{Math.round(finding.height)} / {finding.frameWidth}×{finding.frameHeight}</small>
+      </div>
+      <label>
+        <span>Decision</span>
+        <select aria-label={`${finding.label} ${finding.id} CV review status`} value={finding.reviewStatus}
+          onChange={(event) => onPersist(finding.id, event.target.value as CvFindingReviewStatus, finding.reviewNote)}>
+          <option value="needs_review">needs review</option>
+          <option value="included">included</option>
+          <option value="excluded">excluded</option>
+        </select>
+      </label>
+      <label>
+        <span>Review note</span>
+        <input aria-label={`${finding.label} ${finding.id} CV review note`} value={finding.reviewNote}
+          onChange={(event) => onReview(finding.id, finding.reviewStatus, event.target.value)}
+          onBlur={(event) => onPersist(finding.id, finding.reviewStatus, event.target.value)} />
+      </label>
+    </article>)}
+  </div>;
 }
 
 function formatFeatureKind(kind: string): string {

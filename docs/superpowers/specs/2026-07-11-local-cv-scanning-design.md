@@ -35,6 +35,7 @@ automatically. Export includes source/model provenance and reviewer decisions.
 
 ## Delivery Slices
 
-1. Real sidecar inference contract and pure pipeline tests.
-2. Schema-v7 durable job execution and Rust tests.
-3. Frontend polling, reviewer reconciliation, full verification, and handoff.
+1. Real sidecar inference contract and pure pipeline tests — complete.
+2. Schema-v7 durable job execution and Rust tests — complete.
+3. Frontend polling, reviewer reconciliation, SQLite decision persistence,
+   snapshot schema v3, full verification, and handoff — complete.
