@@ -98,6 +98,31 @@ pub struct RouteImportResponse {
 }
 
 #[derive(Clone, Debug)]
+pub struct RouteMatchRequest {
+    pub sqlite_path: PathBuf,
+    pub project_id: String,
+    pub route_id: String,
+    pub job_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClaimedRouteMatch {
+    pub raw_route: Vec<RoutePoint>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteMatchStatus {
+    pub job_id: String,
+    pub route_id: String,
+    pub status: String,
+    pub progress: f64,
+    pub detail: String,
+    pub matcher_used: String,
+    pub route: Vec<RoutePoint>,
+}
+
+#[derive(Clone, Debug)]
 pub struct ProxyJobRequest {
     pub sqlite_path: PathBuf,
     pub project_id: String,
@@ -179,6 +204,10 @@ pub enum ProjectStoreError {
     InvalidRouteSource(String),
     #[error("GPX route points are invalid: {0}")]
     InvalidRoutePoints(String),
+    #[error("Route match job was not found for the supplied project/route identity.")]
+    RouteMatchJobNotFound,
+    #[error("Route match job cannot be claimed from status {0}.")]
+    InvalidRouteMatchState(String),
     #[error("Unsupported proxy profile: {0}")]
     InvalidProxyProfile(String),
     #[error("Proxy job was not found for the supplied project/media identity.")]
@@ -453,6 +482,230 @@ fn validate_route_points(points: &[RoutePoint]) -> Result<(), ProjectStoreError>
         previous_time = point.time_seconds;
     }
     Ok(())
+}
+
+pub fn claim_route_match_job(
+    request: &RouteMatchRequest,
+) -> Result<ClaimedRouteMatch, ProjectStoreError> {
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let status = transaction
+        .query_row(
+            "SELECT status FROM jobs
+             WHERE id = ?1 AND project_id = ?2 AND route_id = ?3
+               AND job_type IN ('valhalla', 'osrm')",
+            params![request.job_id, request.project_id, request.route_id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::RouteMatchJobNotFound,
+            other => ProjectStoreError::Sqlite(other),
+        })?;
+    if status != "queued" {
+        return Err(ProjectStoreError::InvalidRouteMatchState(status));
+    }
+    let changed = transaction.execute(
+        "UPDATE jobs SET status = 'running', progress = 1, detail = 'Preparing route match.'
+         WHERE id = ?1 AND project_id = ?2 AND route_id = ?3 AND status = 'queued'",
+        params![request.job_id, request.project_id, request.route_id],
+    )?;
+    if changed != 1 {
+        return Err(ProjectStoreError::RouteMatchJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE route_assets SET match_status = 'running'
+         WHERE id = ?1 AND project_id = ?2",
+        params![request.route_id, request.project_id],
+    )?;
+    let raw_route = read_route_points(&transaction, &request.route_id, "raw")?;
+    if raw_route.len() < 2 {
+        return Err(ProjectStoreError::InvalidRoutePoints(
+            "persisted raw route has fewer than two points".to_string(),
+        ));
+    }
+    transaction.commit()?;
+    Ok(ClaimedRouteMatch { raw_route })
+}
+
+pub fn update_route_match_progress(
+    request: &RouteMatchRequest,
+    progress: f64,
+    detail: &str,
+) -> Result<(), ProjectStoreError> {
+    if !progress.is_finite() || !(1.0..100.0).contains(&progress) {
+        return Err(ProjectStoreError::InvalidRouteMatchState(
+            "invalid progress".to_string(),
+        ));
+    }
+    let connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let changed = connection.execute(
+        "UPDATE jobs SET progress = ?1, detail = ?2
+         WHERE id = ?3 AND project_id = ?4 AND route_id = ?5 AND status = 'running'",
+        params![
+            progress,
+            detail,
+            request.job_id,
+            request.project_id,
+            request.route_id
+        ],
+    )?;
+    if changed == 1 {
+        Ok(())
+    } else {
+        Err(ProjectStoreError::RouteMatchJobNotFound)
+    }
+}
+
+pub fn complete_route_match_job(
+    request: &RouteMatchRequest,
+    matcher_used: &str,
+    matched_route: &[RoutePoint],
+) -> Result<(), ProjectStoreError> {
+    validate_route_points(matched_route)?;
+    if !matches!(matcher_used, "Valhalla" | "OSRM") {
+        return Err(ProjectStoreError::InvalidRouteMatchState(
+            "unsupported matcher completion".to_string(),
+        ));
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let running: i64 = transaction.query_row(
+        "SELECT COUNT(*) FROM jobs WHERE id = ?1 AND project_id = ?2 AND route_id = ?3 AND status = 'running'",
+        params![request.job_id, request.project_id, request.route_id],
+        |row| row.get(0),
+    )?;
+    if running != 1 {
+        return Err(ProjectStoreError::RouteMatchJobNotFound);
+    }
+    transaction.execute(
+        "DELETE FROM route_points WHERE route_id = ?1 AND point_set = 'matched'",
+        [&request.route_id],
+    )?;
+    {
+        let mut statement = transaction.prepare(
+            "INSERT INTO route_points
+             (project_id, route_id, point_set, sequence, latitude, longitude, time_seconds)
+             VALUES (?1, ?2, 'matched', ?3, ?4, ?5, ?6)",
+        )?;
+        for (sequence, point) in matched_route.iter().enumerate() {
+            statement.execute(params![
+                request.project_id,
+                request.route_id,
+                sequence as i64,
+                point.latitude,
+                point.longitude,
+                point.time_seconds
+            ])?;
+        }
+    }
+    transaction.execute(
+        "UPDATE route_assets SET match_status = 'complete', matcher_used = ?1
+         WHERE id = ?2 AND project_id = ?3",
+        params![matcher_used, request.route_id, request.project_id],
+    )?;
+    transaction.execute(
+        "UPDATE jobs SET status = 'complete', progress = 100, detail = ?1
+         WHERE id = ?2 AND project_id = ?3 AND route_id = ?4 AND status = 'running'",
+        params![
+            format!("Route matched with {matcher_used}."),
+            request.job_id,
+            request.project_id,
+            request.route_id
+        ],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn fail_route_match_job(
+    request: &RouteMatchRequest,
+    status: &str,
+    detail: &str,
+) -> Result<(), ProjectStoreError> {
+    if !matches!(status, "failed" | "blocked" | "cancelled") {
+        return Err(ProjectStoreError::InvalidRouteMatchState(
+            status.to_string(),
+        ));
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let changed = transaction.execute(
+        "UPDATE jobs SET status = ?1, detail = ?2
+         WHERE id = ?3 AND project_id = ?4 AND route_id = ?5 AND status IN ('queued', 'running')",
+        params![
+            status,
+            detail,
+            request.job_id,
+            request.project_id,
+            request.route_id
+        ],
+    )?;
+    if changed != 1 {
+        return Err(ProjectStoreError::RouteMatchJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE route_assets SET match_status = ?1 WHERE id = ?2 AND project_id = ?3",
+        params![status, request.route_id, request.project_id],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn read_route_match_status(
+    sqlite_path: &Path,
+    project_id_value: &str,
+    route_id: &str,
+    job_id: &str,
+) -> Result<RouteMatchStatus, ProjectStoreError> {
+    let connection = open_project_database(sqlite_path)?;
+    verify_project_identity(&connection, project_id_value)?;
+    let (status, progress, detail, matcher_used) = connection
+        .query_row(
+            "SELECT jobs.status, jobs.progress, jobs.detail, route_assets.matcher_used
+             FROM jobs JOIN route_assets ON route_assets.id = jobs.route_id
+             WHERE jobs.id = ?1 AND jobs.project_id = ?2 AND jobs.route_id = ?3",
+            params![job_id, project_id_value, route_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::RouteMatchJobNotFound,
+            other => ProjectStoreError::Sqlite(other),
+        })?;
+    let route = read_route_points(&connection, route_id, "matched")?;
+    Ok(RouteMatchStatus {
+        job_id: job_id.to_string(),
+        route_id: route_id.to_string(),
+        status,
+        progress,
+        detail,
+        matcher_used,
+        route,
+    })
+}
+
+fn read_route_points(
+    connection: &Connection,
+    route_id: &str,
+    point_set: &str,
+) -> Result<Vec<RoutePoint>, ProjectStoreError> {
+    let mut statement = connection.prepare(
+        "SELECT latitude, longitude, time_seconds FROM route_points
+         WHERE route_id = ?1 AND point_set = ?2 ORDER BY sequence",
+    )?;
+    let points = statement
+        .query_map(params![route_id, point_set], |row| {
+            Ok(RoutePoint {
+                latitude: row.get(0)?,
+                longitude: row.get(1)?,
+                time_seconds: row.get(2)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(points)
 }
 
 pub fn import_media_at(
@@ -1049,11 +1302,13 @@ WHERE id IN (SELECT route_id FROM jobs WHERE job_type IN ('valhalla', 'osrm') AN
 #[cfg(test)]
 mod tests {
     use super::{
-        claim_proxy_job, complete_proxy_job, create_project_at, fail_proxy_job, import_media_at,
-        import_route_at, load_project_snapshot, open_project_database, read_proxy_job_status,
-        request_proxy_job_cancel, save_project_snapshot, update_proxy_progress, MediaImportRequest,
+        claim_proxy_job, claim_route_match_job, complete_proxy_job, complete_route_match_job,
+        create_project_at, fail_proxy_job, fail_route_match_job, import_media_at, import_route_at,
+        load_project_snapshot, open_project_database, read_proxy_job_status,
+        read_route_match_status, request_proxy_job_cancel, save_project_snapshot,
+        update_proxy_progress, update_route_match_progress, MediaImportRequest,
         ProjectCreateRequest, ProjectSaveRequest, ProjectStoreError, ProxyCompletion,
-        ProxyJobRequest, RouteImportRequest, RoutePoint,
+        ProxyJobRequest, RouteImportRequest, RouteMatchRequest, RoutePoint,
     };
     use rusqlite::Connection;
     use std::collections::BTreeSet;
@@ -1284,6 +1539,89 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM jobs", [], |row| row.get(0))
             .unwrap();
         assert_eq!((routes, points, jobs), (0, 0, 0));
+    }
+
+    #[test]
+    fn claims_updates_and_completes_route_match_with_identity_guards() {
+        let (_root, request, raw_route) = create_route_fixture();
+        let claimed = claim_route_match_job(&request).unwrap();
+        assert_eq!(claimed.raw_route, raw_route);
+        update_route_match_progress(&request, 55.0, "Valhalla matching").unwrap();
+        let running = read_route_match_status(
+            &request.sqlite_path,
+            &request.project_id,
+            &request.route_id,
+            &request.job_id,
+        )
+        .unwrap();
+        assert_eq!(
+            (running.status.as_str(), running.progress),
+            ("running", 55.0)
+        );
+
+        let matched = vec![
+            RoutePoint {
+                latitude: 43.1001,
+                longitude: -79.1999,
+                time_seconds: 0.0,
+            },
+            RoutePoint {
+                latitude: 43.1501,
+                longitude: -79.1499,
+                time_seconds: 3.0,
+            },
+            RoutePoint {
+                latitude: 43.2001,
+                longitude: -79.0999,
+                time_seconds: 6.0,
+            },
+        ];
+        complete_route_match_job(&request, "Valhalla", &matched).unwrap();
+        let complete = read_route_match_status(
+            &request.sqlite_path,
+            &request.project_id,
+            &request.route_id,
+            &request.job_id,
+        )
+        .unwrap();
+        assert_eq!(complete.status, "complete");
+        assert_eq!(complete.progress, 100.0);
+        assert_eq!(complete.matcher_used, "Valhalla");
+        assert_eq!(complete.route, matched);
+
+        let wrong_route = RouteMatchRequest {
+            route_id: Uuid::nil().to_string(),
+            ..request.clone()
+        };
+        assert!(matches!(
+            claim_route_match_job(&wrong_route),
+            Err(ProjectStoreError::RouteMatchJobNotFound)
+        ));
+    }
+
+    #[test]
+    fn failing_route_match_preserves_raw_points_and_records_terminal_state() {
+        let (_root, request, raw_route) = create_route_fixture();
+        claim_route_match_job(&request).unwrap();
+        fail_route_match_job(&request, "failed", "Valhalla response was invalid").unwrap();
+        let status = read_route_match_status(
+            &request.sqlite_path,
+            &request.project_id,
+            &request.route_id,
+            &request.job_id,
+        )
+        .unwrap();
+        assert_eq!(status.status, "failed");
+        assert!(status.route.is_empty());
+        let connection = Connection::open(&request.sqlite_path).unwrap();
+        let raw_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM route_points WHERE route_id = ?1 AND point_set = 'raw'",
+                [&request.route_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(raw_count, raw_route.len() as i64);
     }
 
     #[test]
@@ -1854,6 +2192,58 @@ mod tests {
             "incident": { "title": title }
         })
         .to_string()
+    }
+
+    fn create_route_fixture() -> (TestRoot, RouteMatchRequest, Vec<RoutePoint>) {
+        let root = TestRoot::new();
+        let project_id = Uuid::new_v4();
+        let route_id = Uuid::new_v4();
+        let job_id = Uuid::new_v4();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "Route matching".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let source_path = root.path().join("route.gpx");
+        fs::write(&source_path, b"route").unwrap();
+        let raw_route = vec![
+            RoutePoint {
+                latitude: 43.1,
+                longitude: -79.2,
+                time_seconds: 0.0,
+            },
+            RoutePoint {
+                latitude: 43.2,
+                longitude: -79.1,
+                time_seconds: 6.0,
+            },
+        ];
+        import_route_at(
+            RouteImportRequest {
+                sqlite_path: PathBuf::from(&created.sqlite_path),
+                project_id: project_id.to_string(),
+                source_path,
+                points: raw_route.clone(),
+            },
+            route_id,
+            job_id,
+            1_788_000_001,
+        )
+        .unwrap();
+        (
+            root,
+            RouteMatchRequest {
+                sqlite_path: PathBuf::from(created.sqlite_path),
+                project_id: project_id.to_string(),
+                route_id: route_id.to_string(),
+                job_id: job_id.to_string(),
+            },
+            raw_route,
+        )
     }
 
     struct TestRoot(PathBuf);
