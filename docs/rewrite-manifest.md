@@ -356,11 +356,12 @@ network/DNS access.
   references and verification commands, but it does not execute toolchain or data
   checks until Tauri commands are available.
 - The native runtime boundary detects Tauri shell globals and lists implemented
-  versus planned DTOs. Project create/save/load and media import are implemented;
-  GPX, GIS, FFmpeg, and CV handlers remain planned.
-- The native command bridge is dependency-injected and tested. The app now calls
-  project-store and CV-scan probe paths through the bridge, but media/GPX/GIS/
-  FFmpeg workflow commands and all Rust/Python handlers still need
+  versus planned DTOs. Project create/save/load, media import, durable FFmpeg
+  proxy execution, status polling, and cancellation are implemented; GPX, GIS,
+  and CV handlers remain planned.
+- The native command bridge is dependency-injected and tested. The app calls
+  project-store, media import, FFmpeg proxy/status/cancel, and CV-scan paths
+  through the bridge; GPX/GIS workflow commands and the CV handler still need
   implementation. Browser mode returns explicit fallback results. Required
   request fields are validated before Tauri invoke is called, and required
   response fields are validated before native data is accepted. The browser-safe
@@ -372,9 +373,10 @@ network/DNS access.
   and portable snapshots, but no native command log file exists until the Rust
   project store is implemented.
 - Browser media import remains available as fallback. Native import accepts an
-  explicit path and persists its hash/size/proxy job, but still needs a native
-  picker, ffprobe duration/start detection, proxy/thumbnail generation, and
-  durable worker progress.
+  explicit path and persists its hash/size/proxy job; ffprobe metadata,
+  proxy/thumbnail generation, progress, cancellation, recovery, and terminal
+  reconciliation are implemented. A native picker and FFmpeg distribution/
+  licensing policy remain.
 - Browser GPX import is a fallback only. It now records `gpx_match`
   browser-fallback audit entries, but Tauri still needs persisted GPX assets,
   Valhalla map matching, OSRM fallback, and official-feature reprojection
@@ -410,8 +412,8 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement the ffprobe/FFmpeg worker for queued native proxy jobs, with durable
-   metadata/progress/failure updates and GPU-to-CPU fallback.
+1. Implement persisted native GPX import and local Valhalla map matching, with
+   OSRM Match as the fallback adapter.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -432,7 +434,7 @@ network/DNS access.
    matching.
 9. Replace browser GeoJSON projection with Turf.js MVP geometry and production
    PostGIS import/indexing.
-10. Add FFmpeg proxy generation with GPU probe and CPU fallback.
+10. Define FFmpeg/ffprobe bundling, update, and licensing policy for deployment.
 
 ## Design Guardrails
 

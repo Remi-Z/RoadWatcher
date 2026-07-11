@@ -381,7 +381,7 @@ git commit -m "feat: run and monitor native proxies"
 - Consumes: completed proxy workflow.
 - Produces: verified handoff and next GPX/GIS slice.
 
-- [ ] **Step 1: Run full automated verification**
+- [x] **Step 1: Run full automated verification**
 
 ```powershell
 pnpm test
@@ -394,7 +394,7 @@ git diff --check
 
 Expected: every command exits zero.
 
-- [ ] **Step 2: Run the real-binary smoke fixture**
+- [x] **Step 2: Run the real-binary smoke fixture**
 
 Generate a 0.5-second color/sine MP4 under `%TEMP%`, create a temporary
 RoadWatcher database through the tested store harness, run the proxy worker with
@@ -402,13 +402,13 @@ installed `ffmpeg.exe`/`ffprobe.exe`, and assert the final proxy, at least one
 JPEG thumbnail, positive duration, codec, and completed SQLite job. Remove the
 temporary project after inspection.
 
-- [ ] **Step 3: Update handoff documents with exact evidence**
+- [x] **Step 3: Update handoff documents with exact evidence**
 
 Record test counts, build results, real encoder selected, output paths confined
 to the temporary fixture, binary-resolution behavior, and remaining bundled
 binary/licensing plus GPX/GIS work.
 
-- [ ] **Step 4: Commit documentation and close the plan**
+- [x] **Step 4: Commit documentation and close the plan**
 
 ```powershell
 git add README.md docs/project-handoff.md docs/rewrite-manifest.md docs/superpowers/plans/2026-07-10-ffmpeg-proxy-worker.md

@@ -27,8 +27,11 @@ conservative placeholder clips to the editable reel, browser
 media imports add `media_import` fallback audit entries in browser mode; an
 active Tauri project can instead import an explicit native path by reference,
 stream SHA-256, persist media/proxy-job rows, and append the result atomically to
-the workstation. Imported videos also add `ffmpeg_proxy`
-fallback audit entries until native proxy and thumbnail generation is wired,
+the workstation. In Tauri, queued video jobs now run through a serialized,
+durable FFmpeg worker with ffprobe metadata, hardware-encoder preference,
+libx264 fallback, progress polling, cancellation, atomic proxy/thumbnail
+publication, and terminal reconciliation; browser imports retain explicit
+`ffmpeg_proxy` fallback audit entries,
 imported GPX tracks update the route preview, keep the map legend marked as
 Valhalla/OSRM pending, surface first/last timed route-point provenance, and
 queue Valhalla matching with `gpx_match` fallback audit entries until native
@@ -58,8 +61,8 @@ Rejected native invokes are converted into explicit failed command results so
 the app can keep running and record the failed attempt.
 The readiness panel also includes tested project-store, native media import, GPX
 matcher, GIS projection, FFmpeg proxy, and local CV actions. Project
-create/save/load and `media_import` are implemented; `gpx_match`, `gis_project`,
-`ffmpeg_proxy`, and `cv_scan` bridge paths when invoke is available and report
+create/save/load, `media_import`, `ffmpeg_proxy`, `job_status`, and `job_cancel`
+are implemented; `gpx_match`, `gis_project`, and `cv_scan` bridge paths report
 the browser fallback otherwise; the native project root and CV model slot remain
 editable, saved in portable project snapshots, and included in exports/setup
 checklists. Probe
@@ -74,7 +77,7 @@ handoff remains durable; the editable install/data panel shows each slot's
 verification command, and the top Slots action focuses the first install/data
 slot so those references are quick to fill before export. The Tauri and Python
 sidecar slots are scaffolded, but the Tauri dev path, GPStitch, Valhalla,
-production GIS, FFmpeg proxy, hashing, and CV model data still need to be filled
+production GIS and CV model data still need to be filled
 before the native workflow can be wired end to end. Rust/Cargo is installed and
 the application lockfile is tracked. Native builds in this checkout remain
 blocked because generated Cargo/Tauri build processes cannot write back under
@@ -133,13 +136,16 @@ paths must be invoked successfully before native-ready is claimed. Tauri
 `project_create` is backed by a SQLite project folder and durable metadata. Its
 pure Rust store now
 creates the UUID layout, required directories, schema version, project metadata,
-and foundational tables under test. Database schema version 2 adds a canonical
-transactional snapshot record and migrates version-1 projects on open.
+and foundational tables under test. Database schema version 3 retains the
+canonical transactional snapshot record, migrates older projects on open, and
+adds durable proxy outputs, codec metadata, media/job identity, cancellation,
+and stale-running recovery.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
-and retains browser storage as recovery fallback. The next native slice is real
-media import by reference with metadata/hash records and FFmpeg proxy jobs.
+and retains browser storage as recovery fallback. Native media import and
+durable proxy execution are complete; the next native slice is persisted GPX
+import and local Valhalla/OSRM map matching.
 
 ## Slots You Need To Fill
 
@@ -148,9 +154,10 @@ media import by reference with metadata/hash records and FFmpeg proxy jobs.
 - Provide York/GTA Valhalla data/config for local map matching.
 - Optionally provide OSRM Match endpoint/config as the simpler fallback.
 - Provide official GIS files for traffic signals, stop signs, and bike lanes.
-- Provide FFmpeg/ffprobe binaries for native metadata probing and proxy jobs.
-- Add a Tauri file picker and ffprobe/FFmpeg worker so typed native media paths,
-  known hashes, and durable proxy jobs advance to probed metadata and proxies.
+- Bundle or document a redistributable FFmpeg/ffprobe installation and resolve
+  its licensing/distribution policy; PATH and configured directories work now.
+- Add a Tauri file picker that populates the implemented import-by-reference
+  path without changing the durable media/proxy contracts.
 - Wire Tauri GPX import and Valhalla so the browser-parsed raw route is replaced
   with a persisted map-matched route and official-feature reprojection.
 - Replace browser GeoJSON projection with the intended Turf.js MVP path and the

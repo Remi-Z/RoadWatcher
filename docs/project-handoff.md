@@ -500,20 +500,26 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 
 ## Next Best Implementation Slice
 
-1. Implement the FFmpeg/ffprobe proxy worker for durable queued media jobs,
-   including progress, failures, duration/start metadata, thumbnails, and GPU to
-   CPU fallback.
+The durable FFmpeg module is complete. Verification on 2026-07-10 passed 135
+frontend tests across 19 files, the production Vite build, and 23 Rust tests
+(with the installed-binary smoke intentionally ignored in the default suite).
+The explicit real smoke generated a temporary 0.5-second MP4, selected
+`h264_nvenc`, published its proxy and JPEG thumbnail, persisted positive
+duration/codec/completion metadata, and removed the temporary fixture. Binary
+resolution supports a configured directory and PATH; bundling and licensing
+policy remain deployment work.
+
+1. Replace browser GPX parsing with Tauri-backed GPX persistence and local
+   Valhalla map matching, with OSRM Match wired as the simpler fallback.
 2. Add a native file picker that populates the implemented import-by-reference
    path without changing the store contract.
 3. Replace seeded demo data with command-backed state after native media/project
    selection exists, keeping the seed only for empty projects.
-4. Replace browser GPX parsing with Tauri-backed GPX persistence and local
-   Valhalla map matching, with OSRM Match wired as the simpler fallback.
-5. Wire official GIS imports and reprojection behind real local configuration
+4. Wire official GIS imports and reprojection behind real local configuration
    slots.
-6. Replace browser GeoJSON projection with Turf.js MVP helpers and production
+5. Replace browser GeoJSON projection with Turf.js MVP helpers and production
    PostGIS/CRS-normalization import.
-7. Replace browser data-URL downloads with native export files; SQLite project
+6. Replace browser data-URL downloads with native export files; SQLite project
    save/load is now available.
 
 ## Boundaries To Preserve
