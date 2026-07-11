@@ -141,7 +141,11 @@ function parseMedia(value: unknown, path: string): MediaAsset {
     detectedStart: stringValue(item.detectedStart, `${path}.detectedStart`),
     proxyStatus: enumValue(item.proxyStatus, `${path}.proxyStatus`, PROXY_STATUSES),
     hash: stringValue(item.hash, `${path}.hash`),
-    fileSizeBytes: finiteNumber(item.fileSizeBytes, `${path}.fileSizeBytes`, 0)
+    fileSizeBytes: finiteNumber(item.fileSizeBytes, `${path}.fileSizeBytes`, 0),
+    proxyPath: item.proxyPath === undefined ? "" : stringValue(item.proxyPath, `${path}.proxyPath`),
+    thumbnailDirectory:
+      item.thumbnailDirectory === undefined ? "" : stringValue(item.thumbnailDirectory, `${path}.thumbnailDirectory`),
+    videoCodec: item.videoCodec === undefined ? "" : stringValue(item.videoCodec, `${path}.videoCodec`)
   };
 }
 

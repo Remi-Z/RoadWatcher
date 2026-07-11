@@ -8,7 +8,7 @@ import type {
 import { normalizeProjectedFeatureReview, projectFeaturesOntoRoute } from "../geo/projection";
 import { createGisProjectionJob } from "../geo/geoJsonImport";
 import { createValhallaMatchJob } from "../geo/gpxImport";
-import type { WorkstationJob } from "../jobs/jobModel";
+import type { NativeProxyJobResult, WorkstationJob } from "../jobs/jobModel";
 import {
   createImportedMediaAssets,
   createProxyJobsForImportedMedia,
@@ -25,6 +25,7 @@ import {
   duplicateClip,
   moveClip,
   removeClip,
+  reseatReelStarts,
   splitClipInTimeline,
   trimClipSourceRange
 } from "../timeline/timelineModel";
@@ -89,6 +90,7 @@ export type WorkstationAction =
       value: string;
     }
   | { type: "record_native_attempt"; attempt: NativeCommandAttempt }
+  | { type: "reconcile_proxy_job"; result: NativeProxyJobResult; attempt?: NativeCommandAttempt }
   | {
       type: "import_media";
       files: BrowserMediaFile[];
@@ -231,6 +233,40 @@ export function workstationReducer(state: WorkstationState, action: WorkstationA
       return withInvalidatedExport(state, {
         nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
       });
+    case "reconcile_proxy_job": {
+      const result = action.result;
+      const completedDuration = result.status === "complete" && result.durationSeconds > 0 ? result.durationSeconds : null;
+      return withInvalidatedExport(state, {
+        jobs: state.jobs.map((job) =>
+          job.id === result.jobId
+            ? { ...job, status: result.status, progress: result.progress, detail: result.detail }
+            : job
+        ),
+        media: state.media.map((asset) =>
+          asset.id === result.mediaId
+            ? {
+                ...asset,
+                proxyStatus: result.proxyStatus,
+                durationSeconds: result.durationSeconds > 0 ? result.durationSeconds : asset.durationSeconds,
+                detectedStart: result.detectedStart || asset.detectedStart,
+                proxyPath: result.proxyPath || asset.proxyPath || "",
+                thumbnailDirectory: result.thumbnailDirectory || asset.thumbnailDirectory || "",
+                videoCodec: result.videoCodec || asset.videoCodec || ""
+              }
+            : asset
+        ),
+        clips: completedDuration
+          ? reseatReelStarts(
+              state.clips.map((clip) =>
+                clip.mediaId === result.mediaId ? clampClipToDuration(clip, completedDuration) : clip
+              )
+            )
+          : state.clips,
+        nativeCommandAttempts: action.attempt
+          ? [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+          : state.nativeCommandAttempts
+      });
+    }
     case "import_native_media":
       return withInvalidatedExport(state, {
         media: [...state.media, action.media],
@@ -320,6 +356,13 @@ function withInvalidatedExport(state: WorkstationState, patch: Partial<Workstati
     latestPacket: null,
     latestProjectSnapshot: null
   };
+}
+
+function clampClipToDuration(clip: TimelineClip, durationSeconds: number): TimelineClip {
+  const mediaEnd = Math.max(1, durationSeconds);
+  const sourceInSeconds = Math.min(Math.max(0, clip.sourceInSeconds), mediaEnd - 1);
+  const sourceOutSeconds = Math.min(mediaEnd, Math.max(sourceInSeconds + 1, clip.sourceOutSeconds));
+  return { ...clip, sourceInSeconds, sourceOutSeconds };
 }
 
 function formatSeconds(seconds: number): string {

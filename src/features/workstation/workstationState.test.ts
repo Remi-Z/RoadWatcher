@@ -130,6 +130,68 @@ describe("workstation state", () => {
     expect(next.selectedClipId).toBe(clip.id);
   });
 
+  it("reconciles completed proxy metadata and clamps placeholder clips atomically", () => {
+    const seed = createSeed(FIRST_PROJECT_ID);
+    const state = createInitialWorkstationState({ seed });
+    const snapshot = createProjectSnapshot(seed);
+    const exported = workstationReducer(state, { type: "set_export", snapshot, packet: buildEvidencePacket(snapshot) });
+    const result = {
+      jobId: "job-proxy-front",
+      mediaId: "media-front-001",
+      status: "complete" as const,
+      progress: 100,
+      detail: "proxy and thumbnails ready",
+      durationSeconds: 840,
+      detectedStart: "2026-07-10T12:00:00Z",
+      proxyStatus: "ready" as const,
+      proxyPath: "D:/project/proxies/front/review-proxy.mp4",
+      thumbnailDirectory: "D:/project/proxies/front/thumbnails",
+      videoCodec: "libx264"
+    };
+
+    const next = workstationReducer(exported, { type: "reconcile_proxy_job", result });
+
+    expect(next.jobs.find((job) => job.id === result.jobId)).toMatchObject({ status: "complete", progress: 100 });
+    expect(next.media.find((asset) => asset.id === result.mediaId)).toMatchObject({
+      proxyStatus: "ready",
+      durationSeconds: 840,
+      proxyPath: result.proxyPath,
+      thumbnailDirectory: result.thumbnailDirectory,
+      videoCodec: "libx264"
+    });
+    expect(next.clips.filter((clip) => clip.mediaId === result.mediaId).every((clip) => clip.sourceOutSeconds <= 840)).toBe(true);
+    expect(next.latestPacket).toBeNull();
+    expect(next.latestProjectSnapshot).toBeNull();
+  });
+
+  it("reconciles failed proxy state without changing unrelated media or clips", () => {
+    const state = createInitialWorkstationState({ seed: createSeed(FIRST_PROJECT_ID) });
+    const unrelatedMedia = state.media.find((asset) => asset.id === "media-rear-001");
+    const unrelatedClips = state.clips.filter((clip) => clip.mediaId === "media-rear-001");
+
+    const next = workstationReducer(state, {
+      type: "reconcile_proxy_job",
+      result: {
+        jobId: "job-proxy-front",
+        mediaId: "media-front-001",
+        status: "failed",
+        progress: 42,
+        detail: "encoder failed",
+        durationSeconds: 0,
+        detectedStart: "",
+        proxyStatus: "blocked",
+        proxyPath: "",
+        thumbnailDirectory: "",
+        videoCodec: ""
+      }
+    });
+
+    expect(next.jobs.find((job) => job.id === "job-proxy-front")).toMatchObject({ status: "failed", detail: "encoder failed" });
+    expect(next.media.find((asset) => asset.id === "media-front-001")?.proxyStatus).toBe("blocked");
+    expect(next.media.find((asset) => asset.id === "media-rear-001")).toEqual(unrelatedMedia);
+    expect(next.clips.filter((clip) => clip.mediaId === "media-rear-001")).toEqual(unrelatedClips);
+  });
+
   it("resets the complete project with a newly supplied identity", () => {
     const firstSeed = createSeed(FIRST_PROJECT_ID);
     const secondSeed = createSeed(SECOND_PROJECT_ID);

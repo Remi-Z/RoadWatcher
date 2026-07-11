@@ -10,6 +10,9 @@ export interface MediaAsset {
   proxyStatus: "ready" | "running" | "queued" | "blocked";
   hash: string;
   fileSizeBytes: number;
+  proxyPath?: string;
+  thumbnailDirectory?: string;
+  videoCodec?: string;
 }
 
 export interface IncidentDraft {

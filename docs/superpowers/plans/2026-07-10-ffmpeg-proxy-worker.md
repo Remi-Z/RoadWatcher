@@ -289,7 +289,7 @@ git commit -m "feat: expose durable proxy job commands"
 - Consumes: validated `ProxyJobStatus` DTO.
 - Produces: `reconcile_proxy_job` workstation action.
 
-- [ ] **Step 1: Add failing reducer tests for progress and completion**
+- [x] **Step 1: Add failing reducer tests for progress and completion**
 
 Dispatch status snapshots and assert matching records only:
 
@@ -302,7 +302,7 @@ expect(next.clips.filter(({ mediaId }) => mediaId === result.mediaId).every(({ s
 
 Also cover running, failed, cancelled, unrelated records, and export invalidation.
 
-- [ ] **Step 2: Run reducer tests and confirm RED**
+- [x] **Step 2: Run reducer tests and confirm RED**
 
 ```powershell
 pnpm test -- src/features/workstation/workstationState.test.ts
@@ -310,7 +310,7 @@ pnpm test -- src/features/workstation/workstationState.test.ts
 
 Expected: unknown `reconcile_proxy_job` action.
 
-- [ ] **Step 3: Implement typed reconciliation**
+- [x] **Step 3: Implement typed reconciliation**
 
 Add a shared `NativeProxyJobResult` interface. The reducer replaces the matching
 job/media, clamps only invalid placeholder clip bounds, prepends the optional

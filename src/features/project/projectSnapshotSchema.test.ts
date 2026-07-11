@@ -44,6 +44,23 @@ function validSnapshotV2(): Record<string, unknown> {
 }
 
 describe("project snapshot schema", () => {
+  it("preserves additive native proxy output metadata", () => {
+    const snapshot = validSnapshotV2();
+    const media = structuredClone(mediaAssets);
+    media[0] = {
+      ...media[0],
+      proxyPath: "D:/project/proxies/front/review-proxy.mp4",
+      thumbnailDirectory: "D:/project/proxies/front/thumbnails",
+      videoCodec: "libx264"
+    };
+    snapshot.media = media;
+
+    expect(parseSnapshot(JSON.stringify(snapshot)).media[0]).toMatchObject({
+      proxyPath: "D:/project/proxies/front/review-proxy.mp4",
+      thumbnailDirectory: "D:/project/proxies/front/thumbnails",
+      videoCodec: "libx264"
+    });
+  });
   it("migrates a version-1 snapshot and retains its identity", () => {
     const legacy = JSON.stringify({
       ...validSnapshotV2(),

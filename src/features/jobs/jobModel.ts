@@ -10,6 +10,20 @@ export interface WorkstationJob {
   detail: string;
 }
 
+export interface NativeProxyJobResult {
+  jobId: string;
+  mediaId: string;
+  status: JobStatus;
+  progress: number;
+  detail: string;
+  durationSeconds: number;
+  detectedStart: string;
+  proxyStatus: "ready" | "running" | "queued" | "blocked";
+  proxyPath: string;
+  thumbnailDirectory: string;
+  videoCodec: string;
+}
+
 export function startJob(job: WorkstationJob): WorkstationJob {
   return {
     ...job,
