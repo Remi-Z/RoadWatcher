@@ -14,11 +14,11 @@ normalized road features onto durable matched routes.
 
 ### Task 2: Native GeoJSON and CRS Import
 
-- [ ] Add failing tests for EPSG:4326, EPSG:3857, kind normalization, bounded
+- [x] Add failing tests for EPSG:4326, EPSG:3857, kind normalization, bounded
   Point/LineString ingestion, unsupported CRS, and malformed sources.
-- [ ] Implement bounded native parser/import, `gis_import`, strict TypeScript
+- [x] Implement bounded native parser/import, `gis_import`, strict TypeScript
   contract, and frontend repository adapter.
-- [ ] Run focused tests and commit.
+- [x] Run focused tests and commit.
 
 ### Task 3: Durable Route Projection Worker
 

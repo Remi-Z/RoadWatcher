@@ -6,6 +6,7 @@ export type NativeCommandName =
   | "gpx_import"
   | "gpx_match"
   | "gpx_job_status"
+  | "gis_import"
   | "gis_project"
   | "ffmpeg_proxy"
   | "job_status"
@@ -129,6 +130,29 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     responseFields: ["jobId", "routeId", "status", "progress", "detail", "matcherUsed", "route"],
     fallback: "browser route state",
     ownerAction: "Poll durable native map-match progress and matched route output."
+  },
+  {
+    id: "gis-import",
+    label: "Native official GIS import",
+    command: "gis_import",
+    implementation: "implemented",
+    readinessRequired: true,
+    requestFields: ["sqlitePath", "projectId", "sourcePath", "sourceCrs", "layerKind"],
+    responseFields: [
+      "featureSourceId",
+      "fileName",
+      "originalPath",
+      "hash",
+      "fileSizeBytes",
+      "sourceCrs",
+      "normalizedCrs",
+      "layerKind",
+      "features",
+      "projectionStatus",
+      "projectionJobId"
+    ],
+    fallback: "browser GeoJSON projection",
+    ownerAction: "Persist and normalize official GeoJSON in the active native project."
   },
   {
     id: "gis-project",

@@ -1,3 +1,4 @@
+use gis_import::{import_gis as store_import_gis, GisImportRequest};
 use project_store::{
     create_project, import_media as store_import_media, load_project_snapshot,
     read_proxy_job_status, save_project_snapshot, MediaImportRequest, MediaImportResponse,
@@ -9,6 +10,7 @@ use route_import::{import_gpx as store_import_gpx, GpxImportRequest};
 use route_matcher::{RouteMatcherManager, RouteMatcherRequest};
 use std::path::PathBuf;
 
+mod gis_import;
 mod project_store;
 mod proxy_worker;
 mod route_import;
@@ -64,6 +66,24 @@ fn gpx_import(
         sqlite_path: PathBuf::from(sqlite_path),
         project_id,
         source_path: PathBuf::from(source_path),
+    })
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn gis_import(
+    sqlite_path: String,
+    project_id: String,
+    source_path: String,
+    source_crs: String,
+    layer_kind: String,
+) -> Result<project_store::FeatureImportResponse, String> {
+    store_import_gis(GisImportRequest {
+        sqlite_path: PathBuf::from(sqlite_path),
+        project_id,
+        source_path: PathBuf::from(source_path),
+        source_crs,
+        layer_kind,
     })
     .map_err(|error| error.to_string())
 }
@@ -172,6 +192,7 @@ pub fn run() {
             project_load,
             media_import,
             gpx_import,
+            gis_import,
             gpx_match,
             gpx_job_status,
             ffmpeg_proxy,
