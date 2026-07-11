@@ -32,12 +32,50 @@ struct ExternalTool {
     distributed: bool,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReleaseManifest {
+    schema_version: u32,
+    product: String,
+    version: String,
+    release_channel: String,
+    public_release_ready: bool,
+    signing: ReleaseSigning,
+    updates: ReleaseUpdates,
+    clean_machine_validation: CleanMachineValidation,
+    runtime_distribution_mode: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReleaseSigning {
+    windows_policy: String,
+    artifact_state: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReleaseUpdates {
+    mode: String,
+    automatic: bool,
+    feed: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CleanMachineValidation {
+    status: String,
+    startup_smoke: String,
+    procedure: String,
+}
+
 fn main() {
-    validate_runtime_manifest();
+    let distribution_mode = validate_runtime_manifest();
+    validate_release_manifest(&distribution_mode);
     tauri_build::build();
 }
 
-fn validate_runtime_manifest() {
+fn validate_runtime_manifest() -> String {
     const MANIFEST_PATH: &str = "resources/runtime-manifest.json";
     println!("cargo:rerun-if-changed={MANIFEST_PATH}");
     println!("cargo:rerun-if-changed=../docs/THIRD_PARTY_NOTICES.md");
@@ -118,6 +156,59 @@ fn validate_runtime_manifest() {
             tool.id
         );
     }
+    manifest.distribution_mode
+}
+
+fn validate_release_manifest(runtime_distribution_mode: &str) {
+    const MANIFEST_PATH: &str = "resources/release-manifest.json";
+    println!("cargo:rerun-if-changed={MANIFEST_PATH}");
+    println!("cargo:rerun-if-changed=../scripts/windows-installed-startup-smoke.ps1");
+    println!("cargo:rerun-if-changed=../docs/windows-release-validation.md");
+    let text = fs::read_to_string(MANIFEST_PATH)
+        .unwrap_or_else(|error| panic!("could not read {MANIFEST_PATH}: {error}"));
+    let release: ReleaseManifest = serde_json::from_str(&text)
+        .unwrap_or_else(|error| panic!("invalid {MANIFEST_PATH}: {error}"));
+    assert_eq!(
+        release.schema_version, 1,
+        "unsupported release manifest schema"
+    );
+    assert_eq!(release.product, "RoadWatcher");
+    assert_eq!(release.version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(release.runtime_distribution_mode, runtime_distribution_mode);
+    assert!(matches!(
+        release.release_channel.as_str(),
+        "development" | "candidate" | "stable"
+    ));
+    assert_eq!(
+        release.signing.windows_policy,
+        "required-for-public-release"
+    );
+    assert!(matches!(
+        release.signing.artifact_state.as_str(),
+        "unsigned-development-only" | "signed"
+    ));
+    assert_eq!(release.updates.mode, "manual-download");
+    assert!(!release.updates.automatic && release.updates.feed.is_none());
+    assert!(matches!(
+        release.clean_machine_validation.status.as_str(),
+        "required-before-public-release" | "passed"
+    ));
+    assert_eq!(
+        release.clean_machine_validation.startup_smoke,
+        "scripts/windows-installed-startup-smoke.ps1"
+    );
+    assert_eq!(
+        release.clean_machine_validation.procedure,
+        "docs/windows-release-validation.md"
+    );
+    let public_ready = release.release_channel == "stable"
+        && release.signing.artifact_state == "signed"
+        && release.clean_machine_validation.status == "passed";
+    assert_eq!(release.public_release_ready, public_ready);
+    assert!(
+        release.release_channel == "development" || release.signing.artifact_state == "signed",
+        "candidate/stable artifacts must be signed"
+    );
 }
 
 fn validate_relative(value: &str, field: &str) {

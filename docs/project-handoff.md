@@ -31,6 +31,13 @@ The runnable app today is the React/Vite evidence workstation:
   Native sidecar commands resolve installed resources through Tauri instead of
   relying on the process working directory. `uv`, Python, FFmpeg/ffprobe,
   GDAL/OGR, Valhalla, and OSRM remain explicit external prerequisites.
+- Release governance is machine-readable in the bundled `release-manifest.json`.
+  `pnpm verify:release` synchronizes the `0.1.0` identity across Node, Cargo,
+  Cargo.lock, Tauri, and that manifest; verifies the manual-update policy; and
+  rejects unsigned candidate/stable or inconsistent public-ready claims. The
+  current artifact state is explicitly unsigned and development-only. A scoped
+  PowerShell startup smoke emits installed executable hash/version/OS evidence
+  for the required clean-Windows release gate.
 - `runtime_preflight` now checks packaged GPStitch/CV sources plus uv, Python,
   FFmpeg, ffprobe, ogrinfo, and ogr2ogr. Independent no-shell probes run in
   parallel with 10-second/64-KiB bounds; strict frontend validation and the
@@ -540,14 +547,17 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   keep the gitlink, lockfile, and GPL-3.0-or-later license intact.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
 
-## Next Best Implementation Slice
+## Latest Completed Implementation Slice
 
-Production empty-project hydration is implemented. App startup and clear no
-longer seed fabricated media, clips, routes, jobs, or GIS findings. Browser and
-native validated snapshots still win over the empty seed; the former dataset is
-an explicit test/demo dependency. Empty regions have actionable guidance,
-decorative route evidence is suppressed, blank plates use a placeholder rather
-than stored text, and packet export is disabled until media plus a clip exist.
+Release governance is now explicit rather than inferred from scattered config.
+The bundled release manifest records version, channel, signing state, update
+mode, runtime distribution, and clean-machine gate. The Node verifier includes
+positive and negative tests for synchronized metadata, version drift, and an
+unsigned stable claim. The Rust build script independently checks the same
+release invariants whenever Cargo builds. `docs/windows-release-validation.md`
+and `scripts/windows-installed-startup-smoke.ps1` define the clean-machine
+procedure and produce attributable installed-binary evidence without stopping
+unrelated processes.
 
 Final verification on 2026-07-11 passed 173 frontend tests across 27 files, the
 production Vite build, TypeScript project compilation, four locked/offline
@@ -557,6 +567,9 @@ avoid a Rust 1.96 dependency-probe failure under the workspace path containing
 a space.
 The suite used a short-path temporary Cargo target to avoid the known Windows
 build-script problem with the workspace path's space.
+The release-governance slice additionally passed `npm run verify:release`
+(runtime audit, three positive/negative metadata tests, and repository audit),
+PowerShell syntax parsing, and `cargo check` with the Rust release gate enabled.
 The packaging slice additionally passed `pnpm verify:runtime`, two focused Rust
 resource-path tests, a full debug Tauri application build, and an unsigned debug
 NSIS build. Extracting the 3,952,131-byte installer confirmed a 1,541-byte
@@ -584,13 +597,17 @@ rejects mismatched aggregates, and records terminal blocked/failed states. Full
 default Rust verification passes 70 tests; the managed-uv and installed-FFmpeg
 smokes also pass when explicitly enabled.
 
-1. Choose, inventory, and license a self-contained Windows distribution for the
+1. Acquire/configure the intended Windows code-signing identity and run the
+   documented installer workflow on a clean supported Windows VM. Keep
+   `publicReleaseReady` false until signed-artifact and clean-machine evidence
+   exist.
+2. Choose, inventory, and license a self-contained Windows distribution for the
    still-external `uv`/Python and FFmpeg/ffprobe executables, or retain the
    implemented user-triggered preparation/preflight model. Source/license
    bundling and writable managed environments are complete.
-2. Add a real-model/video CV smoke, live matcher, and installed-GDAL coverage at
+3. Add a real-model/video CV smoke, live matcher, and installed-GDAL coverage at
    the end of the implementation cycle.
-3. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
+4. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
    representative-feature model insufficient.
 
 ## Boundaries To Preserve

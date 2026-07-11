@@ -110,6 +110,7 @@ http://127.0.0.1:5173/
 ```powershell
 pnpm test
 pnpm build
+pnpm verify:release
 ```
 
 In this Codex sandbox, Vitest/Vite config resolution may need elevated access
@@ -198,6 +199,13 @@ development paths. `src-tauri/resources/runtime-manifest.json` is validated by
 both the Rust build script and `pnpm verify:runtime`; an NSIS archive inspection
 proves the source, locks, notices, and non-empty GPL license are present without
 local Python cache artifacts.
+Release metadata is also explicit and bundled. `pnpm verify:release` enforces
+one synchronized version across Node, Cargo, Cargo.lock, Tauri, and the release
+manifest; rejects unsigned candidate/stable claims; and confirms that automatic
+updates remain disabled under the documented manual-download policy. Current
+`0.1.0` artifacts are unsigned development builds, not public-release-ready.
+The clean-Windows startup smoke and full release procedure are documented in
+`docs/windows-release-validation.md`.
 A live installed-tool check now passes the real FFmpeg proxy/thumbnail smoke and
 a locked/offline GPStitch render of the upstream five-second fixture. The latter
 exposed and fixed an upstream Windows default-font failure by passing an existing

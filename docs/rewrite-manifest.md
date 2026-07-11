@@ -214,7 +214,10 @@ Build a Windows-first, local-first evidence workstation:
 Latest module verification on 2026-07-11: 173 frontend tests across 27 files,
 TypeScript compilation, production Vite build, and 70 default Rust tests passed.
 The ignored managed-uv and installed-FFmpeg smokes also pass when explicitly
-enabled.
+enabled. Release-governance verification passes the runtime audit, three
+positive/negative release metadata tests, the repository release audit,
+PowerShell smoke-script syntax parsing, and `cargo check` with the Rust build
+gate enabled.
 
 Windows runtime packaging now has a deterministic source-and-license boundary.
 `pnpm verify:runtime` validates the exact GPStitch gitlink, component versions,
@@ -223,6 +226,14 @@ non-redistributed tools. A debug NSIS build and archive extraction confirmed the
 manifest, notices, GPL text, and whitelisted source files are non-empty and omit
 local Python caches. The installer still requires externally provisioned
 uv/Python and native media/GIS/matcher tools.
+
+Release policy is now a second deterministic packaging boundary. The bundled
+release manifest declares synchronized version/channel, unsigned-development
+signing state, manual-download updates, and a required clean-machine gate.
+`pnpm verify:release` includes three focused positive/negative checks and rejects
+version drift, hidden updater configuration, unsigned candidate/stable states,
+or inconsistent public-ready claims. The clean-Windows procedure and startup
+smoke capture executable hash, product version, OS, and survival evidence.
 
 The native `runtime_preflight` command and strict React adapter now expose
 packaged-source, uv/Python, FFmpeg/ffprobe, and optional GDAL/OGR status through
@@ -397,12 +408,12 @@ network/DNS access.
   The UI project-store
   probe uses the editable native project root field and the implemented native
   project-folder picker/storage flow. Project-store and CV probe attempts are logged in browser state
-  and portable snapshots, but no native command log file exists until the Rust
-  project store is implemented.
+  and portable snapshots. The Rust project store and durable native attempt
+  evidence are implemented.
 - Browser media import remains available as fallback. Native import accepts an
   explicit path and persists its hash/size/proxy job; ffprobe metadata,
-  proxy/thumbnail generation, progress, cancellation, recovery, and terminal
-  reconciliation are implemented. A native picker and FFmpeg distribution/
+  proxy/thumbnail generation, progress, cancellation, recovery, terminal
+  reconciliation, and native picker are implemented. FFmpeg distribution and
   licensing policy remain.
 - Browser GPX import remains an explicit fallback. Native projects now persist
   hashed GPX assets and immutable raw points, execute Valhalla with OSRM fallback,
@@ -424,7 +435,7 @@ network/DNS access.
   execution, locked/offline no-shell launch, alignment controls, strict polling,
   confined output publication, and snapshot/export provenance are implemented.
   Distribution must retain its GPL-3.0-or-later notices; a real installed-tool
-  render smoke remains pending.
+  render smoke passes.
 - Valhalla/OSRM adapters are implemented for configured loopback HTTP services;
   local tiles/profiles and live-service smoke evidence are not present yet.
 - Shapefile, GeoPackage, FlatGeobuf, FileGDB, and arbitrary CRS normalization
@@ -469,6 +480,7 @@ network/DNS access.
    - `pnpm install`
    - `pnpm test`
    - `pnpm build`
+   - `pnpm verify:release`
 4. Run Tauri commands with a temp target in this managed workspace; debug MSI
    and NSIS bundling is verified.
 5. Use verified native export files for active SQLite projects; browser data-URL
@@ -478,6 +490,9 @@ network/DNS access.
    production uses empty or validated command-backed snapshot state.
 7. Preserve the implemented scoped native file picker and import-by-reference
    command boundary while replacing seeded state.
+8. Before a candidate/stable release, follow `docs/windows-release-validation.md`,
+   retain signing plus startup-smoke evidence, and change release metadata only
+   in the evidence-bearing release commit.
 8. Configure local Valhalla/OSRM data and add an optional live matcher smoke.
 9. Add PostGIS/spatial indexing only if production dataset scale requires it.
 10. Define FFmpeg/ffprobe bundling, update, and licensing policy for deployment.

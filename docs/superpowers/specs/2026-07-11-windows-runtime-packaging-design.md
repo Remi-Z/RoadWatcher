@@ -53,6 +53,9 @@ sources, and locks, with no Python cache artifacts.
 
 - Choose between a fully inventoried embedded runtime and retaining the
   implemented user-triggered environment preparation/preflight model.
-- Add code signing, release versioning, update policy, and clean-machine tests.
+- Acquire the Windows signing identity and execute the documented clean-machine
+  release gate. Synchronized release versioning, explicit manual-update policy,
+  unsigned/stable claim rejection, and the installed startup-smoke tool are now
+  implemented.
 - Run real CV model/video, installed-GDAL, and live matcher smokes; real
   GPStitch and FFmpeg smokes now pass.

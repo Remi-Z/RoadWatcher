@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "product": "RoadWatcher",
+  "version": "0.1.0",
+  "releaseChannel": "development",
+  "publicReleaseReady": false,
+  "signing": {
+    "windowsPolicy": "required-for-public-release",
+    "artifactState": "unsigned-development-only"
+  },
+  "updates": {
+    "mode": "manual-download",
+    "automatic": false,
+    "feed": null
+  },
+  "cleanMachineValidation": {
+    "status": "required-before-public-release",
+    "startupSmoke": "scripts/windows-installed-startup-smoke.ps1",
+    "procedure": "docs/windows-release-validation.md"
+  },
+  "runtimeDistributionMode": "source_bundle_with_external_tools"
+}

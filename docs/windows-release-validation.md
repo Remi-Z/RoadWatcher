@@ -1,0 +1,75 @@
+# Windows Release Validation
+
+Date: 2026-07-11
+
+## Current Policy
+
+RoadWatcher `0.1.0` is a development release. Current installers are unsigned
+and must not be represented as public-release-ready. Updates use deliberate
+manual download and reinstall; there is no background updater, update feed, or
+silent network check. A candidate or stable release requires a trusted Windows
+code-signing identity and clean-machine evidence.
+
+The authoritative machine-readable policy is
+`src-tauri/resources/release-manifest.json`. `npm run verify:release` rejects
+version drift, an undisclosed updater, a candidate/stable unsigned state, or a
+public-ready claim that is inconsistent with its gates.
+
+## Build Candidate
+
+From a clean checkout at the intended tag:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm test
+pnpm build
+pnpm verify:release
+$env:CARGO_TARGET_DIR = 'C:\rw-target'
+pnpm tauri:build
+```
+
+Record the commit, tag, Rust/Node/pnpm versions, installer SHA-256, and signing
+certificate subject/thumbprint. Do not change `artifactState` to `signed`
+unless both the installer and installed executable validate with
+`Get-AuthenticodeSignature` and chain to the intended certificate.
+
+## Clean Windows VM
+
+Use a supported Windows VM with no RoadWatcher install, no repository checkout,
+and no inherited user PATH customization. Verify the installer signature before
+launch for a candidate/stable release, install it, locate the installed
+`RoadWatcher.exe`, then copy only the startup smoke script into the VM and run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows-installed-startup-smoke.ps1 `
+  -InstalledExecutable 'C:\path\to\RoadWatcher.exe' `
+  -ExpectedVersion '0.1.0' `
+  -EvidencePath '.\roadwatcher-installed-smoke.json'
+```
+
+The script verifies product version, hashes the installed executable, proves it
+stays alive through the startup window, stops only the process it launched, and
+writes JSON evidence. Preserve that JSON with the installer/build evidence.
+
+## Functional Installed Checks
+
+On the same VM:
+
+1. Confirm the installed-runtime panel initially reports external prerequisites
+   and both managed sidecar environments honestly.
+2. Provide an approved external `uv`/Python installation, select **Prepare
+   sidecar environments**, and confirm all required preparation components pass.
+3. Provide the approved FFmpeg/ffprobe build and confirm installed-runtime
+   preflight plus a representative proxy job.
+4. Create a project outside the installation directory, import representative
+   video and GPX files, save/reopen it, render GPStitch telemetry, and publish a
+   native evidence packet.
+5. If included in the release scope, provide approved GDAL, CV model/labels, and
+   Valhalla/OSRM data and retain their separate smoke evidence.
+6. Uninstall RoadWatcher. Confirm user-created projects remain intact. Managed
+   app-local environments may remain as user data unless the release explicitly
+   documents an opt-in removal step.
+
+Any failed required check keeps `publicReleaseReady` false. Update the release
+manifest only in the release commit that carries the corresponding signing and
+clean-machine evidence.
