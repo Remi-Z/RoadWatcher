@@ -360,7 +360,7 @@ string, enum, and media/job identity fields before dispatch. Stop on `complete`,
 `failed`, `cancelled`, or `blocked`. Add cancellation controls beside active proxy
 jobs and invoke `job_cancel` with exact identity fields.
 
-- [ ] **Step 4: Run App tests/build and commit**
+- [x] **Step 4: Run App tests/build and commit**
 
 ```powershell
 pnpm test -- src/App.test.tsx
