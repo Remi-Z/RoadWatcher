@@ -357,11 +357,11 @@ network/DNS access.
   checks until Tauri commands are available.
 - The native runtime boundary detects Tauri shell globals and lists implemented
   versus planned DTOs. Project create/save/load, media import, durable FFmpeg,
-  native GPX import, Valhalla/OSRM matching, and status polling are implemented;
-  GIS and CV handlers remain planned.
+  native GPX import, Valhalla/OSRM matching, official GeoJSON import/projection,
+  and status polling are implemented; CV handlers remain planned.
 - The native command bridge is dependency-injected and tested. The app calls
   project-store, media import, FFmpeg proxy/status/cancel, GPX import/match/status,
-  and CV-scan paths through the bridge; GIS workflow commands and the CV handler still need
+  GIS import/project/status, and CV-scan paths through the bridge; the CV handler still needs
   implementation. Browser mode returns explicit fallback results. Required
   request fields are validated before Tauri invoke is called, and required
   response fields are validated before native data is accepted. The browser-safe
@@ -381,11 +381,11 @@ network/DNS access.
   hashed GPX assets and immutable raw points, execute Valhalla with OSRM fallback,
   publish matched points transactionally, poll durable state, and reproject
   official features. Live matching still requires a configured loopback service.
-- Browser GeoJSON import is a fallback only. It supports WGS84 Point and
-  LineString features for MVP review and now records `gis_project`
-  browser-fallback audit entries. Turf.js should own richer browser geometry
-  operations, and PostGIS should own production import, CRS normalization, and
-  spatial indexing.
+- Browser GeoJSON import remains an explicit fallback. Native projects now hash
+  and persist GeoJSON sources, preserve feature provenance, normalize EPSG:4326
+  and EPSG:3857, execute durable source-specific projection, and reconcile
+  reviewer-default results. GDAL/PostGIS must own other containers, arbitrary
+  CRS transformation, and production spatial indexing.
 - React Konva is installed but the current timeline is HTML/dnd-kit with tested
   edit controls. Upgrade to Konva when the timeline needs canvas-scale
   thumbnails, waveforms, zoom, and dense marker rendering.
@@ -394,7 +394,8 @@ network/DNS access.
 - GPStitch has not been vendored yet.
 - Valhalla/OSRM adapters are implemented for configured loopback HTTP services;
   local tiles/profiles and live-service smoke evidence are not present yet.
-- Official GIS import and CRS normalization are not implemented yet.
+- Shapefile/GeoPackage/FileGDB and arbitrary CRS normalization are not implemented;
+  the native GeoJSON EPSG:4326/EPSG:3857 workflow is implemented.
 - CV scan only has a configuration sidecar stub and a browser-fallback audit
   probe; no real ONNX model loading or frame scanning is implemented yet.
 - RoadWatch browser automation remains deferred.
@@ -413,8 +414,7 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement native official GIS ingestion, CRS/source provenance, normalized
-   storage, and projection onto the active matched route.
+1. Implement atomic native evidence export files and a durable export manifest.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -432,8 +432,7 @@ network/DNS access.
    demo fallback only for empty projects.
 7. Add a native file picker for the implemented import-by-reference command.
 8. Configure local Valhalla/OSRM data and add an optional live matcher smoke.
-9. Replace browser GeoJSON projection with native/Turf MVP geometry and production
-   PostGIS import/indexing.
+9. Add GDAL/PostGIS container import, arbitrary CRS normalization, and indexing.
 10. Define FFmpeg/ffprobe bundling, update, and licensing policy for deployment.
 
 ## Design Guardrails

@@ -38,9 +38,12 @@ persist bounded GPX 1.1 evidence, stream its hash/size, queue a durable match,
 call local Valhalla with OSRM Match fallback, poll terminal state, publish
 matched points atomically, show matcher provenance, and reproject official
 features,
-imported GeoJSON layers project supported official road features onto the active
-route with `gis_project` fallback audit entries until Turf/PostGIS/native
-projection is wired, RoadWatcher `.json` snapshots restore portable review state
+browser-imported GeoJSON retains explicit `gis_project` fallback audit entries;
+active native projects can instead hash and persist bounded official GeoJSON,
+normalize EPSG:4326 or EPSG:3857 coordinates to WGS84, preserve source geometry
+and properties provenance, queue durable source-specific projection, poll it,
+and publish reviewer-default results atomically onto the active route,
+RoadWatcher `.json` snapshots restore portable review state
 before falling back to GeoJSON parsing, and export packet previews produce
 downloadable Markdown/JSON artifacts with source media metadata, per-clip source
 filenames, imported-route endpoint provenance, a standalone native setup
@@ -64,8 +67,8 @@ the app can keep running and record the failed attempt.
 The readiness panel also includes tested project-store, native media import, GPX
 matcher, GIS projection, FFmpeg proxy, and local CV actions. Project
 create/save/load, `media_import`, `ffmpeg_proxy`, `job_status`, `job_cancel`,
-`gpx_import`, `gpx_match`, and `gpx_job_status` are implemented;
-`gis_project` and `cv_scan` bridge paths report
+`gpx_import`, `gpx_match`, `gpx_job_status`, `gis_import`, `gis_project`, and
+`gis_job_status` are implemented; `cv_scan` bridge paths report
 the browser fallback otherwise; the native project root and CV model slot remain
 editable, saved in portable project snapshots, and included in exports/setup
 checklists. Probe
@@ -139,16 +142,18 @@ paths must be invoked successfully before native-ready is claimed. Tauri
 `project_create` is backed by a SQLite project folder and durable metadata. Its
 pure Rust store now
 creates the UUID layout, required directories, schema version, project metadata,
-and foundational tables under test. Database schema version 4 retains the
+and foundational tables under test. Database schema version 5 retains the
 canonical transactional snapshot record, migrates older projects on open, and
 adds durable proxy outputs plus identified raw/matched routes, route-job links,
-matcher provenance, cancellation, and stale-running recovery.
+matcher provenance, identified GIS sources/features/projections, CRS provenance,
+cancellation, and stale-running recovery.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
-and retains browser storage as recovery fallback. Native media/proxy and
-GPX/map-matching workflows are complete; the next native slice is official GIS
-ingestion, CRS normalization, and projection onto the matched route.
+and retains browser storage as recovery fallback. Native media/proxy,
+GPX/map-matching, and official GeoJSON projection workflows are complete; the
+next native slice is writing evidence packets and snapshots to native export
+files instead of browser data URLs.
 
 ## Slots You Need To Fill
 
@@ -163,8 +168,8 @@ ingestion, CRS normalization, and projection onto the matched route.
   path without changing the durable media/proxy contracts.
 - Run a local Valhalla or OSRM HTTP service and replace their slot placeholders
   with loopback endpoints such as `http://localhost:8002`.
-- Replace browser GeoJSON projection with the intended Turf.js MVP path and the
-  production PostGIS importer/CRS-normalization path.
+- Add GDAL/PROJ or PostGIS ingestion for Shapefile, GeoPackage, FileGDB, and
+  arbitrary CRSs; native GeoJSON currently supports EPSG:4326 and EPSG:3857.
 - Provide a local ONNX vehicle model and labels file for the CV sidecar.
 
 See [docs/rewrite-manifest.md](docs/rewrite-manifest.md) for the implementation

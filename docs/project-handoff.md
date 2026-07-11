@@ -492,32 +492,31 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `src/features/project/nativeProjectLocator.ts` - stores only the last SQLite
   path for startup hydration; clearing it never deletes the project directory.
 - `src-tauri/` - Tauri 2 shell with implemented project/media/proxy/GPX/matcher
-  commands, schema version 4 migrations, streaming SHA-256, durable background
-  jobs, and transactional raw/matched route persistence.
+  commands, schema version 5 migrations, streaming SHA-256, durable background
+  jobs, transactional raw/matched routes, and identified GIS source/projection
+  persistence.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
 
 ## Next Best Implementation Slice
 
-The native GPX/map-matching module is complete. Verification on 2026-07-10
-passed 140 frontend tests across 20 files, the production Vite build, and 37
-Rust tests (plus the intentionally ignored installed-FFmpeg smoke). Deterministic
-matcher fixtures cover Valhalla, OSRM, Valhalla-to-OSRM fallback, malformed
-responses, blocked configuration, background execution, cumulative-distance
-time interpolation, atomic completion, and raw-evidence preservation. No live
-matcher smoke was run because no loopback Valhalla/OSRM endpoint is configured.
+The native official-GIS module is complete. Verification on 2026-07-10 passed
+144 frontend tests across 21 files, the production Vite build, and 46 Rust tests
+(plus the intentionally ignored installed-FFmpeg smoke). Fixtures cover bounded
+GeoJSON normalization, EPSG:4326, numeric EPSG:3857 inverse projection,
+source/properties/geometry provenance, schema migration, metric projection,
+source-specific atomic publication, missing-route blocking, background execution,
+polling, project guards, and browser fallback. GDAL/PostGIS formats and arbitrary
+CRSs remain intentionally unsupported rather than inferred.
 
-1. Implement native official GIS ingestion, source/CRS provenance, normalized
-   storage, and projection onto the active matched route.
+1. Replace browser data-URL packet/snapshot downloads with atomic native export
+   files and a durable export manifest.
 2. Add a native file picker that populates the implemented media/GPX source
    paths without changing the store contracts.
 3. Replace seeded demo data with command-backed state after native media/project
    selection exists, keeping the seed only for empty projects.
-4. Replace browser GeoJSON projection with Turf.js MVP helpers and production
-   PostGIS/CRS-normalization import.
-5. Replace browser data-URL downloads with native export files; SQLite project
-   save/load is now available.
+4. Add GDAL/PostGIS import for production GIS containers and arbitrary CRSs.
 
 ## Boundaries To Preserve
 
