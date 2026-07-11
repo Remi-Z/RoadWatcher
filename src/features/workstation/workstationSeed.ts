@@ -31,6 +31,7 @@ export function createEmptyWorkstationSeed(
     officialFeatures: [],
     projectId,
     projectedFeatures: [],
-    route: []
+    route: [],
+    telemetryRenders: []
   };
 }

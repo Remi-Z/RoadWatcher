@@ -1,6 +1,6 @@
 import type { ComponentSlot, IncidentDraft, MediaAsset, ProjectId } from "../../domain/projectModels";
 import { normalizeProjectedFeatureReview, type OfficialRoadFeature, type ProjectedRoadFeature, type TimedRoutePoint } from "../geo/projection";
-import type { CvFindingReview, WorkstationJob } from "../jobs/jobModel";
+import type { CvFindingReview, TelemetryRender, WorkstationJob } from "../jobs/jobModel";
 import type { NativeCommandName } from "../native/nativeCommandContracts";
 import type { NativeRuntimeStatus } from "../native/runtimeEnvironment";
 import type { TimelineClip } from "../timeline/timelineModel";
@@ -46,6 +46,7 @@ export interface ProjectSnapshotInput {
   projectId: ProjectId;
   projectedFeatures: ProjectedRoadFeature[];
   route?: TimedRoutePoint[];
+  telemetryRenders?: TelemetryRender[];
 }
 
 export interface ProjectSnapshot extends ProjectSnapshotInput {
@@ -57,6 +58,7 @@ export interface ProjectSnapshot extends ProjectSnapshotInput {
   nativeProjectRoot: string;
   route: TimedRoutePoint[];
   officialFeatures: OfficialRoadFeature[];
+  telemetryRenders: TelemetryRender[];
   savedAtIso: string;
 }
 
@@ -76,6 +78,7 @@ export interface EvidencePacket {
     route: TimedRoutePoint[];
     sourceMedia: MediaAsset[];
     projectedFeatures: ProjectedRoadFeature[];
+    telemetryRenders: TelemetryRender[];
     reviewReadiness: ReviewReadiness;
   };
 }
@@ -103,7 +106,8 @@ export function createProjectSnapshot(input: ProjectSnapshotInput): ProjectSnaps
     nativeProjectRoot: input.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT,
     officialFeatures: structuredClone(input.officialFeatures ?? []),
     projectedFeatures: structuredClone(input.projectedFeatures),
-    route: structuredClone(input.route ?? [])
+    route: structuredClone(input.route ?? []),
+    telemetryRenders: structuredClone(input.telemetryRenders ?? [])
   };
 }
 
@@ -118,7 +122,8 @@ export function restoreProjectSnapshot(snapshot: ProjectSnapshot): ProjectSnapsh
     nativeCommandAttempts: structuredClone(snapshot.nativeCommandAttempts ?? []),
     nativeProjectRoot: snapshot.nativeProjectRoot ?? DEFAULT_NATIVE_PROJECT_ROOT,
     projectedFeatures: structuredClone(snapshot.projectedFeatures ?? []).map(normalizeProjectedFeatureReview),
-    cvFindings: structuredClone(snapshot.cvFindings ?? [])
+    cvFindings: structuredClone(snapshot.cvFindings ?? []),
+    telemetryRenders: structuredClone(snapshot.telemetryRenders ?? [])
   };
 }
 
@@ -146,6 +151,7 @@ export function buildEvidencePacket(snapshot: ProjectSnapshot, options: Evidence
     route: structuredClone(snapshot.route ?? []),
     sourceMedia: structuredClone(snapshot.media),
     projectedFeatures: structuredClone(snapshot.projectedFeatures).map(normalizeProjectedFeatureReview),
+    telemetryRenders: structuredClone(snapshot.telemetryRenders ?? []),
     reviewReadiness
   };
 
@@ -180,6 +186,9 @@ function buildMarkdown(packet: EvidencePacket["summaryJson"]): string {
           finding.reviewNote.trim() ? `; note: ${finding.reviewNote.trim()}` : ""
         })`
     )
+    .join("\n");
+  const telemetryRenderLines = packet.telemetryRenders
+    .map((render) => `- ${render.layout} / ${render.alignment}: ${render.status}; media ${render.mediaId}; route ${render.routeId}; GPStitch ${render.gpstitchVersion || "pending"}; output ${render.outputPath || "pending"}; size ${render.outputSizeBytes} bytes; hash ${render.outputHash || "pending"}`)
     .join("\n");
 
   const clipLines = packet.clips
@@ -269,6 +278,9 @@ ${featureLines || "- No projected features saved."}
 
 ## Local CV Findings
 ${cvLines || "- No CV findings saved."}
+
+## GPStitch Telemetry Renders
+${telemetryRenderLines || "- No telemetry renders saved."}
 
 ## Referenced Source Media
 ${mediaLines || "- No media references saved."}

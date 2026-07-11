@@ -15,7 +15,9 @@ export type NativeCommandName =
   | "native_export"
   | "cv_scan"
   | "cv_job_status"
-  | "cv_finding_review";
+  | "cv_finding_review"
+  | "gpstitch_render"
+  | "gpstitch_job_status";
 export type NativeCommandImplementation = "implemented" | "planned";
 
 export interface NativeCommandContract {
@@ -268,5 +270,27 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     responseFields: ["scanId", "findingId", "reviewStatus", "reviewNote"],
     fallback: "portable snapshot reviewer decisions",
     ownerAction: "Persist reviewer decisions for local CV suggestions in the active SQLite project."
+  },
+  {
+    id: "gpstitch-render",
+    label: "GPStitch telemetry render",
+    command: "gpstitch_render",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["sqlitePath", "projectId", "mediaId", "routeId", "layout", "alignment", "timeOffsetSeconds", "uvExecutable", "sidecarDirectory"],
+    responseFields: ["renderId", "jobId", "status"],
+    fallback: "preserve media, route, and alignment metadata without rendering",
+    ownerAction: "Queue a pinned GPStitch render against an immutable review proxy and imported GPX evidence."
+  },
+  {
+    id: "gpstitch-job-status",
+    label: "GPStitch telemetry render status",
+    command: "gpstitch_job_status",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["sqlitePath", "projectId", "mediaId", "routeId", "renderId", "jobId"],
+    responseFields: ["renderId", "jobId", "mediaId", "routeId", "status", "progress", "detail", "layout", "alignment", "timeOffsetSeconds", "outputPath", "outputHash", "outputSizeBytes", "gpstitchVersion"],
+    fallback: "portable snapshot render status",
+    ownerAction: "Poll durable GPStitch progress and output provenance."
   }
 ];

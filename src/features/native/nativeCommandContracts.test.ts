@@ -21,7 +21,9 @@ describe("native command contracts", () => {
       "native_export",
       "cv_scan",
       "cv_job_status",
-      "cv_finding_review"
+      "cv_finding_review",
+      "gpstitch_render",
+      "gpstitch_job_status"
     ]);
 
     expect(nativeCommandContracts.find((contract) => contract.command === "project_create")).toMatchObject({

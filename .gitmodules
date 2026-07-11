@@ -1,0 +1,3 @@
+[submodule "sidecars/roadwatcher-gpstitch"]
+	path = sidecars/roadwatcher-gpstitch
+	url = https://github.com/Romancha/GPStitch.git

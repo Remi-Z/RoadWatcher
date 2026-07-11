@@ -511,7 +511,7 @@ describe("RoadWatcher workstation", () => {
     expect(readinessPanel as HTMLElement).toHaveTextContent("Browser packet export is available");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Packet readiness ready");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Native workflow unavailable");
-    expect(readinessPanel as HTMLElement).toHaveTextContent("5 native slots need attention");
+    expect(readinessPanel as HTMLElement).toHaveTextContent("4 native slots need attention");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Valhalla map match");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Native setup checklist");
     expect(readinessPanel as HTMLElement).toHaveTextContent("cargo --version");
@@ -862,6 +862,48 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("Confirmed by reviewer.");
     expect(exportPanel as HTMLElement).toHaveTextContent("onnxruntime-cpu");
   }, 10_000);
+
+  it("queues, reconciles, and exports pinned GPStitch telemetry provenance", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/gpstitch/project.sqlite";
+    const snapshot = createProjectSnapshot({
+      clips: initialClips, componentSlots: missingSlots, incident: incidentDraft,
+      jobs: [...initialJobs, { id: "route-job", routeId: "route-1", type: "valhalla", label: "Imported route", status: "complete", progress: 100, detail: "matched" }],
+      media: mediaAssets.map((asset, index) => index === 0 ? { ...asset, proxyStatus: "ready" as const, proxyPath: "D:/RoadWatcherProjects/gpstitch/proxies/front/review-proxy.mp4" } : asset),
+      projectId: "native-gpstitch-project" as ProjectId, projectedFeatures
+    });
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+      if (command === "project_load") return { projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion, savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot) };
+      if (command === "gpstitch_render") return { renderId: "render-1", jobId: "gpstitch-job-1", status: "queued" };
+      if (command === "gpstitch_job_status") return {
+        renderId: "render-1", jobId: "gpstitch-job-1", mediaId: "media-front-001", routeId: "route-1",
+        status: "complete", progress: 100, detail: "GPStitch telemetry overlay complete.",
+        layout: "speed-awareness", alignment: "auto", timeOffsetSeconds: 0,
+        outputPath: "D:/RoadWatcherProjects/gpstitch/proxies/front/gpstitch/render-1.mp4",
+        outputHash: "a".repeat(64), outputSizeBytes: 4096, gpstitchVersion: "0.18.0"
+      };
+      throw new Error(`Unexpected command ${command}`);
+    });
+    render(<App nativeInvoke={nativeInvoke}
+      nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+      nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+      projectRepository={createMemoryProjectRepository()} />);
+    await screen.findByText(/Restored native SQLite project/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Render telemetry overlay" }));
+
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("GPStitch telemetry render complete"));
+    expect(nativeInvoke).toHaveBeenCalledWith("gpstitch_render", expect.objectContaining({
+      sqlitePath, projectId: "native-gpstitch-project", mediaId: "media-front-001", routeId: "route-1",
+      layout: "speed-awareness", alignment: "auto", timeOffsetSeconds: 0,
+      uvExecutable: "uv", sidecarDirectory: "sidecars/roadwatcher-gpstitch"
+    }));
+    expect(screen.getByText("GPStitch 0.18.0")).toBeInTheDocument();
+    expect(screen.getByText(`Hash ${"a".repeat(64)}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
+    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
+    expect(exportPanel as HTMLElement).toHaveTextContent("GPStitch Telemetry Renders");
+    expect(exportPanel as HTMLElement).toHaveTextContent("render-1.mp4");
+  });
 
   it("records browser GPX matcher fallbacks in drafts and export packets", async () => {
     const repository = createMemoryProjectRepository();

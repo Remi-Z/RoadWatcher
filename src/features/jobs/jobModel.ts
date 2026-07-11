@@ -84,6 +84,25 @@ export interface NativeCvScanResult {
   findings: CvFindingReview[];
 }
 
+export type GpstitchAlignment = "auto" | "gpx_timestamps" | "manual";
+
+export interface TelemetryRender {
+  renderId: string;
+  jobId: string;
+  mediaId: string;
+  routeId: string;
+  status: JobStatus;
+  progress: number;
+  detail: string;
+  layout: "speed-awareness" | "default";
+  alignment: GpstitchAlignment;
+  timeOffsetSeconds: number;
+  outputPath: string;
+  outputHash: string;
+  outputSizeBytes: number;
+  gpstitchVersion: string;
+}
+
 export function startJob(job: WorkstationJob): WorkstationJob {
   return {
     ...job,

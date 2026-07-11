@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
 
-const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 7;
+const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 8;
 
 #[derive(Debug)]
 pub struct ProjectCreateRequest {
@@ -313,6 +313,49 @@ pub struct CvFindingReviewResponse {
 }
 
 #[derive(Clone, Debug)]
+pub struct GpstitchRenderRequest {
+    pub sqlite_path: PathBuf,
+    pub project_id: String,
+    pub media_id: String,
+    pub route_id: String,
+    pub render_id: String,
+    pub job_id: String,
+    pub layout: String,
+    pub alignment: String,
+    pub time_offset_seconds: i64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClaimedGpstitchRender {
+    pub proxy_path: PathBuf,
+    pub detected_start: String,
+    pub route_path: PathBuf,
+    pub output_path: PathBuf,
+    pub layout: String,
+    pub alignment: String,
+    pub time_offset_seconds: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpstitchRenderStatus {
+    pub render_id: String,
+    pub job_id: String,
+    pub media_id: String,
+    pub route_id: String,
+    pub status: String,
+    pub progress: f64,
+    pub detail: String,
+    pub layout: String,
+    pub alignment: String,
+    pub time_offset_seconds: i64,
+    pub output_path: String,
+    pub output_hash: String,
+    pub output_size_bytes: u64,
+    pub gpstitch_version: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct ProxyJobRequest {
     pub sqlite_path: PathBuf,
     pub project_id: String,
@@ -422,6 +465,12 @@ pub enum ProjectStoreError {
     CvScanJobNotFound,
     #[error("CV scan job cannot transition from state {0}.")]
     InvalidCvScanState(String),
+    #[error("GPStitch render configuration is invalid: {0}")]
+    InvalidGpstitchRender(String),
+    #[error("GPStitch render job was not found for the supplied project/media/route identity.")]
+    GpstitchRenderJobNotFound,
+    #[error("GPStitch render job cannot transition from state {0}.")]
+    InvalidGpstitchRenderState(String),
 }
 
 pub fn create_project(
@@ -2006,6 +2055,315 @@ pub fn review_cv_finding(
     })
 }
 
+pub fn queue_gpstitch_render(request: &GpstitchRenderRequest) -> Result<(), ProjectStoreError> {
+    validate_gpstitch_request(request)?;
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let identities: (i64, i64) = connection.query_row(
+        "SELECT
+           (SELECT COUNT(*) FROM media_assets
+            WHERE id = ?1 AND project_id = ?2 AND proxy_status = 'ready' AND proxy_path <> ''),
+           (SELECT COUNT(*) FROM route_assets
+            WHERE id = ?3 AND project_id = ?2 AND original_path <> '')",
+        params![request.media_id, request.project_id, request.route_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    if identities != (1, 1) {
+        return Err(ProjectStoreError::GpstitchRenderJobNotFound);
+    }
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO jobs
+         (id, project_id, media_id, route_id, job_type, label, status, progress, detail)
+         VALUES (?1, ?2, ?3, ?4, 'gpstitch', 'GPStitch telemetry overlay', 'queued', 0,
+                 'GPStitch telemetry overlay queued.')",
+        params![
+            request.job_id,
+            request.project_id,
+            request.media_id,
+            request.route_id
+        ],
+    )?;
+    transaction.execute(
+        "INSERT INTO gpstitch_renders
+         (id, job_id, project_id, media_id, route_id, layout, alignment,
+          time_offset_seconds, status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'queued')",
+        params![
+            request.render_id,
+            request.job_id,
+            request.project_id,
+            request.media_id,
+            request.route_id,
+            request.layout,
+            request.alignment,
+            request.time_offset_seconds
+        ],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn claim_gpstitch_render(
+    request: &GpstitchRenderRequest,
+) -> Result<ClaimedGpstitchRender, ProjectStoreError> {
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let claimed = connection
+        .query_row(
+            "SELECT jobs.status, media_assets.proxy_path, media_assets.detected_start,
+                    route_assets.original_path, gpstitch_renders.layout,
+                    gpstitch_renders.alignment, gpstitch_renders.time_offset_seconds
+             FROM gpstitch_renders
+             JOIN jobs ON jobs.id = gpstitch_renders.job_id
+             JOIN media_assets ON media_assets.id = gpstitch_renders.media_id
+             JOIN route_assets ON route_assets.id = gpstitch_renders.route_id
+             WHERE gpstitch_renders.id = ?1 AND jobs.id = ?2
+               AND jobs.project_id = ?3 AND jobs.media_id = ?4 AND jobs.route_id = ?5
+               AND jobs.job_type = 'gpstitch'",
+            params![
+                request.render_id,
+                request.job_id,
+                request.project_id,
+                request.media_id,
+                request.route_id
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    PathBuf::from(row.get::<_, String>(1)?),
+                    row.get::<_, String>(2)?,
+                    PathBuf::from(row.get::<_, String>(3)?),
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, i64>(6)?,
+                ))
+            },
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::GpstitchRenderJobNotFound,
+            other => ProjectStoreError::Sqlite(other),
+        })?;
+    if claimed.0 != "queued" {
+        return Err(ProjectStoreError::InvalidGpstitchRenderState(claimed.0));
+    }
+    if !claimed.1.is_file() || !claimed.3.is_file() {
+        return Err(ProjectStoreError::InvalidGpstitchRender(
+            "ready proxy and original GPX files must still exist".to_string(),
+        ));
+    }
+    let output_path = gpstitch_output_path(request)?;
+    let transaction = connection.transaction()?;
+    let changed = transaction.execute(
+        "UPDATE jobs SET status = 'running', progress = 5,
+         detail = 'Launching pinned GPStitch telemetry renderer.'
+         WHERE id = ?1 AND project_id = ?2 AND media_id = ?3 AND route_id = ?4
+           AND job_type = 'gpstitch' AND status = 'queued'",
+        params![
+            request.job_id,
+            request.project_id,
+            request.media_id,
+            request.route_id
+        ],
+    )?;
+    if changed != 1 {
+        return Err(ProjectStoreError::GpstitchRenderJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE gpstitch_renders SET status = 'running'
+         WHERE id = ?1 AND project_id = ?2 AND status = 'queued'",
+        params![request.render_id, request.project_id],
+    )?;
+    transaction.commit()?;
+    Ok(ClaimedGpstitchRender {
+        proxy_path: claimed.1,
+        detected_start: claimed.2,
+        route_path: claimed.3,
+        output_path,
+        layout: claimed.4,
+        alignment: claimed.5,
+        time_offset_seconds: claimed.6,
+    })
+}
+
+pub fn complete_gpstitch_render(
+    request: &GpstitchRenderRequest,
+    gpstitch_version: &str,
+) -> Result<GpstitchRenderStatus, ProjectStoreError> {
+    if gpstitch_version.trim().is_empty() || gpstitch_version.len() > 64 {
+        return Err(ProjectStoreError::InvalidGpstitchRender(
+            "GPStitch version provenance is invalid".to_string(),
+        ));
+    }
+    let output_path = gpstitch_output_path(request)?;
+    let canonical_output = fs::canonicalize(&output_path).map_err(|_| {
+        ProjectStoreError::InvalidGpstitchRender("render output was not created".to_string())
+    })?;
+    let canonical_expected_parent = fs::canonicalize(output_path.parent().ok_or_else(|| {
+        ProjectStoreError::InvalidGpstitchRender("render output has no parent".to_string())
+    })?)?;
+    if canonical_output.parent() != Some(canonical_expected_parent.as_path())
+        || canonical_output.file_name() != output_path.file_name()
+        || !canonical_output.is_file()
+    {
+        return Err(ProjectStoreError::InvalidGpstitchRender(
+            "render output escaped its confined project directory".to_string(),
+        ));
+    }
+    let metadata = fs::metadata(&canonical_output)?;
+    if metadata.len() == 0 {
+        return Err(ProjectStoreError::InvalidGpstitchRender(
+            "render output is empty".to_string(),
+        ));
+    }
+    let output_hash = sha256_file(&canonical_output)?;
+    let output_size_sql = i64::try_from(metadata.len()).map_err(|_| {
+        ProjectStoreError::InvalidGpstitchRender("render output is too large".to_string())
+    })?;
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let changed = transaction.execute(
+        "UPDATE gpstitch_renders SET status = 'complete', output_path = ?1,
+         output_hash = ?2, output_size_bytes = ?3, gpstitch_version = ?4
+         WHERE id = ?5 AND project_id = ?6 AND media_id = ?7 AND route_id = ?8
+           AND status = 'running'",
+        params![
+            path_string(&canonical_output),
+            output_hash,
+            output_size_sql,
+            gpstitch_version,
+            request.render_id,
+            request.project_id,
+            request.media_id,
+            request.route_id
+        ],
+    )?;
+    if changed != 1 {
+        return Err(ProjectStoreError::GpstitchRenderJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE jobs SET status = 'complete', progress = 100,
+         detail = 'GPStitch telemetry overlay complete.'
+         WHERE id = ?1 AND project_id = ?2 AND job_type = 'gpstitch' AND status = 'running'",
+        params![request.job_id, request.project_id],
+    )?;
+    transaction.commit()?;
+    read_gpstitch_render_status(request)
+}
+
+pub fn fail_gpstitch_render(
+    request: &GpstitchRenderRequest,
+    status: &str,
+    detail: &str,
+) -> Result<(), ProjectStoreError> {
+    if !matches!(status, "failed" | "blocked" | "cancelled") || detail.trim().is_empty() {
+        return Err(ProjectStoreError::InvalidGpstitchRenderState(
+            status.to_string(),
+        ));
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let changed = transaction.execute(
+        "UPDATE jobs SET status = ?1, detail = ?2
+         WHERE id = ?3 AND project_id = ?4 AND media_id = ?5 AND route_id = ?6
+           AND job_type = 'gpstitch' AND status IN ('queued', 'running')",
+        params![
+            status,
+            detail,
+            request.job_id,
+            request.project_id,
+            request.media_id,
+            request.route_id
+        ],
+    )?;
+    if changed != 1 {
+        return Err(ProjectStoreError::GpstitchRenderJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE gpstitch_renders SET status = ?1 WHERE id = ?2 AND project_id = ?3",
+        params![status, request.render_id, request.project_id],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn read_gpstitch_render_status(
+    request: &GpstitchRenderRequest,
+) -> Result<GpstitchRenderStatus, ProjectStoreError> {
+    let connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    connection
+        .query_row(
+            "SELECT gpstitch_renders.id, jobs.id, jobs.media_id, jobs.route_id,
+                    jobs.status, jobs.progress, jobs.detail, gpstitch_renders.layout,
+                    gpstitch_renders.alignment, gpstitch_renders.time_offset_seconds,
+                    gpstitch_renders.output_path, gpstitch_renders.output_hash,
+                    gpstitch_renders.output_size_bytes, gpstitch_renders.gpstitch_version
+             FROM gpstitch_renders JOIN jobs ON jobs.id = gpstitch_renders.job_id
+             WHERE gpstitch_renders.id = ?1 AND jobs.id = ?2 AND jobs.project_id = ?3
+               AND jobs.media_id = ?4 AND jobs.route_id = ?5 AND jobs.job_type = 'gpstitch'",
+            params![
+                request.render_id,
+                request.job_id,
+                request.project_id,
+                request.media_id,
+                request.route_id
+            ],
+            |row| {
+                let output_size = row.get::<_, i64>(12)?;
+                Ok(GpstitchRenderStatus {
+                    render_id: row.get(0)?,
+                    job_id: row.get(1)?,
+                    media_id: row.get(2)?,
+                    route_id: row.get(3)?,
+                    status: row.get(4)?,
+                    progress: row.get(5)?,
+                    detail: row.get(6)?,
+                    layout: row.get(7)?,
+                    alignment: row.get(8)?,
+                    time_offset_seconds: row.get(9)?,
+                    output_path: row.get(10)?,
+                    output_hash: row.get(11)?,
+                    output_size_bytes: u64::try_from(output_size).unwrap_or(0),
+                    gpstitch_version: row.get(13)?,
+                })
+            },
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::GpstitchRenderJobNotFound,
+            other => ProjectStoreError::Sqlite(other),
+        })
+}
+
+fn validate_gpstitch_request(request: &GpstitchRenderRequest) -> Result<(), ProjectStoreError> {
+    if !matches!(request.layout.as_str(), "speed-awareness" | "default")
+        || !matches!(
+            request.alignment.as_str(),
+            "auto" | "gpx_timestamps" | "manual"
+        )
+        || !(-86_400..=86_400).contains(&request.time_offset_seconds)
+        || (request.alignment != "manual" && request.time_offset_seconds != 0)
+    {
+        return Err(ProjectStoreError::InvalidGpstitchRender(
+            "layout, alignment, or time offset is invalid".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn gpstitch_output_path(request: &GpstitchRenderRequest) -> Result<PathBuf, ProjectStoreError> {
+    let project_directory = request.sqlite_path.parent().ok_or_else(|| {
+        ProjectStoreError::InvalidGpstitchRender("project database has no parent".to_string())
+    })?;
+    Ok(project_directory
+        .join("proxies")
+        .join(&request.media_id)
+        .join("gpstitch")
+        .join(format!("{}.mp4", request.render_id)))
+}
+
 fn validate_cv_scan_request(request: &CvScanRequest) -> Result<(), ProjectStoreError> {
     for (label, path) in [
         ("ONNX model", &request.model_path),
@@ -2347,6 +2705,9 @@ fn migrate_database(connection: &mut Connection) -> Result<(), ProjectStoreError
         if version <= 6 {
             transaction.execute_batch(CV_SCAN_MIGRATION_SQL)?;
         }
+        if version <= 7 {
+            transaction.execute_batch(GPSTITCH_RENDER_MIGRATION_SQL)?;
+        }
         transaction.execute(
             "UPDATE schema_info SET version = ?1",
             params![PROJECT_DATABASE_SCHEMA_VERSION],
@@ -2464,7 +2825,7 @@ fn path_string(path: &Path) -> String {
 const SCHEMA_SQL: &str = r#"
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
-PRAGMA user_version = 7;
+PRAGMA user_version = 8;
 
 CREATE TABLE schema_info (
     version INTEGER NOT NULL CHECK (version > 0)
@@ -2666,6 +3027,22 @@ CREATE TABLE cv_findings (
     review_note TEXT NOT NULL DEFAULT '',
     UNIQUE(scan_id, sequence)
 );
+
+CREATE TABLE gpstitch_renders (
+    id TEXT PRIMARY KEY NOT NULL,
+    job_id TEXT UNIQUE NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+    route_id TEXT NOT NULL REFERENCES route_assets(id) ON DELETE CASCADE,
+    layout TEXT NOT NULL,
+    alignment TEXT NOT NULL,
+    time_offset_seconds INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'complete', 'failed', 'blocked', 'cancelled')),
+    output_path TEXT NOT NULL DEFAULT '',
+    output_hash TEXT NOT NULL DEFAULT '',
+    output_size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (output_size_bytes >= 0),
+    gpstitch_version TEXT NOT NULL DEFAULT ''
+);
 "#;
 
 const PROJECT_SNAPSHOT_TABLE_SQL: &str = r#"
@@ -2841,6 +3218,28 @@ WHERE job_type = 'cv' AND status = 'running';
 UPDATE cv_scans SET status = 'queued' WHERE status = 'running';
 "#;
 
+const GPSTITCH_RENDER_MIGRATION_SQL: &str = r#"
+CREATE TABLE gpstitch_renders (
+    id TEXT PRIMARY KEY NOT NULL,
+    job_id TEXT UNIQUE NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+    route_id TEXT NOT NULL REFERENCES route_assets(id) ON DELETE CASCADE,
+    layout TEXT NOT NULL,
+    alignment TEXT NOT NULL,
+    time_offset_seconds INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'complete', 'failed', 'blocked', 'cancelled')),
+    output_path TEXT NOT NULL DEFAULT '',
+    output_hash TEXT NOT NULL DEFAULT '',
+    output_size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (output_size_bytes >= 0),
+    gpstitch_version TEXT NOT NULL DEFAULT ''
+);
+UPDATE jobs SET status = 'queued', progress = 0,
+    detail = 'GPStitch render recovered after restart.', cancellation_requested = 0
+WHERE job_type = 'gpstitch' AND status = 'running';
+UPDATE gpstitch_renders SET status = 'queued' WHERE status = 'running';
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -2902,7 +3301,7 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(schema_version, 7);
+        assert_eq!(schema_version, 8);
         assert_eq!(
             metadata,
             (
@@ -2937,6 +3336,7 @@ mod tests {
             "export_artifacts",
             "cv_scans",
             "cv_findings",
+            "gpstitch_renders",
         ] {
             assert!(table_names.contains(table), "missing table {table}");
         }
@@ -3057,6 +3457,61 @@ mod tests {
         let evidence = feature_source_evidence(&file_gdb).unwrap();
         assert_eq!(evidence.0, 10);
         assert_eq!(evidence.1.len(), 64);
+    }
+
+    #[test]
+    fn migrates_v7_and_recovers_interrupted_gpstitch_jobs() {
+        let root = TestRoot::new();
+        let project_id = Uuid::new_v4();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "GPStitch migration".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        connection
+            .execute_batch(
+                "DROP TABLE gpstitch_renders;
+                 INSERT INTO jobs
+                   (id, project_id, job_type, label, status, progress, detail)
+                 VALUES ('legacy-gpstitch', (SELECT id FROM projects), 'gpstitch',
+                         'Legacy GPStitch', 'running', 30, 'interrupted');
+                 PRAGMA user_version = 7;
+                 UPDATE schema_info SET version = 7;",
+            )
+            .unwrap();
+        drop(connection);
+
+        open_project_database(Path::new(&created.sqlite_path)).unwrap();
+        let connection = Connection::open(&created.sqlite_path).unwrap();
+        let table_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type = 'table' AND name = 'gpstitch_renders'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let job: (String, f64, String) = connection
+            .query_row(
+                "SELECT status, progress, detail FROM jobs WHERE id = 'legacy-gpstitch'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(table_count, 1);
+        assert_eq!(
+            job,
+            (
+                "queued".to_string(),
+                0.0,
+                "GPStitch render recovered after restart.".to_string()
+            )
+        );
     }
 
     #[test]
@@ -3383,8 +3838,8 @@ mod tests {
         let schema_version: i64 = connection
             .query_row("SELECT version FROM schema_info", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(user_version, 7);
-        assert_eq!(schema_version, 7);
+        assert_eq!(user_version, 8);
+        assert_eq!(schema_version, 8);
     }
 
     #[test]
@@ -3452,7 +3907,7 @@ mod tests {
             load_project_snapshot(Path::new(&created.sqlite_path)),
             Err(ProjectStoreError::UnsupportedDatabaseVersion {
                 found: 99,
-                supported: 7
+                supported: 8
             })
         ));
     }
@@ -3656,7 +4111,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         let media_columns: BTreeSet<String> = connection
             .prepare("PRAGMA table_info(media_assets)")
             .unwrap()
@@ -3714,7 +4169,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         let migrated: (String, String, f64) = connection
             .query_row(
                 "SELECT route_id, point_set, time_seconds FROM route_points WHERE sequence = 1",
@@ -3775,7 +4230,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         let source: (String, String, i64) = connection.query_row(
             "SELECT source_crs, normalized_crs, feature_count FROM feature_sources WHERE id = 'legacy-gis-gis-project'",
             [],
@@ -3850,7 +4305,7 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        assert_eq!(versions, (7, 7));
+        assert_eq!(versions, (8, 8));
         let tables: BTreeSet<String> = connection
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
             .unwrap()
@@ -4122,7 +4577,8 @@ mod tests {
         let connection = Connection::open(&request.sqlite_path).unwrap();
         connection
             .execute_batch(
-                "DROP TABLE cv_findings;
+                "DROP TABLE gpstitch_renders;
+             DROP TABLE cv_findings;
              DROP TABLE cv_scans;
              PRAGMA user_version = 6;
              UPDATE schema_info SET version = 6;",
@@ -4142,7 +4598,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         assert_eq!(status, "queued");
         let tables: i64 = connection.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('cv_scans','cv_findings')",

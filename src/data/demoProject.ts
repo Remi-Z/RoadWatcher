@@ -153,6 +153,7 @@ export function createDemoWorkstationSeed(projectId: ProjectId): WorkstationSeed
     officialFeatures: officialRoadFeatures,
     projectId,
     projectedFeatures,
-    route: routePoints
+    route: routePoints,
+    telemetryRenders: []
   };
 }

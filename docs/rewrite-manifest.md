@@ -211,6 +211,12 @@ Build a Windows-first, local-first evidence workstation:
 
 ## Current Verification
 
+Latest module verification on 2026-07-11: 168 frontend tests across 26 files,
+TypeScript compilation, production Vite build, and 63 Rust tests passed; the one
+installed-FFmpeg smoke remains intentionally ignored. GPStitch worker/store tests
+use a fake executor because no compatible local GPStitch/FFmpeg render toolchain
+was available for a live smoke.
+
 ```powershell
 pnpm test
 pnpm build
@@ -392,7 +398,12 @@ network/DNS access.
   thumbnails, waveforms, zoom, and dense marker rendering.
 - MapLibre is installed but the current map is an SVG implementation preview.
   Replace with MapLibre once local/offline basemap and route layers are ready.
-- GPStitch has not been vendored yet.
+- GPStitch is pinned as the `sidecars/roadwatcher-gpstitch` git submodule at
+  v0.18.0 / `65a560966a72002bcb503e082df089863e0a5d53`. Durable schema-v8
+  execution, locked/offline no-shell launch, alignment controls, strict polling,
+  confined output publication, and snapshot/export provenance are implemented.
+  Distribution must retain its GPL-3.0-or-later notices; a real installed-tool
+  render smoke remains pending.
 - Valhalla/OSRM adapters are implemented for configured loopback HTTP services;
   local tiles/profiles and live-service smoke evidence are not present yet.
 - Shapefile, GeoPackage, FlatGeobuf, FileGDB, and arbitrary CRS normalization
@@ -401,7 +412,7 @@ network/DNS access.
 - The CV sidecar implements bounded YOLO-style ONNX Runtime/OpenCV frame
   scanning and conservative finding JSON. Durable Rust execution, strict
   polling, reviewer reconciliation, SQLite decision persistence, portable
-  snapshot schema v3, and evidence exports are implemented; browser fallback
+  snapshot schema v4, and evidence exports are implemented; browser fallback
   remains explicit when no native runtime is available.
 - RoadWatch browser automation remains deferred.
 
@@ -410,7 +421,7 @@ network/DNS access.
 | Slot | Needed For | Current Placeholder |
 | --- | --- | --- |
 | Rust/Cargo | Tauri dev/build and Rust command implementation | `src-tauri/` scaffold |
-| GPStitch fork | Telemetry sync and overlay processing | `sidecars/roadwatcher-gpstitch/README.md` |
+| GPStitch sidecar | Telemetry sync and overlay processing | Pinned submodule v0.18.0; packaging/license compliance remains |
 | Valhalla York/GTA data | Local map matching | Editable UI slot + blocked job |
 | OSRM Match fallback | Simpler GPX matching fallback | Editable optional UI slot |
 | Official GIS layers | Stop signs/lights/bike lanes projection | Editable UI slot |
@@ -420,9 +431,9 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement the GPStitch boundary and resolve its fork/license/packaging
-   posture. Production GIS container normalization and local CV reconciliation
-   are complete: verification passes 165 frontend tests, 60 Rust tests (one
+1. Resolve Windows packaging and GPL notice delivery for the implemented
+   GPStitch boundary. Production GIS container normalization, local CV, and
+   GPStitch reconciliation are complete: verification passes 168 frontend tests, 63 Rust tests (one
    installed-FFmpeg smoke ignored), four locked/offline Python tests, and the
    production build.
 2. Verify toolchain:

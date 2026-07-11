@@ -8,7 +8,7 @@ import type {
 import { normalizeProjectedFeatureReview, projectFeaturesOntoRoute } from "../geo/projection";
 import { createGisProjectionJob } from "../geo/geoJsonImport";
 import { createValhallaMatchJob } from "../geo/gpxImport";
-import type { CvFindingReview, CvFindingReviewStatus, NativeCvScanResult, NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "../jobs/jobModel";
+import type { CvFindingReview, CvFindingReviewStatus, NativeCvScanResult, NativeProxyJobResult, NativeRouteMatchResult, TelemetryRender, WorkstationJob } from "../jobs/jobModel";
 import type { NativeRouteImport } from "../geo/nativeRouteRepository";
 import type { NativeGisProjectionResult } from "../jobs/jobModel";
 import type { NativeGisImport } from "../geo/nativeGisRepository";
@@ -46,6 +46,7 @@ export interface WorkstationSeed {
   projectId: ProjectId;
   projectedFeatures: ProjectedRoadFeature[];
   route: TimedRoutePoint[];
+  telemetryRenders: TelemetryRender[];
 }
 
 export interface WorkstationState extends WorkstationSeed {
@@ -97,6 +98,8 @@ export type WorkstationAction =
   | { type: "record_native_export_attempt"; attempt: NativeCommandAttempt }
   | { type: "start_cv_scan"; job: WorkstationJob; attempt: NativeCommandAttempt }
   | { type: "reconcile_cv_scan"; result: NativeCvScanResult; attempt?: NativeCommandAttempt }
+  | { type: "start_gpstitch_render"; job: WorkstationJob; render: TelemetryRender; attempt: NativeCommandAttempt }
+  | { type: "reconcile_gpstitch_render"; result: TelemetryRender; attempt?: NativeCommandAttempt }
   | { type: "review_cv_finding"; findingId: string; status: CvFindingReviewStatus; note: string }
   | { type: "reconcile_proxy_job"; result: NativeProxyJobResult; attempt?: NativeCommandAttempt }
   | { type: "import_native_route"; imported: NativeRouteImport; attempt: NativeCommandAttempt }
@@ -261,6 +264,22 @@ export function workstationReducer(state: WorkstationState, action: WorkstationA
           ? { ...job, status: action.result.status, progress: action.result.progress, detail: action.result.detail }
           : job),
         cvFindings: action.result.status === "complete" ? structuredClone(action.result.findings) : state.cvFindings,
+        nativeCommandAttempts: action.attempt
+          ? [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+          : state.nativeCommandAttempts
+      });
+    case "start_gpstitch_render":
+      return withInvalidatedExport(state, {
+        jobs: [...state.jobs.filter((job) => job.id !== action.job.id), action.job],
+        telemetryRenders: [...state.telemetryRenders.filter((render) => render.renderId !== action.render.renderId), action.render],
+        nativeCommandAttempts: [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
+      });
+    case "reconcile_gpstitch_render":
+      return withInvalidatedExport(state, {
+        jobs: state.jobs.map((job) => job.id === action.result.jobId
+          ? { ...job, status: action.result.status, progress: action.result.progress, detail: action.result.detail }
+          : job),
+        telemetryRenders: [...state.telemetryRenders.filter((render) => render.renderId !== action.result.renderId), structuredClone(action.result)],
         nativeCommandAttempts: action.attempt
           ? [action.attempt, ...state.nativeCommandAttempts].slice(0, 8)
           : state.nativeCommandAttempts
@@ -466,6 +485,7 @@ function stateFromSnapshot(snapshot: ProjectSnapshot, fallbackComponentSlots: Co
     projectId: cloned.projectId,
     projectedFeatures: cloned.projectedFeatures,
     route: cloned.route,
+    telemetryRenders: cloned.telemetryRenders,
     latestPacket: null,
     latestProjectSnapshot: null,
     selectedClipId: defaultSelectedClipId(cloned.clips)

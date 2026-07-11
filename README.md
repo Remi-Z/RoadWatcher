@@ -13,7 +13,7 @@ canonical project-facing types now live under `src/domain/`; seeded demo data is
 only a fixture consumer of those models rather than their production owner. New
 projects receive one opaque local ID that is preserved across saves, exports,
 imports, and incident edits; clearing the workspace creates a new identity. The
-portable snapshot boundary now emits schema version 3, migrates version-1/2 files,
+portable snapshot boundary now emits schema version 4, migrates version-1/2/3 files,
 and rejects malformed fields, duplicate IDs, dangling media references, and
 invalid clip ranges before state is restored. Browser draft loading distinguishes
 missing, corrupt, unsupported, and unavailable storage, and surfaces recovery
@@ -69,7 +69,8 @@ The readiness panel also includes tested project-store, native media import, GPX
 matcher, GIS projection, FFmpeg proxy, and local CV actions. Project
 create/save/load, `media_import`, `ffmpeg_proxy`, `job_status`, `job_cancel`,
 `gpx_import`, `gpx_match`, `gpx_job_status`, `gis_import`, `gis_project`, and
-`gis_job_status`, `cv_scan`, `cv_job_status`, and `cv_finding_review` are
+`gis_job_status`, `cv_scan`, `cv_job_status`, `cv_finding_review`,
+`gpstitch_render`, and `gpstitch_job_status` are
 implemented; the native project root and separate CV model/labels slots remain
 editable, saved in portable project snapshots, and included in exports/setup
 checklists. Probe
@@ -82,9 +83,9 @@ Missing components and data sources are
 tracked as editable slot records with status, reference, and notes so the
 handoff remains durable; the editable install/data panel shows each slot's
 verification command, and the top Slots action focuses the first install/data
-slot so those references are quick to fill before export. The Tauri and Python
-sidecar slots are scaffolded, but the Tauri dev path, GPStitch, Valhalla,
-production GIS and CV model data still need to be filled
+slot so those references are quick to fill before export. The GPStitch and CV
+Python sidecars are integrated, but Valhalla data, production GIS data, a CV
+model, and deployable native-tool packaging still need to be filled
 before every production workflow can run end to end. Rust/Cargo is installed and
 the application lockfile is tracked. Rust tests in this checkout use a temporary
 short target such as `C:\tmp\roadwatcher-target` because Rust 1.96 dependency
@@ -142,7 +143,7 @@ paths must be invoked successfully before native-ready is claimed. Tauri
 `project_create` is backed by a SQLite project folder and durable metadata. Its
 pure Rust store now
 creates the UUID layout, required directories, schema version, project metadata,
-and foundational tables under test. Database schema version 7 retains the
+and foundational tables under test. Database schema version 8 retains the
 canonical transactional snapshot record, migrates older projects on open, and
 adds durable proxy outputs plus identified raw/matched routes, route-job links,
 matcher provenance, identified GIS sources/features/projections, CRS provenance,
@@ -162,6 +163,14 @@ project/media/job identities, atomic completion, reviewer decision fields, and
 interrupted-job recovery. The asynchronous sidecar manager, strict frontend
 polling, reviewer UI, SQLite review persistence, and snapshot/export
 reconciliation are implemented.
+Schema v8 adds durable GPStitch render jobs and output provenance. The audited
+GPL-3.0-or-later upstream is pinned as a git submodule at v0.18.0 commit
+`65a560966a72002bcb503e082df089863e0a5d53`. Rust launches its locked environment
+through bounded, no-shell, offline `uv`; auto/manual alignment uses a temporary
+proxy copy so source/proxy evidence timestamps are never mutated. Completed
+outputs are confined below the project proxy tree and record path, SHA-256,
+size, and exact GPStitch version in SQLite, portable snapshot schema v4, the UI,
+and evidence exports.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
@@ -184,12 +193,12 @@ and atomically publishes findings. The frontend now polls identified jobs,
 rejects mismatched responses, presents conservative findings for explicit
 include/exclude decisions, persists decisions to SQLite, and exports engine,
 model, labels, geometry, confidence, and reviewer provenance in snapshot schema
-version 3.
+version 4.
 
 ## Slots You Need To Fill
 
-- Vendor or submodule the GPL-compatible GPStitch fork into
-  `sidecars/roadwatcher-gpstitch/`.
+- Keep the pinned GPStitch v0.18.0 submodule initialized and preserve its
+  GPL-3.0-or-later notices in source/distribution packaging.
 - Provide York/GTA Valhalla data/config for local map matching.
 - Optionally provide OSRM Match endpoint/config as the simpler fallback.
 - Provide official GIS files for traffic signals, stop signs, and bike lanes.

@@ -22,7 +22,7 @@ describe("review readiness", () => {
       tauriCommand: "media_import"
     });
     expect(readiness.canExportPacket).toBe(true);
-    expect(readiness.openComponentSlots).toEqual(["Rust/Cargo for Tauri", "Vendored GPStitch fork", "York/GTA Valhalla data", "Official GIS layers", "FFmpeg and ffprobe"]);
+    expect(readiness.openComponentSlots).toEqual(["Rust/Cargo for Tauri", "York/GTA Valhalla data", "Official GIS layers", "FFmpeg and ffprobe"]);
     expect(readiness.blockedJobs).toEqual(["Valhalla map match", "Local CV scan"]);
     expect(readiness.summary).toContain("Browser packet export is available");
     expect(readiness.summary).toContain("native workflow is unavailable");

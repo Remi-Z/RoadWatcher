@@ -13,10 +13,17 @@ The runnable app today is the React/Vite evidence workstation:
 - Project identity is generated once as an opaque local ID, survives incident
   edits/save/export/import cycles, and is regenerated only when clearing into a
   new project.
-- Portable snapshots now emit schema version 3. A dedicated parser validates
+- Portable snapshots now emit schema version 4. A dedicated parser validates
   every persisted field and aggregate clip/media invariants, migrates version-1
-  snapshots with safe defaults, migrates version-2 snapshots with empty CV
-  findings, and returns structured recovery issues.
+  snapshots with safe defaults, migrates version-2/3 snapshots with empty new
+  collections, and returns structured recovery issues.
+- GPStitch is now a pinned upstream submodule at v0.18.0 commit
+  `65a560966a72002bcb503e082df089863e0a5d53` (GPL-3.0-or-later). The native
+  manager queues durable schema-v8 jobs, runs locked/offline `uv` without a
+  shell, supports automatic, GPX-timestamp, and integer manual-offset alignment,
+  and never mutates source/proxy timestamps. The frontend queues and polls
+  identity-matched renders, persists them in snapshot schema v4, and exports the
+  confined output path, SHA-256, size, and exact GPStitch version.
 - Browser repository loads now report `loaded`, `missing`, `corrupt`,
   `unsupported`, or `unavailable`; startup keeps seeded state usable while
   showing the precise recovery condition. Schema-declaring project imports no
@@ -493,7 +500,7 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `src/features/project/nativeProjectLocator.ts` - stores only the last SQLite
   path for startup hydration; clearing it never deletes the project directory.
 - `src-tauri/` - Tauri 2 shell with implemented project/media/proxy/GPX/matcher
-  commands, schema version 7 migrations, streaming SHA-256, durable background
+  commands, schema version 8 migrations, streaming SHA-256, durable background
   jobs, transactional raw/matched routes, and identified GIS source/projection
   persistence. Schema v6 includes export manifests/artifacts and confined stale
   staging recovery. The registered `native_export` command validates bounded
@@ -510,7 +517,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `sidecars/roadwatcher-cv/` - real bounded YOLO-style ONNX/video scanner with
   ONNX Runtime CPU, OpenCV headless, locked dependencies, and pipeline/CLI tests.
   Native durable execution is registered through `cv_scan`/`cv_job_status`.
-- `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.
+- `sidecars/roadwatcher-gpstitch/` - pinned GPStitch v0.18.0 upstream submodule;
+  keep the gitlink, lockfile, and GPL-3.0-or-later license intact.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
 
 ## Next Best Implementation Slice
@@ -522,9 +530,9 @@ an explicit test/demo dependency. Empty regions have actionable guidance,
 decorative route evidence is suppressed, blank plates use a placeholder rather
 than stored text, and packet export is disabled until media plus a clip exist.
 
-Final verification on 2026-07-11 passed 165 frontend tests across 25 files, the
+Final verification on 2026-07-11 passed 168 frontend tests across 26 files, the
 production Vite build, TypeScript project compilation, four locked/offline
-Python sidecar tests, and 60 Rust tests with only the installed-FFmpeg smoke
+Python sidecar tests, and 63 Rust tests with only the installed-FFmpeg smoke
 intentionally ignored. Rust verification uses `C:\tmp\roadwatcher-target` to
 avoid a Rust 1.96 dependency-probe failure under the workspace path containing
 a space.
@@ -545,14 +553,14 @@ without a shell, canonicalizes source/model/label identities, caps process outpu
 rejects mismatched aggregates, and records terminal blocked/failed states. Full
 Rust verification passes 60 tests with only the installed-FFmpeg smoke ignored.
 
-1. Implement the GPStitch integration boundary and its licensing/packaging
-   posture.
-2. Package/document GDAL/OGR, FFmpeg, the CV sidecar environment, and
+1. Package/document GPStitch's GPL distribution posture, GDAL/OGR, FFmpeg, the
+   CV sidecar environment, and
    user-supplied model
    discovery for Windows distribution.
-3. Add real-model/video, live matcher, and installed-binary smoke coverage at
+2. Add a real GPStitch/FFmpeg video+GPX smoke, real-model/video CV smoke, live
+   matcher, and installed-binary coverage at
    the end of the implementation cycle.
-4. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
+3. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
    representative-feature model insufficient.
 
 ## Boundaries To Preserve

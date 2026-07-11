@@ -90,7 +90,7 @@ describe("project snapshot schema", () => {
     expect(result).toMatchObject({
       ok: true,
       snapshot: {
-        schemaVersion: 3,
+        schemaVersion: 4,
         projectId: "local-legacy-review",
         componentSlots: [],
         nativeCommandAttempts: [],
@@ -102,7 +102,7 @@ describe("project snapshot schema", () => {
   });
 
   it("migrates version 2 and preserves version 3 CV review provenance", () => {
-    expect(parseSnapshot(JSON.stringify(validSnapshotV2()))).toMatchObject({ schemaVersion: 3, cvFindings: [] });
+    expect(parseSnapshot(JSON.stringify(validSnapshotV2()))).toMatchObject({ schemaVersion: 4, cvFindings: [], telemetryRenders: [] });
     const current = {
       ...validSnapshotV2(),
       schemaVersion: 3,

@@ -1,6 +1,7 @@
 use cv_worker::{CvStartResponse, CvWorkerManager, CvWorkerRequest};
 use gis_import::{import_gis as store_import_gis, GisImportRequest};
 use gis_projector::GisProjectorManager;
+use gpstitch_worker::{GpstitchStartResponse, GpstitchWorkerManager, GpstitchWorkerRequest};
 use native_export::{
     export_native as store_export_native, NativeExportRequest, NativeExportResponse,
 };
@@ -19,6 +20,7 @@ mod cv_worker;
 mod gdal_adapter;
 mod gis_import;
 mod gis_projector;
+mod gpstitch_worker;
 mod native_export;
 mod project_store;
 mod proxy_worker;
@@ -235,6 +237,61 @@ fn gis_job_status(
 }
 
 #[tauri::command]
+fn gpstitch_render(
+    state: tauri::State<'_, GpstitchWorkerManager>,
+    sqlite_path: String,
+    project_id: String,
+    media_id: String,
+    route_id: String,
+    layout: String,
+    alignment: String,
+    time_offset_seconds: i64,
+    uv_executable: String,
+    sidecar_directory: String,
+) -> Result<GpstitchStartResponse, String> {
+    state
+        .start(GpstitchWorkerRequest {
+            store: project_store::GpstitchRenderRequest {
+                sqlite_path: PathBuf::from(sqlite_path),
+                project_id,
+                media_id,
+                route_id,
+                render_id: uuid::Uuid::new_v4().to_string(),
+                job_id: uuid::Uuid::new_v4().to_string(),
+                layout,
+                alignment,
+                time_offset_seconds,
+            },
+            uv_executable,
+            sidecar_directory: PathBuf::from(sidecar_directory),
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn gpstitch_job_status(
+    sqlite_path: String,
+    project_id: String,
+    media_id: String,
+    route_id: String,
+    render_id: String,
+    job_id: String,
+) -> Result<project_store::GpstitchRenderStatus, String> {
+    project_store::read_gpstitch_render_status(&project_store::GpstitchRenderRequest {
+        sqlite_path: PathBuf::from(sqlite_path),
+        project_id,
+        media_id,
+        route_id,
+        render_id,
+        job_id,
+        layout: "speed-awareness".to_string(),
+        alignment: "gpx_timestamps".to_string(),
+        time_offset_seconds: 0,
+    })
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn gpx_match(
     state: tauri::State<'_, RouteMatcherManager>,
     sqlite_path: String,
@@ -335,6 +392,7 @@ pub fn run() {
         .manage(RouteMatcherManager::default())
         .manage(GisProjectorManager::default())
         .manage(CvWorkerManager::default())
+        .manage(GpstitchWorkerManager::default())
         .invoke_handler(tauri::generate_handler![
             project_create,
             project_save,
@@ -348,6 +406,8 @@ pub fn run() {
             gis_import,
             gis_project,
             gis_job_status,
+            gpstitch_render,
+            gpstitch_job_status,
             gpx_match,
             gpx_job_status,
             ffmpeg_proxy,

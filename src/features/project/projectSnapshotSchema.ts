@@ -1,11 +1,11 @@
 import type { ComponentSlot, IncidentDraft, MediaAsset, ProjectId } from "../../domain/projectModels";
 import type { OfficialRoadFeature, ProjectedRoadFeature, TimedRoutePoint } from "../geo/projection";
-import type { CvFindingReview, WorkstationJob } from "../jobs/jobModel";
+import type { CvFindingReview, TelemetryRender, WorkstationJob } from "../jobs/jobModel";
 import type { NativeCommandName } from "../native/nativeCommandContracts";
 import type { TimelineClip } from "../timeline/timelineModel";
 import type { NativeCommandAttempt, ProjectSnapshot } from "./projectState";
 
-export const PROJECT_SCHEMA_VERSION = 3 as const;
+export const PROJECT_SCHEMA_VERSION = 4 as const;
 export const DEFAULT_NATIVE_PROJECT_ROOT = "slot: native project root";
 
 export type SnapshotParseIssueCode =
@@ -60,7 +60,9 @@ const NATIVE_COMMANDS = [
   "native_export",
   "cv_scan",
   "cv_job_status",
-  "cv_finding_review"
+  "cv_finding_review",
+  "gpstitch_render",
+  "gpstitch_job_status"
 ] as const;
 const NATIVE_ATTEMPT_STATUSES = [
   "invoked",
@@ -132,7 +134,8 @@ function parseSnapshotValue(value: unknown): ProjectSnapshot {
     projectedFeatures: parseArray(root.projectedFeatures, "projectedFeatures", (item, path) =>
       parseProjectedFeature(item, path, legacy)
     ),
-    route: parseOptionalArray(root.route, "route", parseRoutePoint, legacy)
+    route: parseOptionalArray(root.route, "route", parseRoutePoint, legacy),
+    telemetryRenders: parseOptionalArray(root.telemetryRenders, "telemetryRenders", parseTelemetryRender, sourceVersion < 4)
   };
 
   validateAggregate(snapshot);
@@ -295,6 +298,31 @@ function parseCvFinding(value: unknown, path: string): CvFindingReview {
   };
 }
 
+function parseTelemetryRender(value: unknown, path: string): TelemetryRender {
+  const item = record(value, path);
+  const status = enumValue(item.status, `${path}.status`, JOB_STATUSES);
+  const outputPath = stringValue(item.outputPath, `${path}.outputPath`);
+  const outputHash = stringValue(item.outputHash, `${path}.outputHash`);
+  const outputSizeBytes = finiteNumber(item.outputSizeBytes, `${path}.outputSizeBytes`, 0);
+  const gpstitchVersion = stringValue(item.gpstitchVersion, `${path}.gpstitchVersion`);
+  if (status === "complete" && (!outputPath.trim() || !/^[a-f0-9]{64}$/.test(outputHash) || outputSizeBytes <= 0 || gpstitchVersion !== "0.18.0")) {
+    fail("invalid_field", path, "Completed GPStitch renders require a pinned version and valid output provenance.");
+  }
+  return {
+    renderId: nonBlankString(item.renderId, `${path}.renderId`),
+    jobId: nonBlankString(item.jobId, `${path}.jobId`),
+    mediaId: nonBlankString(item.mediaId, `${path}.mediaId`),
+    routeId: nonBlankString(item.routeId, `${path}.routeId`),
+    status,
+    progress: boundedNumber(item.progress, `${path}.progress`, 0, 100),
+    detail: nonBlankString(item.detail, `${path}.detail`),
+    layout: enumValue(item.layout, `${path}.layout`, ["speed-awareness", "default"] as const),
+    alignment: enumValue(item.alignment, `${path}.alignment`, ["auto", "gpx_timestamps", "manual"] as const),
+    timeOffsetSeconds: finiteNumber(item.timeOffsetSeconds, `${path}.timeOffsetSeconds`),
+    outputPath, outputHash, outputSizeBytes, gpstitchVersion
+  };
+}
+
 function validateAggregate(snapshot: ProjectSnapshot): void {
   assertUnique(snapshot.media.map((item) => item.id), "media");
   assertUnique(snapshot.clips.map((item) => item.id), "clips");
@@ -303,6 +331,7 @@ function validateAggregate(snapshot: ProjectSnapshot): void {
   assertUnique(snapshot.nativeCommandAttempts.map((item) => item.id), "nativeCommandAttempts");
   assertUnique(snapshot.officialFeatures.map((item) => item.id), "officialFeatures");
   assertUnique(snapshot.cvFindings.map((item) => item.id), "cvFindings");
+  assertUnique(snapshot.telemetryRenders.map((item) => item.renderId), "telemetryRenders");
 
   const mediaById = new Map(snapshot.media.map((item) => [item.id, item]));
   for (const [index, clip] of snapshot.clips.entries()) {
@@ -321,6 +350,11 @@ function validateAggregate(snapshot: ProjectSnapshot): void {
     if (!mediaById.has(finding.mediaId)) {
       fail("dangling_reference", `cvFindings[${index}].mediaId`, `Unknown media ${finding.mediaId}.`);
     }
+  }
+  const jobsById = new Set(snapshot.jobs.map((item) => item.id));
+  for (const [index, render] of snapshot.telemetryRenders.entries()) {
+    if (!mediaById.has(render.mediaId)) fail("dangling_reference", `telemetryRenders[${index}].mediaId`, `Unknown media ${render.mediaId}.`);
+    if (!jobsById.has(render.jobId)) fail("dangling_reference", `telemetryRenders[${index}].jobId`, `Unknown job ${render.jobId}.`);
   }
 }
 
@@ -357,8 +391,8 @@ function parseOptionalArray<T>(
   return parseArray(value, path, parseItem);
 }
 
-function schemaVersion(value: unknown): 1 | 2 | typeof PROJECT_SCHEMA_VERSION {
-  if (value === 1 || value === 2 || value === PROJECT_SCHEMA_VERSION) {
+function schemaVersion(value: unknown): 1 | 2 | 3 | typeof PROJECT_SCHEMA_VERSION {
+  if (value === 1 || value === 2 || value === 3 || value === PROJECT_SCHEMA_VERSION) {
     return value;
   }
   if (typeof value === "number" && Number.isFinite(value)) {

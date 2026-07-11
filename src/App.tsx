@@ -51,8 +51,9 @@ import {
   type RoadFeatureKind,
   type TimedRoutePoint
 } from "./features/geo/projection";
-import type { CvFindingReview, CvFindingReviewStatus, NativeGisProjectionResult, NativeProxyJobResult, NativeRouteMatchResult, WorkstationJob } from "./features/jobs/jobModel";
+import type { CvFindingReview, CvFindingReviewStatus, GpstitchAlignment, NativeGisProjectionResult, NativeProxyJobResult, NativeRouteMatchResult, TelemetryRender, WorkstationJob } from "./features/jobs/jobModel";
 import { createNativeCvRepository } from "./features/jobs/nativeCvRepository";
+import { createNativeGpstitchRepository } from "./features/jobs/nativeGpstitchRepository";
 import { createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
 import {
   createBrowserProjectRepository,
@@ -116,6 +117,7 @@ const REVIEW_PROXY_PROFILE = "review-proxy";
 const NATIVE_CV_MODEL_PATH_SLOT = "slot: ONNX model path";
 const NATIVE_CV_LABELS_PATH_SLOT = "slot: labels file path";
 const NATIVE_CV_SIDECAR_DIRECTORY = "sidecars/roadwatcher-cv";
+const NATIVE_GPSTITCH_SIDECAR_DIRECTORY = "sidecars/roadwatcher-gpstitch";
 
 export function App({
   nativeInvoke,
@@ -157,6 +159,7 @@ export function App({
     projectId,
     projectedFeatures: projectedRoadFeatures,
     route,
+    telemetryRenders,
     selectedClipId
   } = workstation;
   const [detectedNativeRuntimeStatus, setDetectedNativeRuntimeStatus] = useState(() => detectNativeRuntime());
@@ -174,6 +177,13 @@ export function App({
   const [activeRouteJob, setActiveRouteJob] = useState<{ jobId: string; routeId: string } | null>(null);
   const [activeGisJob, setActiveGisJob] = useState<{ jobId: string; featureSourceId: string } | null>(null);
   const [activeCvJob, setActiveCvJob] = useState<{ scanId: string; jobId: string; mediaId: string } | null>(null);
+  const [gpstitchLayout, setGpstitchLayout] = useState<TelemetryRender["layout"]>("speed-awareness");
+  const [gpstitchAlignment, setGpstitchAlignment] = useState<GpstitchAlignment>("auto");
+  const [gpstitchTimeOffsetSeconds, setGpstitchTimeOffsetSeconds] = useState(0);
+  const [activeGpstitchJob, setActiveGpstitchJob] = useState<{
+    renderId: string; jobId: string; mediaId: string; routeId: string;
+    layout: TelemetryRender["layout"]; alignment: GpstitchAlignment; timeOffsetSeconds: number;
+  } | null>(null);
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
   const [latestNativeExport, setLatestNativeExport] = useState<NativeExportSuccess | null>(null);
   const exportGenerationRef = useRef(0);
@@ -240,7 +250,8 @@ export function App({
     officialFeatures,
     projectId,
     projectedFeatures: projectedRoadFeatures,
-    route
+    route,
+    telemetryRenders
   };
 
   useEffect(() => {
@@ -513,6 +524,38 @@ export function App({
     return () => { active = false; if (timer) clearTimeout(timer); };
   }, [activeCvJob, activeNativeSqlitePath, nativeCommandBridge, nativeCvLabelsPath, nativeCvModelPath, projectId]);
 
+  useEffect(() => {
+    if (!activeGpstitchJob || !activeNativeSqlitePath) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const monitored = activeGpstitchJob;
+    const repository = createNativeGpstitchRepository(nativeCommandBridge, {
+      sqlitePath: activeNativeSqlitePath, projectId, mediaId: monitored.mediaId, routeId: monitored.routeId,
+      layout: monitored.layout, alignment: monitored.alignment, timeOffsetSeconds: monitored.timeOffsetSeconds,
+      uvExecutable: "uv", sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
+    });
+    const poll = async () => {
+      const response = await repository.status(monitored.renderId, monitored.jobId);
+      if (!active) return;
+      if (response.status !== "loaded") {
+        setActiveGpstitchJob(null);
+        setAppStatus(`GPStitch status unavailable: ${response.message}`);
+        return;
+      }
+      dispatchWorkstation({ type: "reconcile_gpstitch_render", result: response.result });
+      if (["complete", "failed", "blocked", "cancelled"].includes(response.result.status)) {
+        setActiveGpstitchJob(null);
+        setAppStatus(response.result.status === "complete"
+          ? `GPStitch telemetry render complete: ${response.result.outputPath}`
+          : `GPStitch telemetry render ${response.result.status}: ${response.result.detail}`);
+        return;
+      }
+      timer = setTimeout(() => void poll(), 1_000);
+    };
+    void poll();
+    return () => { active = false; if (timer) clearTimeout(timer); };
+  }, [activeGpstitchJob, activeNativeSqlitePath, nativeCommandBridge, projectId]);
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) {
@@ -727,6 +770,7 @@ export function App({
     setActiveRouteJob(null);
     setActiveGisJob(null);
     setActiveCvJob(null);
+    setActiveGpstitchJob(null);
     nativeHydrationPathRef.current = null;
     dispatchWorkstation({ type: "reset_project", seed: workstationSeedFactory(projectIdFactory()) });
     setAppStatus(
@@ -792,6 +836,7 @@ export function App({
       setActiveRouteJob(null);
       setActiveGisJob(null);
       setActiveCvJob(null);
+      setActiveGpstitchJob(null);
       dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: defaultComponentSlots });
       dispatchWorkstation({ type: "record_native_attempt", attempt: saveAttempt });
       projectRepository.save(snapshot);
@@ -929,6 +974,51 @@ export function App({
     setAppStatus(result.status === "saved"
       ? `Saved ${finding.label} reviewer decision to the native project.`
       : `cv_finding_review ${result.commandStatus}: ${result.message}`);
+  }
+
+  async function handleGpstitchRender() {
+    const mediaAsset = selectedClip ? media.find((asset) => asset.id === selectedClip.mediaId) : primaryMedia;
+    const routeJob = [...jobs].reverse().find((job) => job.type === "valhalla" && job.routeId);
+    if (!activeNativeSqlitePath || nativeCommandBridge.status !== "ready" || !mediaAsset || !routeJob?.routeId) {
+      setAppStatus("GPStitch rendering requires an active native project, imported media, and an imported GPX route.");
+      return;
+    }
+    if (mediaAsset.proxyStatus !== "ready" || !mediaAsset.proxyPath) {
+      setAppStatus("Complete the native review proxy before starting a GPStitch telemetry render.");
+      return;
+    }
+    const requestedAtIso = new Date().toISOString();
+    const config = {
+      sqlitePath: activeNativeSqlitePath, projectId, mediaId: mediaAsset.id, routeId: routeJob.routeId,
+      layout: gpstitchLayout, alignment: gpstitchAlignment, timeOffsetSeconds: gpstitchTimeOffsetSeconds,
+      uvExecutable: "uv", sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
+    };
+    const result = await createNativeGpstitchRepository(nativeCommandBridge, config).start();
+    const attempt: NativeCommandAttempt = {
+      id: `gpstitch-render-${Date.now().toString(36)}`, command: "gpstitch_render",
+      status: result.status === "started" ? "invoked" : result.commandStatus, requestedAtIso,
+      requestSummary: `mediaId: ${mediaAsset.id}; routeId: ${routeJob.routeId}; layout: ${gpstitchLayout}; alignment: ${gpstitchAlignment}; offset: ${gpstitchTimeOffsetSeconds}s`,
+      resultSummary: result.status === "started" ? `renderId: ${result.renderId}; jobId: ${result.jobId}` : result.message
+    };
+    if (result.status !== "started") {
+      dispatchWorkstation({ type: "record_native_attempt", attempt });
+      setAppStatus(`gpstitch_render ${result.commandStatus}: ${result.message}`);
+      return;
+    }
+    const render: TelemetryRender = {
+      renderId: result.renderId, jobId: result.jobId, mediaId: mediaAsset.id, routeId: routeJob.routeId,
+      status: "queued", progress: 0, detail: "GPStitch telemetry render queued.", layout: gpstitchLayout,
+      alignment: gpstitchAlignment, timeOffsetSeconds: gpstitchTimeOffsetSeconds,
+      outputPath: "", outputHash: "", outputSizeBytes: 0, gpstitchVersion: ""
+    };
+    dispatchWorkstation({ type: "start_gpstitch_render", render, attempt, job: {
+      id: result.jobId, mediaId: mediaAsset.id, routeId: routeJob.routeId, type: "gpstitch",
+      label: "GPStitch telemetry overlay", status: "queued", progress: 0, detail: render.detail
+    } });
+    setActiveGpstitchJob({ renderId: result.renderId, jobId: result.jobId, mediaId: mediaAsset.id,
+      routeId: routeJob.routeId, layout: gpstitchLayout, alignment: gpstitchAlignment,
+      timeOffsetSeconds: gpstitchTimeOffsetSeconds });
+    setAppStatus(`GPStitch telemetry render queued: ${result.jobId}`);
   }
 
   async function handleProbeGpxMatch() {
@@ -1306,6 +1396,7 @@ export function App({
     setActiveRouteJob(null);
     setActiveGisJob(null);
     setActiveCvJob(null);
+    setActiveGpstitchJob(null);
     dispatchWorkstation({ type: "replace_project", snapshot, fallbackComponentSlots: defaultComponentSlots });
   }
 
@@ -1472,6 +1563,9 @@ export function App({
             nativeGisSourceCrs={nativeGisSourceCrs}
             nativeGisLayerName={nativeGisLayerName}
             nativeGisLayerKind={nativeGisLayerKind}
+            gpstitchLayout={gpstitchLayout}
+            gpstitchAlignment={gpstitchAlignment}
+            gpstitchTimeOffsetSeconds={gpstitchTimeOffsetSeconds}
             nativeProjectRoot={nativeProjectRoot}
             onNativeMediaSourcePathChange={setNativeMediaSourcePath}
             onNativeCvModelPathChange={setNativeCvModelPath}
@@ -1495,6 +1589,10 @@ export function App({
             onNativeMediaSelect={() => void handleNativeFileSelection("media")}
             onProbeNativeProjectStore={handleProbeNativeProjectStore}
             onProbeCvScan={handleProbeCvScan}
+            onGpstitchLayoutChange={setGpstitchLayout}
+            onGpstitchAlignmentChange={setGpstitchAlignment}
+            onGpstitchTimeOffsetSecondsChange={setGpstitchTimeOffsetSeconds}
+            onGpstitchRender={() => void handleGpstitchRender()}
           />
         </section>
 
@@ -1527,6 +1625,29 @@ export function App({
           <CvFindingList findings={cvFindings}
             onReview={(findingId, status, note) => void handleCvFindingReview(findingId, status, note, false)}
             onPersist={(findingId, status, note) => void handleCvFindingReview(findingId, status, note, true)} />
+        </section>
+
+        <section className="panel">
+          <PanelHeader icon={<Gauge size={18} />} title="Telemetry renders" meta="Pinned GPStitch output provenance" />
+          <div className="media-list">
+            {telemetryRenders.length === 0 && <p className="empty-state">No telemetry overlay renders queued.</p>}
+            {telemetryRenders.map((render) => (
+              <article className="media-row" key={render.renderId}>
+                <div>
+                  <strong>{render.layout} · {render.alignment}</strong>
+                  <span>{render.detail}</span>
+                  <div className="media-metadata" aria-label={`${render.renderId} output provenance`}>
+                    <span>GPStitch {render.gpstitchVersion || "pending"}</span>
+                    <span>Offset {render.timeOffsetSeconds}s</span>
+                    <span>Output {render.outputPath || "pending"}</span>
+                    <span>Size {formatFileSize(render.outputSizeBytes)}</span>
+                    <span>Hash {render.outputHash || "pending"}</span>
+                  </div>
+                </div>
+                <StatusPill status={render.status} label={render.status} />
+              </article>
+            ))}
+          </div>
         </section>
 
         <section className="panel">
@@ -1639,6 +1760,9 @@ function ReviewReadinessPanel({
   nativeGpxSourcePath,
   nativeMediaSourcePath,
   nativeProjectRoot,
+  gpstitchLayout,
+  gpstitchAlignment,
+  gpstitchTimeOffsetSeconds,
   onNativeGisImport,
   onNativeCvModelPathChange,
   onNativeCvLabelsPathChange,
@@ -1655,6 +1779,10 @@ function ReviewReadinessPanel({
   onNativeMediaSelect,
   onNativeProjectRootChange,
   onProbeCvScan,
+  onGpstitchLayoutChange,
+  onGpstitchAlignmentChange,
+  onGpstitchTimeOffsetSecondsChange,
+  onGpstitchRender,
   onProbeFfmpegProxy,
   onProbeGisProjection,
   onProbeGpxMatch,
@@ -1672,6 +1800,9 @@ function ReviewReadinessPanel({
   nativeGpxSourcePath: string;
   nativeMediaSourcePath: string;
   nativeProjectRoot: string;
+  gpstitchLayout: TelemetryRender["layout"];
+  gpstitchAlignment: GpstitchAlignment;
+  gpstitchTimeOffsetSeconds: number;
   onNativeGisImport: () => void;
   onNativeCvModelPathChange: (value: string) => void;
   onNativeCvLabelsPathChange: (value: string) => void;
@@ -1688,6 +1819,10 @@ function ReviewReadinessPanel({
   onNativeMediaSelect: () => void;
   onNativeProjectRootChange: (value: string) => void;
   onProbeCvScan: () => void;
+  onGpstitchLayoutChange: (value: TelemetryRender["layout"]) => void;
+  onGpstitchAlignmentChange: (value: GpstitchAlignment) => void;
+  onGpstitchTimeOffsetSecondsChange: (value: number) => void;
+  onGpstitchRender: () => void;
   onProbeFfmpegProxy: () => void;
   onProbeGisProjection: () => void;
   onProbeGpxMatch: () => void;
@@ -1853,6 +1988,35 @@ function ReviewReadinessPanel({
         <button type="button" className="button secondary native-probe-button" onClick={onProbeCvScan}>
           <Gauge size={15} />
           Probe local CV scan
+        </button>
+        <label className="native-root-field">
+          <span>GPStitch layout</span>
+          <select aria-label="GPStitch layout" value={gpstitchLayout}
+            onChange={(event) => onGpstitchLayoutChange(event.target.value as TelemetryRender["layout"])}>
+            <option value="speed-awareness">Speed awareness</option>
+            <option value="default">Default dashboard</option>
+          </select>
+        </label>
+        <label className="native-root-field">
+          <span>GPStitch alignment</span>
+          <select aria-label="GPStitch alignment" value={gpstitchAlignment}
+            onChange={(event) => onGpstitchAlignmentChange(event.target.value as GpstitchAlignment)}>
+            <option value="auto">Video detected start</option>
+            <option value="gpx_timestamps">GPX timestamps</option>
+            <option value="manual">Manual offset</option>
+          </select>
+        </label>
+        {gpstitchAlignment === "manual" ? (
+          <label className="native-root-field">
+            <span>GPStitch time offset (seconds)</span>
+            <input aria-label="GPStitch time offset seconds" type="number" step="1"
+              value={gpstitchTimeOffsetSeconds}
+              onChange={(event) => onGpstitchTimeOffsetSecondsChange(Math.trunc(Number(event.target.value) || 0))} />
+          </label>
+        ) : null}
+        <button type="button" className="button secondary native-probe-button" onClick={onGpstitchRender}>
+          <Gauge size={15} />
+          Render telemetry overlay
         </button>
         <div className="native-attempt-list">
           <strong>Native capability evidence</strong>

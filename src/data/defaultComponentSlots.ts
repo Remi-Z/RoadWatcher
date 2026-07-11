@@ -8,10 +8,10 @@ export const defaultComponentSlots: ComponentSlot[] = [
     notes: "Required before Tauri commands can be built or tested."
   },
   {
-    id: "gpstitch", label: "Vendored GPStitch fork",
-    ownerAction: "Choose fork location and import GPL-3.0 notices before sidecar integration.",
-    status: "needed", reference: "slot: sidecars/roadwatcher-gpstitch",
-    notes: "Use a GPL-compatible fork or submodule and keep license notices visible."
+    id: "gpstitch", label: "Pinned GPStitch sidecar",
+    ownerAction: "Keep the audited submodule pinned and retain its GPL-3.0-or-later license notices.",
+    status: "configured", reference: "sidecars/roadwatcher-gpstitch@v0.18.0 (65a560966a72002bcb503e082df089863e0a5d53)",
+    notes: "Runs locally through uv --locked --offline; telemetry output records the exact GPStitch version and SHA-256."
   },
   {
     id: "valhalla", label: "York/GTA Valhalla data",
