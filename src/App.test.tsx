@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
@@ -6,6 +6,7 @@ import {
   initialClips,
   initialJobs,
   mediaAssets,
+  missingSlots,
   officialRoadFeatures,
   projectedFeatures,
   routePoints
@@ -728,56 +729,218 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByText(/importedFeatureCount: 7/)).toBeInTheDocument();
   });
 
-  it("records browser FFmpeg proxy probe fallbacks in drafts and export packets", async () => {
-    const repository = createMemoryProjectRepository();
+  it("requires an active native project before starting a proxy job", async () => {
     const nativeInvoke = vi.fn<NativeInvoke>();
-    render(<App nativeInvoke={nativeInvoke} projectRepository={repository} />);
+    render(<App nativeInvoke={nativeInvoke} projectRepository={createMemoryProjectRepository()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Probe FFmpeg proxy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start native proxy" }));
 
     expect(nativeInvoke).not.toHaveBeenCalled();
-    expect(await screen.findByText(/ffmpeg_proxy: browser_fallback/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Save draft incident" }));
-
-    expect(repository.snapshot?.nativeCommandAttempts[0]).toMatchObject({
-      command: "ffmpeg_proxy",
-      status: "browser_fallback",
-      requestSummary: "mediaId: media-front-001; profile: review-proxy"
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Export packet" }));
-
-    const exportPanel = screen.getByRole("heading", { name: "Latest export packet" }).closest("section");
-    expect(exportPanel).not.toBeNull();
-    expect(exportPanel as HTMLElement).toHaveTextContent("ffmpeg_proxy: browser_fallback");
-    expect(exportPanel as HTMLElement).toHaveTextContent("browser preview and packet metadata export");
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent(
+      "Native proxy requires an active SQLite project"
+    );
   });
 
-  it("probes the native FFmpeg proxy through the command bridge when invoke is available", async () => {
-    const nativeInvoke = vi.fn<NativeInvoke>().mockResolvedValue({
-      jobId: "ffmpeg-proxy-1",
-      proxyPath: "D:/RoadWatcherProjects/review/proxies/front.mp4",
-      thumbnailDirectory: "D:/RoadWatcherProjects/review/proxies/front-thumbs"
+  it("starts, polls, and reconciles a completed native proxy job", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/review/project.sqlite";
+    const snapshot = createProjectSnapshot({
+      clips: initialClips,
+      componentSlots: missingSlots,
+      incident: incidentDraft,
+      jobs: initialJobs.map((job) =>
+        job.id === "job-proxy-front" ? { ...job, mediaId: "media-front-001", status: "queued" as const, progress: 0 } : job
+      ),
+      media: mediaAssets,
+      projectId: "native-proxy-project" as ProjectId,
+      projectedFeatures
+    });
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+      if (command === "project_load") {
+        return {
+          projectId: snapshot.projectId,
+          schemaVersion: snapshot.schemaVersion,
+          savedAtIso: snapshot.savedAtIso,
+          snapshotJson: serializeSnapshot(snapshot)
+        };
+      }
+      if (command === "ffmpeg_proxy") {
+        return { jobId: "job-proxy-front", status: "queued" };
+      }
+      if (command === "job_status") {
+        return {
+          jobId: "job-proxy-front",
+          mediaId: "media-front-001",
+          status: "complete",
+          progress: 100,
+          detail: "proxy and thumbnails ready",
+          durationSeconds: 840,
+          detectedStart: "2026-07-10T12:00:00Z",
+          proxyStatus: "ready",
+          proxyPath: "D:/RoadWatcherProjects/review/proxies/front/review-proxy.mp4",
+          thumbnailDirectory: "D:/RoadWatcherProjects/review/proxies/front/thumbnails",
+          videoCodec: "libx264"
+        };
+      }
+      throw new Error(`Unexpected command ${command}`);
     });
 
     render(
       <App
         nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
         nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
       />
     );
+    await screen.findByText(/Restored native SQLite project/);
 
-    fireEvent.click(screen.getByRole("button", { name: "Probe FFmpeg proxy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start native proxy" }));
 
-    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native FFmpeg proxy ready");
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Native proxy complete"));
     expect(nativeInvoke).toHaveBeenCalledWith("ffmpeg_proxy", {
-      projectId: expect.stringMatching(/^local-/),
+      sqlitePath,
+      projectId: "native-proxy-project",
       mediaId: "media-front-001",
-      profile: "review-proxy"
+      jobId: "job-proxy-front",
+      profile: "review-proxy",
+      binaryDirectory: "slot: ffmpeg / ffprobe binary directory"
+    });
+    expect(nativeInvoke).toHaveBeenCalledWith("job_status", {
+      sqlitePath,
+      projectId: "native-proxy-project",
+      jobId: "job-proxy-front"
     });
     expect(screen.getByText(/ffmpeg_proxy: invoked/)).toBeInTheDocument();
-    expect(screen.getByText(/proxyPath: D:\/RoadWatcherProjects\/review\/proxies\/front\.mp4/)).toBeInTheDocument();
+    expect(screen.getByText(/Proxy D:\/RoadWatcherProjects\/review\/proxies\/front\/review-proxy\.mp4/)).toBeInTheDocument();
+    expect(screen.getByText(/Codec libx264/)).toBeInTheDocument();
+    const completedPollCount = nativeInvoke.mock.calls.filter(([command]) => command === "job_status").length;
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    expect(nativeInvoke.mock.calls.filter(([command]) => command === "job_status")).toHaveLength(completedPollCount);
+  });
+
+  it("surfaces a failed durable proxy status without continuing to poll", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/failed/project.sqlite";
+    const snapshot = createProjectSnapshot({
+      clips: initialClips,
+      componentSlots: missingSlots,
+      incident: incidentDraft,
+      jobs: initialJobs.map((job) =>
+        job.id === "job-proxy-front" ? { ...job, mediaId: "media-front-001", status: "queued" as const, progress: 0 } : job
+      ),
+      media: mediaAssets,
+      projectId: "native-failed-project" as ProjectId,
+      projectedFeatures
+    });
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+      if (command === "project_load") {
+        return {
+          projectId: snapshot.projectId,
+          schemaVersion: snapshot.schemaVersion,
+          savedAtIso: snapshot.savedAtIso,
+          snapshotJson: serializeSnapshot(snapshot)
+        };
+      }
+      if (command === "ffmpeg_proxy") {
+        return { jobId: "job-proxy-front", status: "queued" };
+      }
+      if (command === "job_status") {
+        return {
+          jobId: "job-proxy-front",
+          mediaId: "media-front-001",
+          status: "failed",
+          progress: 36,
+          detail: "encoder failed",
+          durationSeconds: 90,
+          detectedStart: "",
+          proxyStatus: "blocked",
+          proxyPath: "",
+          thumbnailDirectory: "",
+          videoCodec: ""
+        };
+      }
+      throw new Error(`Unexpected command ${command}`);
+    });
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+    await screen.findByText(/Restored native SQLite project/);
+    fireEvent.click(screen.getByRole("button", { name: "Start native proxy" }));
+
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("Native proxy failed: encoder failed"));
+    expect(screen.getByText("encoder failed")).toBeInTheDocument();
+  });
+
+  it("cancels a running native proxy and stops monitoring it", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/cancel/project.sqlite";
+    const snapshot = createProjectSnapshot({
+      clips: initialClips,
+      componentSlots: missingSlots,
+      incident: incidentDraft,
+      jobs: initialJobs.map((job) =>
+        job.id === "job-proxy-front" ? { ...job, mediaId: "media-front-001", status: "queued" as const, progress: 0 } : job
+      ),
+      media: mediaAssets,
+      projectId: "native-cancel-project" as ProjectId,
+      projectedFeatures
+    });
+    const running = {
+      jobId: "job-proxy-front",
+      mediaId: "media-front-001",
+      status: "running",
+      progress: 48,
+      detail: "rendering with h264_nvenc",
+      durationSeconds: 90,
+      detectedStart: "2026-07-10T12:00:00Z",
+      proxyStatus: "running",
+      proxyPath: "",
+      thumbnailDirectory: "",
+      videoCodec: ""
+    };
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+      if (command === "project_load") {
+        return {
+          projectId: snapshot.projectId,
+          schemaVersion: snapshot.schemaVersion,
+          savedAtIso: snapshot.savedAtIso,
+          snapshotJson: serializeSnapshot(snapshot)
+        };
+      }
+      if (command === "ffmpeg_proxy") {
+        return { jobId: "job-proxy-front", status: "queued" };
+      }
+      if (command === "job_status") {
+        return running;
+      }
+      if (command === "job_cancel") {
+        return { ...running, status: "cancelled", proxyStatus: "blocked", detail: "Proxy job cancelled." };
+      }
+      throw new Error(`Unexpected command ${command}`);
+    });
+    render(
+      <App
+        nativeInvoke={nativeInvoke}
+        nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+    await screen.findByText(/Restored native SQLite project/);
+    fireEvent.click(screen.getByRole("button", { name: "Start native proxy" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel Auto proxy: front camera 4K" }));
+
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent("Native proxy cancelled");
+    expect(nativeInvoke).toHaveBeenCalledWith("job_cancel", {
+      sqlitePath,
+      projectId: "native-cancel-project",
+      mediaId: "media-front-001",
+      jobId: "job-proxy-front"
+    });
+    expect(screen.getByText("Proxy job cancelled.")).toBeInTheDocument();
   });
 
   it("requires an active native project before importing a native media path", async () => {

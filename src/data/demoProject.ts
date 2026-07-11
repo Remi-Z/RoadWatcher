@@ -91,6 +91,7 @@ export const initialClips: TimelineClip[] = [
 export const initialJobs: WorkstationJob[] = [
   {
     id: "job-proxy-front",
+    mediaId: "media-front-001",
     type: "proxy",
     label: "Auto proxy: front camera 4K",
     status: "running",

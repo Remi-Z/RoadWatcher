@@ -29,6 +29,7 @@ export function createImportedMediaAssets(files: BrowserMediaFile[], existingAss
 export function createProxyJobsForImportedMedia(assets: MediaAsset[]): WorkstationJob[] {
   return assets.filter(isVideoAsset).map((asset) => ({
     id: `job-proxy-${asset.id}`,
+    mediaId: asset.id,
     type: "proxy",
     label: `Auto proxy: ${asset.fileName}`,
     status: "queued",

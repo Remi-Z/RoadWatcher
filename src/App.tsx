@@ -57,7 +57,7 @@ import {
   type ProjectedRoadFeature,
   type TimedRoutePoint
 } from "./features/geo/projection";
-import type { WorkstationJob } from "./features/jobs/jobModel";
+import type { NativeProxyJobResult, WorkstationJob } from "./features/jobs/jobModel";
 import { createTimelineClipsForImportedMedia } from "./features/media/mediaImport";
 import {
   createBrowserProjectRepository,
@@ -149,6 +149,7 @@ export function App({
   const [detectedNativeInvoke, setDetectedNativeInvoke] = useState<NativeInvoke | undefined>();
   const [activeNativeSqlitePath, setActiveNativeSqlitePath] = useState(() => nativeProjectLocator.load());
   const [nativeMediaSourcePath, setNativeMediaSourcePath] = useState(NATIVE_MEDIA_SOURCE_PATH_SLOT);
+  const [activeProxyJob, setActiveProxyJob] = useState<{ jobId: string; mediaId: string } | null>(null);
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
   const nativeHydrationPathRef = useRef<string | null>(null);
   const firstSlotReferenceInputRef = useRef<HTMLInputElement>(null);
@@ -293,6 +294,57 @@ export function App({
     };
   }, [activeNativeSqlitePath, nativeCommandBridge, projectRepository]);
 
+  useEffect(() => {
+    if (!activeProxyJob || !activeNativeSqlitePath || nativeCommandBridge.status !== "ready") {
+      return;
+    }
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const sqlitePath = activeNativeSqlitePath;
+    const monitored = activeProxyJob;
+
+    const poll = async () => {
+      const result = await nativeCommandBridge.invoke("job_status", {
+        sqlitePath,
+        projectId,
+        jobId: monitored.jobId
+      });
+      if (!active) {
+        return;
+      }
+      if (!result.ok) {
+        setActiveProxyJob(null);
+        setAppStatus(`job_status ${result.status}: ${result.message}`);
+        return;
+      }
+      const status = nativeProxyJobResult(result.response);
+      if (!status || status.jobId !== monitored.jobId || status.mediaId !== monitored.mediaId) {
+        setActiveProxyJob(null);
+        setAppStatus("job_status invalid_response: Proxy job response fields or identity are invalid.");
+        return;
+      }
+      dispatchWorkstation({ type: "reconcile_proxy_job", result: status });
+      if (isTerminalProxyStatus(status.status)) {
+        setActiveProxyJob(null);
+        setAppStatus(
+          status.status === "complete"
+            ? `Native proxy complete: ${status.proxyPath}`
+            : `Native proxy ${status.status}: ${status.detail}`
+        );
+        return;
+      }
+      timer = setTimeout(() => void poll(), 1_000);
+    };
+
+    void poll();
+    return () => {
+      active = false;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [activeNativeSqlitePath, activeProxyJob, nativeCommandBridge, projectId]);
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) {
@@ -435,6 +487,7 @@ export function App({
     const cleared = projectRepository.clear();
     nativeProjectLocator.clear();
     setActiveNativeSqlitePath(null);
+    setActiveProxyJob(null);
     nativeHydrationPathRef.current = null;
     dispatchWorkstation({ type: "reset_project", seed: createWorkstationSeed(projectIdFactory()) });
     setAppStatus(
@@ -545,6 +598,7 @@ export function App({
       };
       const job: WorkstationJob = {
         id: imported.proxyJobId,
+        mediaId: imported.mediaId,
         type: "proxy",
         label: `Auto proxy: ${imported.fileName}`,
         status: "queued",
@@ -665,36 +719,85 @@ export function App({
   }
 
   async function handleProbeFfmpegProxy() {
+    if (!activeNativeSqlitePath) {
+      setAppStatus("Native proxy requires an active SQLite project. Create or reopen a native project first.");
+      return;
+    }
     const requestedAtIso = new Date().toISOString();
     const mediaId = selectedClip?.mediaId ?? primaryMedia?.id ?? "slot: media id";
+    const proxyJob = jobs.find(
+      (job) =>
+        job.type === "proxy" &&
+        job.mediaId === mediaId &&
+        (job.status === "queued" || job.status === "failed" || job.status === "blocked" || job.status === "cancelled")
+    );
+    if (!proxyJob) {
+      setAppStatus(`No restartable proxy job is available for media ${mediaId}.`);
+      return;
+    }
+    const binaryDirectory = componentSlots.find((slot) => slot.id === "ffmpeg")?.reference ?? "";
     const result = await nativeCommandBridge.invoke("ffmpeg_proxy", {
+      sqlitePath: activeNativeSqlitePath,
       projectId: createProjectSnapshot(currentSnapshotInput).projectId,
       mediaId,
-      profile: REVIEW_PROXY_PROFILE
+      jobId: proxyJob.id,
+      profile: REVIEW_PROXY_PROFILE,
+      binaryDirectory
     });
+    const started = result.ok ? nativeProxyStartResponse(result.response) : null;
     const resultSummary = result.ok
-      ? `jobId: ${ffmpegJobId(result.response)}; proxyPath: ${ffmpegProxyPath(
-          result.response
-        )}; thumbnailDirectory: ${ffmpegThumbnailDirectory(result.response)}`
+      ? started
+        ? `jobId: ${started.jobId}; status: ${started.status}`
+        : "invalid_response; proxy start fields have invalid types"
       : `${result.status}; fallback: ${result.fallback}; selected media: ${mediaId}`;
     const attempt: NativeCommandAttempt = {
       id: `ffmpeg-proxy-probe-${Date.now().toString(36)}`,
       command: result.command,
-      status: result.status,
+      status: result.ok && !started ? "invalid_response" : result.status,
       requestedAtIso,
-      requestSummary: `mediaId: ${mediaId}; profile: ${REVIEW_PROXY_PROFILE}`,
+      requestSummary: `mediaId: ${mediaId}; jobId: ${proxyJob.id}; profile: ${REVIEW_PROXY_PROFILE}`,
       resultSummary
     };
 
     dispatchWorkstation({ type: "record_native_attempt", attempt });
-    invalidateLatestExport();
 
-    if (result.ok) {
-      setAppStatus(`Native FFmpeg proxy ready: ${ffmpegJobId(result.response)}`);
+    if (result.ok && started && started.jobId === proxyJob.id) {
+      setActiveProxyJob({ jobId: started.jobId, mediaId });
+      setAppStatus(`Native proxy job started: ${started.jobId}`);
       return;
     }
 
-    setAppStatus(`${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`);
+    setAppStatus(
+      result.ok
+        ? "ffmpeg_proxy invalid_response: Proxy start response fields or identity are invalid."
+        : `${result.command} ${result.status}: ${result.message} Fallback: ${result.fallback}`
+    );
+  }
+
+  async function handleCancelProxyJob(job: WorkstationJob) {
+    if (!activeNativeSqlitePath || !job.mediaId) {
+      return;
+    }
+    const result = await nativeCommandBridge.invoke("job_cancel", {
+      sqlitePath: activeNativeSqlitePath,
+      projectId,
+      mediaId: job.mediaId,
+      jobId: job.id
+    });
+    if (!result.ok) {
+      setAppStatus(`job_cancel ${result.status}: ${result.message}`);
+      return;
+    }
+    const status = nativeProxyJobResult(result.response);
+    if (!status || status.jobId !== job.id || status.mediaId !== job.mediaId) {
+      setAppStatus("job_cancel invalid_response: Proxy job response fields or identity are invalid.");
+      return;
+    }
+    dispatchWorkstation({ type: "reconcile_proxy_job", result: status });
+    if (isTerminalProxyStatus(status.status)) {
+      setActiveProxyJob(null);
+    }
+    setAppStatus(`Native proxy ${status.status}: ${status.detail}`);
   }
 
   async function handleMediaImport(event: ChangeEvent<HTMLInputElement>) {
@@ -954,7 +1057,7 @@ export function App({
 
         <aside className="jobs-panel panel">
           <PanelHeader icon={<Gauge size={18} />} title="Processing jobs" meta="Runnable slots are explicit" />
-          <JobList jobs={jobs} nativeChecklist={reviewReadiness.nativeChecklist} />
+          <JobList jobs={jobs} nativeChecklist={reviewReadiness.nativeChecklist} onCancelProxy={handleCancelProxyJob} />
         </aside>
       </section>
 
@@ -994,6 +1097,8 @@ export function App({
                     <span>Detected start {asset.detectedStart || "pending native metadata"}</span>
                     <span>Size {formatFileSize(asset.fileSizeBytes)}</span>
                     <span>Hash {asset.hash || "pending native import"}</span>
+                    {asset.proxyPath && <span>Proxy {asset.proxyPath}</span>}
+                    {asset.videoCodec && <span>Codec {asset.videoCodec}</span>}
                   </div>
                 </div>
                 <StatusPill status={asset.proxyStatus} label={asset.proxyStatus} />
@@ -1180,7 +1285,7 @@ function ReviewReadinessPanel({
         </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeFfmpegProxy}>
           <FileVideo size={15} />
-          Probe FFmpeg proxy
+          Start native proxy
         </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeCvScan}>
           <Gauge size={15} />
@@ -1568,7 +1673,15 @@ function InspectorField({ label, value, onChange }: { label: string; value: stri
   );
 }
 
-function JobList({ jobs, nativeChecklist }: { jobs: WorkstationJob[]; nativeChecklist: NativeReadinessChecklistItem[] }) {
+function JobList({
+  jobs,
+  nativeChecklist,
+  onCancelProxy
+}: {
+  jobs: WorkstationJob[];
+  nativeChecklist: NativeReadinessChecklistItem[];
+  onCancelProxy: (job: WorkstationJob) => void;
+}) {
   return (
     <div className="job-list">
       {jobs.map((job) => {
@@ -1584,6 +1697,11 @@ function JobList({ jobs, nativeChecklist }: { jobs: WorkstationJob[]; nativeChec
               <span style={{ width: `${job.progress}%` }} />
             </div>
             <p>{job.detail}</p>
+            {job.type === "proxy" && job.status === "running" && job.mediaId && (
+              <button type="button" className="button secondary" onClick={() => onCancelProxy(job)}>
+                Cancel {job.label}
+              </button>
+            )}
             {blockers.length > 0 && (
               <div className="job-blocker-list">
                 {blockers.map((blocker) => (
@@ -1912,28 +2030,49 @@ function gisProjectedFeatureCount(response: unknown): string {
   return "(projected feature count unavailable)";
 }
 
-function ffmpegJobId(response: unknown): string {
-  if (response && typeof response === "object" && "jobId" in response) {
-    return String((response as { jobId: unknown }).jobId);
+function nativeProxyStartResponse(response: unknown): { jobId: string; status: string } | null {
+  if (!response || typeof response !== "object") {
+    return null;
   }
-
-  return "(ffmpeg job id unavailable)";
+  const value = response as Record<string, unknown>;
+  return typeof value.jobId === "string" && typeof value.status === "string"
+    ? { jobId: value.jobId, status: value.status }
+    : null;
 }
 
-function ffmpegProxyPath(response: unknown): string {
-  if (response && typeof response === "object" && "proxyPath" in response) {
-    return String((response as { proxyPath: unknown }).proxyPath);
+function nativeProxyJobResult(response: unknown): NativeProxyJobResult | null {
+  if (!response || typeof response !== "object") {
+    return null;
   }
-
-  return "(proxy path unavailable)";
+  const value = response as Record<string, unknown>;
+  const jobStatuses: NativeProxyJobResult["status"][] = ["queued", "running", "complete", "failed", "cancelled", "blocked"];
+  const proxyStatuses: NativeProxyJobResult["proxyStatus"][] = ["ready", "running", "queued", "blocked"];
+  if (
+    typeof value.jobId !== "string" ||
+    typeof value.mediaId !== "string" ||
+    typeof value.status !== "string" ||
+    !jobStatuses.includes(value.status as NativeProxyJobResult["status"]) ||
+    typeof value.progress !== "number" ||
+    !Number.isFinite(value.progress) ||
+    value.progress < 0 ||
+    value.progress > 100 ||
+    typeof value.detail !== "string" ||
+    typeof value.durationSeconds !== "number" ||
+    !Number.isFinite(value.durationSeconds) ||
+    typeof value.detectedStart !== "string" ||
+    typeof value.proxyStatus !== "string" ||
+    !proxyStatuses.includes(value.proxyStatus as NativeProxyJobResult["proxyStatus"]) ||
+    typeof value.proxyPath !== "string" ||
+    typeof value.thumbnailDirectory !== "string" ||
+    typeof value.videoCodec !== "string"
+  ) {
+    return null;
+  }
+  return value as unknown as NativeProxyJobResult;
 }
 
-function ffmpegThumbnailDirectory(response: unknown): string {
-  if (response && typeof response === "object" && "thumbnailDirectory" in response) {
-    return String((response as { thumbnailDirectory: unknown }).thumbnailDirectory);
-  }
-
-  return "(thumbnail directory unavailable)";
+function isTerminalProxyStatus(status: NativeProxyJobResult["status"]): boolean {
+  return status === "complete" || status === "failed" || status === "cancelled" || status === "blocked";
 }
 
 function cvJobId(response: unknown): string {

@@ -41,6 +41,7 @@ describe("media import", () => {
     expect(jobs).toEqual([
       {
         id: "job-proxy-media-imported-front-mp4-0",
+        mediaId: "media-imported-front-mp4-0",
         type: "proxy",
         label: "Auto proxy: front.mp4",
         status: "queued",

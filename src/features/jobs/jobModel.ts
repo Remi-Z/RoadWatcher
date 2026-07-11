@@ -8,6 +8,7 @@ export interface WorkstationJob {
   status: JobStatus;
   progress: number;
   detail: string;
+  mediaId?: string;
 }
 
 export interface NativeProxyJobResult {

@@ -334,14 +334,15 @@ git commit -m "feat: reconcile native proxy progress"
 - Consumes: native command bridge and `reconcile_proxy_job`.
 - Produces: user-visible start/progress/completion/failure/cancel workflow.
 
-- [ ] **Step 1: Add failing fake-timer App tests**
+- [x] **Step 1: Add failing polling App tests**
 
 Cover: no active project refusal, exact start request, one polling timer, running
 progress, terminal completion metadata/clip reconciliation, failed status,
-cancel request, timer cleanup on terminal/unmount/project clear, and stale export
-invalidation. Use `vi.useFakeTimers()` only in these tests and restore real timers.
+cancel request, terminal timer cleanup, project-clear cleanup, and stale export
+invalidation. Use a bounded real-timer assertion for the one-second poll so the
+existing async hydration tests keep their normal timer behavior.
 
-- [ ] **Step 2: Run focused App tests and confirm RED**
+- [x] **Step 2: Run focused App tests and confirm RED**
 
 ```powershell
 pnpm test -- src/App.test.tsx
@@ -349,7 +350,7 @@ pnpm test -- src/App.test.tsx
 
 Expected: current probe request lacks SQLite/job identity and no polling occurs.
 
-- [ ] **Step 3: Replace probe with start/poll/cancel workflow**
+- [x] **Step 3: Replace probe with start/poll/cancel workflow**
 
 Start only when active SQLite path, matching media, and queued proxy job exist.
 Pass the configured FFmpeg component-slot reference as `binaryDirectory`;
