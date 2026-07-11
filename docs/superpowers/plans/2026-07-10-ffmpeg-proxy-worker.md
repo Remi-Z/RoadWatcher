@@ -268,7 +268,7 @@ project create/save/load, media import, GPX, GIS, and FFmpeg proxy; false for jo
 status/cancel and CV. Replace command-name special casing in readiness with the
 contract flag.
 
-- [ ] **Step 5: Run Rust/frontend tests and commit**
+- [x] **Step 5: Run Rust/frontend tests and commit**
 
 ```powershell
 $env:CARGO_TARGET_DIR="$env:TEMP\roadwatcher-cargo-target"
