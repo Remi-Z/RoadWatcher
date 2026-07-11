@@ -98,6 +98,7 @@ import {
   type ReviewReadiness
 } from "./features/project/reviewReadiness";
 import { createNativeCommandBridge, type NativeInvoke } from "./features/native/nativeCommandBridge";
+import { createNativeFilePicker, type NativeFilePicker, type NativeFilePurpose } from "./features/native/nativeFilePicker";
 import { detectNativeRuntime, type NativeRuntimeHost, type NativeRuntimeStatus } from "./features/native/runtimeEnvironment";
 import { resolveTauriInvoke } from "./features/native/tauriInvokeAdapter";
 import type { TimelineClip } from "./features/timeline/timelineModel";
@@ -110,6 +111,7 @@ import {
 
 const defaultProjectRepository = createBrowserProjectRepository();
 const defaultNativeProjectLocator = createNativeProjectLocator();
+const defaultNativeFilePicker = createNativeFilePicker();
 const NATIVE_MEDIA_SOURCE_PATH_SLOT = "slot: native media source path from file picker";
 const NATIVE_GPX_PATH_SLOT = "slot: persisted GPX path from native import";
 const NATIVE_OFFICIAL_GIS_SOURCE_PATH_SLOT = "slot: official GIS source path from native import";
@@ -117,12 +119,14 @@ const REVIEW_PROXY_PROFILE = "review-proxy";
 
 export function App({
   nativeInvoke,
+  nativeFilePicker = defaultNativeFilePicker,
   nativeProjectLocator = defaultNativeProjectLocator,
   nativeRuntimeStatus,
   projectIdFactory = createProjectId,
   projectRepository = defaultProjectRepository
 }: {
   nativeInvoke?: NativeInvoke;
+  nativeFilePicker?: NativeFilePicker;
   nativeProjectLocator?: NativeProjectLocator;
   nativeRuntimeStatus?: NativeRuntimeStatus;
   projectIdFactory?: () => ProjectId;
@@ -547,6 +551,25 @@ export function App({
   function handleNativeProjectRootChange(value: string) {
     dispatchWorkstation({ type: "set_native_project_root", value });
     invalidateLatestExport();
+  }
+
+  async function handleNativeFileSelection(purpose: NativeFilePurpose) {
+    if (activeNativeRuntimeStatus.mode !== "tauri_shell") {
+      setAppStatus("Native file selection requires the Tauri desktop runtime; manual path entry remains available.");
+      return;
+    }
+    const currentPath = purpose === "media" ? nativeMediaSourcePath : purpose === "gpx" ? nativeGpxSourcePath : nativeGisSourcePath;
+    const result = await nativeFilePicker.select(purpose, currentPath);
+    if (result.status === "selected") {
+      if (purpose === "media") setNativeMediaSourcePath(result.path);
+      else if (purpose === "gpx") setNativeGpxSourcePath(result.path);
+      else setNativeGisSourcePath(result.path);
+      setAppStatus(`Selected native ${purpose.toUpperCase()} source: ${result.path}`);
+    } else if (result.status === "cancelled") {
+      setAppStatus(`Native ${purpose.toUpperCase()} file selection cancelled; current path was kept.`);
+    } else {
+      setAppStatus(`Native ${purpose.toUpperCase()} file selection ${result.status}: ${result.message}`);
+    }
   }
 
   function focusInstallAndDataSlots() {
@@ -1362,13 +1385,16 @@ export function App({
             onNativeGisSourcePathChange={setNativeGisSourcePath}
             onNativeGisSourceCrsChange={setNativeGisSourceCrs}
             onNativeGisImport={handleNativeGisImport}
+            onNativeGisSelect={() => void handleNativeFileSelection("gis")}
             readiness={reviewReadiness}
             onNativeProjectRootChange={handleNativeProjectRootChange}
             onProbeFfmpegProxy={handleProbeFfmpegProxy}
             onProbeGisProjection={handleProbeGisProjection}
             onProbeGpxMatch={handleProbeGpxMatch}
             onNativeGpxImport={handleNativeGpxImport}
+            onNativeGpxSelect={() => void handleNativeFileSelection("gpx")}
             onProbeMediaImport={handleProbeMediaImport}
+            onNativeMediaSelect={() => void handleNativeFileSelection("media")}
             onProbeNativeProjectStore={handleProbeNativeProjectStore}
             onProbeCvScan={handleProbeCvScan}
           />
@@ -1504,11 +1530,14 @@ function ReviewReadinessPanel({
   nativeMediaSourcePath,
   nativeProjectRoot,
   onNativeGisImport,
+  onNativeGisSelect,
   onNativeGisSourceCrsChange,
   onNativeGisSourcePathChange,
   onNativeGpxImport,
+  onNativeGpxSelect,
   onNativeGpxSourcePathChange,
   onNativeMediaSourcePathChange,
+  onNativeMediaSelect,
   onNativeProjectRootChange,
   onProbeCvScan,
   onProbeFfmpegProxy,
@@ -1525,11 +1554,14 @@ function ReviewReadinessPanel({
   nativeMediaSourcePath: string;
   nativeProjectRoot: string;
   onNativeGisImport: () => void;
+  onNativeGisSelect: () => void;
   onNativeGisSourceCrsChange: (value: "EPSG:4326" | "EPSG:3857") => void;
   onNativeGisSourcePathChange: (value: string) => void;
   onNativeGpxImport: () => void;
+  onNativeGpxSelect: () => void;
   onNativeGpxSourcePathChange: (value: string) => void;
   onNativeMediaSourcePathChange: (value: string) => void;
+  onNativeMediaSelect: () => void;
   onNativeProjectRootChange: (value: string) => void;
   onProbeCvScan: () => void;
   onProbeFfmpegProxy: () => void;
@@ -1598,6 +1630,10 @@ function ReviewReadinessPanel({
             onChange={(event) => onNativeMediaSourcePathChange(event.target.value)}
           />
         </label>
+        <button type="button" className="button secondary native-probe-button" onClick={onNativeMediaSelect}>
+          <Upload size={15} />
+          Choose media file
+        </button>
         <button type="button" className="button secondary native-probe-button" onClick={onProbeMediaImport}>
           <Upload size={15} />
           Import native media
@@ -1610,6 +1646,10 @@ function ReviewReadinessPanel({
             onChange={(event) => onNativeGpxSourcePathChange(event.target.value)}
           />
         </label>
+        <button type="button" className="button secondary native-probe-button" onClick={onNativeGpxSelect}>
+          <Upload size={15} />
+          Choose GPX file
+        </button>
         <button type="button" className="button secondary native-probe-button" onClick={onNativeGpxImport}>
           <Upload size={15} />
           Import native GPX
@@ -1626,6 +1666,10 @@ function ReviewReadinessPanel({
             onChange={(event) => onNativeGisSourcePathChange(event.target.value)}
           />
         </label>
+        <button type="button" className="button secondary native-probe-button" onClick={onNativeGisSelect}>
+          <Upload size={15} />
+          Choose GIS file
+        </button>
         <label className="native-root-field">
           <span>Native GIS source CRS</span>
           <select

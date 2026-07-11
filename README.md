@@ -162,9 +162,11 @@ camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
 and retains browser storage as recovery fallback. Native media/proxy,
 GPX/map-matching, and official GeoJSON projection workflows are complete; the
-next native slice is a native file picker for the implemented path-based import
-commands, followed by replacing seeded demo data with command-backed empty-state
-hydration.
+The official Tauri dialog plugin now provides scoped, single-file media/GPX/GIS
+selection with purpose-specific filters. Choose actions populate the existing
+paths without auto-importing or copying originals; browser mode retains manual
+path entry. The next slice is replacing seeded demo data with command-backed
+empty-project hydration.
 
 ## Slots You Need To Fill
 
@@ -175,8 +177,6 @@ hydration.
 - Provide official GIS files for traffic signals, stop signs, and bike lanes.
 - Bundle or document a redistributable FFmpeg/ffprobe installation and resolve
   its licensing/distribution policy; PATH and configured directories work now.
-- Add a Tauri file picker that populates the implemented import-by-reference
-  path without changing the durable media/proxy contracts.
 - Run a local Valhalla or OSRM HTTP service and replace their slot placeholders
   with loopback endpoints such as `http://localhost:8002`.
 - Add GDAL/PROJ or PostGIS ingestion for Shapefile, GeoPackage, FileGDB, and

@@ -414,11 +414,11 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Add a native file picker for the implemented path-based media/GPX/GIS import
-   commands. Native evidence export is complete end to end: strict frontend
-   adapter, verified paths/hashes/sizes, success-only link hiding, atomic writer,
-   schema-v6 store, and stale recovery (147 frontend tests and 52 Rust tests pass;
-   one installed-FFmpeg smoke is intentionally ignored).
+1. Replace seeded demo state with command-backed empty-project hydration. Native
+   file selection is complete using the official Tauri dialog plugin, scoped
+   original-file access, exact media/GPX/GeoJSON filters, and separate Choose vs
+   Import actions (154 frontend tests and 52 Rust tests pass; one installed-
+   FFmpeg smoke is intentionally ignored).
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -435,7 +435,8 @@ network/DNS access.
    persistence are complete.
 6. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
    demo fallback only for empty projects.
-7. Add a native file picker for the implemented import-by-reference command.
+7. Preserve the implemented scoped native file picker and import-by-reference
+   command boundary while replacing seeded state.
 8. Configure local Valhalla/OSRM data and add an optional live matcher smoke.
 9. Add GDAL/PostGIS container import, arbitrary CRS normalization, and indexing.
 10. Define FFmpeg/ffprobe bundling, update, and licensing policy for deployment.

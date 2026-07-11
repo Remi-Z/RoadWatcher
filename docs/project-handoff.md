@@ -506,23 +506,21 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 
 ## Next Best Implementation Slice
 
-The native evidence-export module is complete end to end. Verification on
-2026-07-10 passed 147 frontend tests across 22 files, the production Vite build,
-and 52 Rust tests with only the installed-FFmpeg smoke intentionally ignored.
-Coverage includes exact artifact content/hash/size,
-manifest and database agreement, traversal/case-duplicate/malformed JSON/project
-identity rejection before writes, collision non-overwrite cleanup, v5 migration,
-confined stale cleanup, nested-entry refusal, immutable completed history, strict
-response validation, native success/failure reconciliation, browser fallback,
-success-only data-link hiding, edit invalidation, and async completion race guards.
+Native file selection is complete. Verification on 2026-07-10 passed 154
+frontend tests across 23 files, the production Vite build, and 52 Rust tests with
+only the installed-FFmpeg smoke intentionally ignored. The official Tauri dialog
+plugin is registered under a main-window capability limited to
+`dialog:allow-open`. Media, GPX, and GeoJSON selectors use exact filters,
+single-file document mode, and scoped access so desktop originals remain in
+place. Cancellation/errors preserve manual paths, and selection remains separate
+from the existing deliberate import actions.
 The suite used a short-path temporary Cargo target to avoid the known Windows
 build-script problem with the workspace path's space.
 
-1. Add a native file picker that populates the implemented media/GPX/GIS source
-   paths without changing the store contracts.
-2. Replace seeded demo data with command-backed state after native media/project
+1. Replace seeded demo data with command-backed state after native media/project
    selection exists, keeping the seed only for empty projects.
-3. Add GDAL/PostGIS import for production GIS containers and arbitrary CRSs.
+2. Add GDAL/PostGIS import for production GIS containers and arbitrary CRSs.
+3. Implement real local CV scanning and the GPStitch integration boundary.
 
 ## Boundaries To Preserve
 

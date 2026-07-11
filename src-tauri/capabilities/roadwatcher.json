@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "roadwatcher-main",
+  "description": "RoadWatcher main-window native capabilities",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open"]
+}

@@ -244,6 +244,7 @@ fn job_cancel(
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(ProxyWorkerManager::default())
         .manage(RouteMatcherManager::default())
         .manage(GisProjectorManager::default())

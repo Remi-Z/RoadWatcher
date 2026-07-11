@@ -24,3 +24,4 @@ quick-xml = "0.41.0"
 tauri = { version = "2", features = [] }
 thiserror = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
+tauri-plugin-dialog = "2"

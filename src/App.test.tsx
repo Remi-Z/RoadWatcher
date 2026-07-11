@@ -17,6 +17,7 @@ import { detectNativeRuntime } from "./features/native/runtimeEnvironment";
 import type { NativeInvoke } from "./features/native/nativeCommandBridge";
 import type { ProjectId } from "./domain/projectModels";
 import type { NativeProjectLocator } from "./features/project/nativeProjectLocator";
+import type { NativeFilePicker } from "./features/native/nativeFilePicker";
 
 const TEST_PROJECT_ID = "local-app-test-project" as ProjectId;
 
@@ -477,6 +478,49 @@ describe("RoadWatcher workstation", () => {
     expect(readinessPanel as HTMLElement).toHaveTextContent("Native workflow blocked");
     expect(readinessPanel as HTMLElement).toHaveTextContent("project_create unverified");
     expect(readinessPanel as HTMLElement).toHaveTextContent("Tauri invoke bridge is available");
+  });
+
+  it("keeps manual paths when native file selection is unavailable in browser mode", async () => {
+    const select = vi.fn<NativeFilePicker["select"]>();
+    render(<App nativeFilePicker={{ select }} projectRepository={createMemoryProjectRepository()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose media file" }));
+
+    expect(select).not.toHaveBeenCalled();
+    expect(await screen.findByRole("status", { name: "App status" })).toHaveTextContent(
+      "Native file selection requires the Tauri desktop runtime"
+    );
+    expect(screen.getByLabelText("Native media source path")).toHaveValue(
+      "slot: native media source path from file picker"
+    );
+  });
+
+  it("populates purpose-specific native source paths without importing automatically", async () => {
+    const select = vi.fn<NativeFilePicker["select"]>().mockImplementation(async (purpose) => ({
+      status: "selected",
+      path: purpose === "media" ? "D:/Evidence/front.mp4" : purpose === "gpx" ? "D:/Evidence/route.gpx" : "D:/GIS/signals.geojson"
+    }));
+    const nativeInvoke = vi.fn<NativeInvoke>();
+    render(
+      <App
+        nativeFilePicker={{ select }}
+        nativeInvoke={nativeInvoke}
+        nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+        projectRepository={createMemoryProjectRepository()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose media file" }));
+    await waitFor(() => expect(screen.getByLabelText("Native media source path")).toHaveValue("D:/Evidence/front.mp4"));
+    fireEvent.click(screen.getByRole("button", { name: "Choose GPX file" }));
+    await waitFor(() => expect(screen.getByLabelText("Native GPX source path")).toHaveValue("D:/Evidence/route.gpx"));
+    fireEvent.click(screen.getByRole("button", { name: "Choose GIS file" }));
+    await waitFor(() => expect(screen.getByLabelText("Native GIS source path")).toHaveValue("D:/GIS/signals.geojson"));
+
+    expect(select).toHaveBeenNthCalledWith(1, "media", "slot: native media source path from file picker");
+    expect(select).toHaveBeenNthCalledWith(2, "gpx", "slot: persisted GPX path from native import");
+    expect(select).toHaveBeenNthCalledWith(3, "gis", "slot: official GIS source path from native import");
+    expect(nativeInvoke).not.toHaveBeenCalled();
   });
 
   it("reports browser fallback when probing the native project store without invoking commands", async () => {
