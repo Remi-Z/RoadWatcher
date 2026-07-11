@@ -316,7 +316,7 @@ Add a shared `NativeProxyJobResult` interface. The reducer replaces the matching
 job/media, clamps only invalid placeholder clip bounds, prepends the optional
 attempt, preserves selection, and invalidates the export pair.
 
-- [ ] **Step 4: Run reducer/project snapshot tests and commit**
+- [x] **Step 4: Run reducer/project snapshot tests and commit**
 
 ```powershell
 pnpm test -- src/features/workstation/workstationState.test.ts src/features/project/projectSnapshotSchema.test.ts
