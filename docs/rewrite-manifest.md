@@ -356,12 +356,12 @@ network/DNS access.
   references and verification commands, but it does not execute toolchain or data
   checks until Tauri commands are available.
 - The native runtime boundary detects Tauri shell globals and lists implemented
-  versus planned DTOs. Project create/save/load, media import, durable FFmpeg
-  proxy execution, status polling, and cancellation are implemented; GPX, GIS,
-  and CV handlers remain planned.
+  versus planned DTOs. Project create/save/load, media import, durable FFmpeg,
+  native GPX import, Valhalla/OSRM matching, and status polling are implemented;
+  GIS and CV handlers remain planned.
 - The native command bridge is dependency-injected and tested. The app calls
-  project-store, media import, FFmpeg proxy/status/cancel, and CV-scan paths
-  through the bridge; GPX/GIS workflow commands and the CV handler still need
+  project-store, media import, FFmpeg proxy/status/cancel, GPX import/match/status,
+  and CV-scan paths through the bridge; GIS workflow commands and the CV handler still need
   implementation. Browser mode returns explicit fallback results. Required
   request fields are validated before Tauri invoke is called, and required
   response fields are validated before native data is accepted. The browser-safe
@@ -377,10 +377,10 @@ network/DNS access.
   proxy/thumbnail generation, progress, cancellation, recovery, and terminal
   reconciliation are implemented. A native picker and FFmpeg distribution/
   licensing policy remain.
-- Browser GPX import is a fallback only. It now records `gpx_match`
-  browser-fallback audit entries, but Tauri still needs persisted GPX assets,
-  Valhalla map matching, OSRM fallback, and official-feature reprojection
-  against the matched route.
+- Browser GPX import remains an explicit fallback. Native projects now persist
+  hashed GPX assets and immutable raw points, execute Valhalla with OSRM fallback,
+  publish matched points transactionally, poll durable state, and reproject
+  official features. Live matching still requires a configured loopback service.
 - Browser GeoJSON import is a fallback only. It supports WGS84 Point and
   LineString features for MVP review and now records `gis_project`
   browser-fallback audit entries. Turf.js should own richer browser geometry
@@ -392,7 +392,8 @@ network/DNS access.
 - MapLibre is installed but the current map is an SVG implementation preview.
   Replace with MapLibre once local/offline basemap and route layers are ready.
 - GPStitch has not been vendored yet.
-- Valhalla/OSRM adapters are not implemented yet.
+- Valhalla/OSRM adapters are implemented for configured loopback HTTP services;
+  local tiles/profiles and live-service smoke evidence are not present yet.
 - Official GIS import and CRS normalization are not implemented yet.
 - CV scan only has a configuration sidecar stub and a browser-fallback audit
   probe; no real ONNX model loading or frame scanning is implemented yet.
@@ -412,8 +413,8 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement persisted native GPX import and local Valhalla map matching, with
-   OSRM Match as the fallback adapter.
+1. Implement native official GIS ingestion, CRS/source provenance, normalized
+   storage, and projection onto the active matched route.
 2. Verify toolchain:
    - `node --version`
    - `npm --version`
@@ -430,9 +431,8 @@ network/DNS access.
 6. Replace `src/data/demoProject.ts` gradually with command-backed state, keeping
    demo fallback only for empty projects.
 7. Add a native file picker for the implemented import-by-reference command.
-8. Replace browser GPX parsing with persisted GPX import and local Valhalla map
-   matching.
-9. Replace browser GeoJSON projection with Turf.js MVP geometry and production
+8. Configure local Valhalla/OSRM data and add an optional live matcher smoke.
+9. Replace browser GeoJSON projection with native/Turf MVP geometry and production
    PostGIS import/indexing.
 10. Define FFmpeg/ffprobe bundling, update, and licensing policy for deployment.
 

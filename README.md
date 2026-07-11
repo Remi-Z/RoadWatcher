@@ -32,10 +32,12 @@ durable FFmpeg worker with ffprobe metadata, hardware-encoder preference,
 libx264 fallback, progress polling, cancellation, atomic proxy/thumbnail
 publication, and terminal reconciliation; browser imports retain explicit
 `ffmpeg_proxy` fallback audit entries,
-imported GPX tracks update the route preview, keep the map legend marked as
-Valhalla/OSRM pending, surface first/last timed route-point provenance, and
-queue Valhalla matching with `gpx_match` fallback audit entries until native
-Valhalla/OSRM matching is wired,
+browser-imported GPX tracks update the route preview and retain explicit
+`gpx_match` fallback audit entries; active native projects can instead parse and
+persist bounded GPX 1.1 evidence, stream its hash/size, queue a durable match,
+call local Valhalla with OSRM Match fallback, poll terminal state, publish
+matched points atomically, show matcher provenance, and reproject official
+features,
 imported GeoJSON layers project supported official road features onto the active
 route with `gis_project` fallback audit entries until Turf/PostGIS/native
 projection is wired, RoadWatcher `.json` snapshots restore portable review state
@@ -61,8 +63,9 @@ Rejected native invokes are converted into explicit failed command results so
 the app can keep running and record the failed attempt.
 The readiness panel also includes tested project-store, native media import, GPX
 matcher, GIS projection, FFmpeg proxy, and local CV actions. Project
-create/save/load, `media_import`, `ffmpeg_proxy`, `job_status`, and `job_cancel`
-are implemented; `gpx_match`, `gis_project`, and `cv_scan` bridge paths report
+create/save/load, `media_import`, `ffmpeg_proxy`, `job_status`, `job_cancel`,
+`gpx_import`, `gpx_match`, and `gpx_job_status` are implemented;
+`gis_project` and `cv_scan` bridge paths report
 the browser fallback otherwise; the native project root and CV model slot remain
 editable, saved in portable project snapshots, and included in exports/setup
 checklists. Probe
@@ -136,16 +139,16 @@ paths must be invoked successfully before native-ready is claimed. Tauri
 `project_create` is backed by a SQLite project folder and durable metadata. Its
 pure Rust store now
 creates the UUID layout, required directories, schema version, project metadata,
-and foundational tables under test. Database schema version 3 retains the
+and foundational tables under test. Database schema version 4 retains the
 canonical transactional snapshot record, migrates older projects on open, and
-adds durable proxy outputs, codec metadata, media/job identity, cancellation,
-and stale-running recovery.
+adds durable proxy outputs plus identified raw/matched routes, route-job links,
+matcher provenance, cancellation, and stale-running recovery.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
-and retains browser storage as recovery fallback. Native media import and
-durable proxy execution are complete; the next native slice is persisted GPX
-import and local Valhalla/OSRM map matching.
+and retains browser storage as recovery fallback. Native media/proxy and
+GPX/map-matching workflows are complete; the next native slice is official GIS
+ingestion, CRS normalization, and projection onto the matched route.
 
 ## Slots You Need To Fill
 
@@ -158,8 +161,8 @@ import and local Valhalla/OSRM map matching.
   its licensing/distribution policy; PATH and configured directories work now.
 - Add a Tauri file picker that populates the implemented import-by-reference
   path without changing the durable media/proxy contracts.
-- Wire Tauri GPX import and Valhalla so the browser-parsed raw route is replaced
-  with a persisted map-matched route and official-feature reprojection.
+- Run a local Valhalla or OSRM HTTP service and replace their slot placeholders
+  with loopback endpoints such as `http://localhost:8002`.
 - Replace browser GeoJSON projection with the intended Turf.js MVP path and the
   production PostGIS importer/CRS-normalization path.
 - Provide a local ONNX vehicle model and labels file for the CV sidecar.

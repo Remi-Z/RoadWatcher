@@ -491,35 +491,32 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   and agree with native response metadata.
 - `src/features/project/nativeProjectLocator.ts` - stores only the last SQLite
   path for startup hydration; clearing it never deletes the project directory.
-- `src-tauri/` - Tauri 2 shell with implemented create/save/load/media-import
-  commands, schema version 2 migration, streaming SHA-256, and transactional
-  media/proxy-job persistence.
+- `src-tauri/` - Tauri 2 shell with implemented project/media/proxy/GPX/matcher
+  commands, schema version 4 migrations, streaming SHA-256, durable background
+  jobs, and transactional raw/matched route persistence.
 - `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
 
 ## Next Best Implementation Slice
 
-The durable FFmpeg module is complete. Verification on 2026-07-10 passed 135
-frontend tests across 19 files, the production Vite build, and 23 Rust tests
-(with the installed-binary smoke intentionally ignored in the default suite).
-The explicit real smoke generated a temporary 0.5-second MP4, selected
-`h264_nvenc`, published its proxy and JPEG thumbnail, persisted positive
-duration/codec/completion metadata, and removed the temporary fixture. Binary
-resolution supports a configured directory and PATH; bundling and licensing
-policy remain deployment work.
+The native GPX/map-matching module is complete. Verification on 2026-07-10
+passed 140 frontend tests across 20 files, the production Vite build, and 37
+Rust tests (plus the intentionally ignored installed-FFmpeg smoke). Deterministic
+matcher fixtures cover Valhalla, OSRM, Valhalla-to-OSRM fallback, malformed
+responses, blocked configuration, background execution, cumulative-distance
+time interpolation, atomic completion, and raw-evidence preservation. No live
+matcher smoke was run because no loopback Valhalla/OSRM endpoint is configured.
 
-1. Replace browser GPX parsing with Tauri-backed GPX persistence and local
-   Valhalla map matching, with OSRM Match wired as the simpler fallback.
-2. Add a native file picker that populates the implemented import-by-reference
-   path without changing the store contract.
+1. Implement native official GIS ingestion, source/CRS provenance, normalized
+   storage, and projection onto the active matched route.
+2. Add a native file picker that populates the implemented media/GPX source
+   paths without changing the store contracts.
 3. Replace seeded demo data with command-backed state after native media/project
    selection exists, keeping the seed only for empty projects.
-4. Wire official GIS imports and reprojection behind real local configuration
-   slots.
-5. Replace browser GeoJSON projection with Turf.js MVP helpers and production
+4. Replace browser GeoJSON projection with Turf.js MVP helpers and production
    PostGIS/CRS-normalization import.
-6. Replace browser data-URL downloads with native export files; SQLite project
+5. Replace browser data-URL downloads with native export files; SQLite project
    save/load is now available.
 
 ## Boundaries To Preserve

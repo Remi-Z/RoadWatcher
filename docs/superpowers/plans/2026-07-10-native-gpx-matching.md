@@ -38,8 +38,8 @@ through the native RoadWatcher project.
 
 ### Task 5: Verification and Handoff
 
-- [ ] Run `pnpm test`, `pnpm build`, `cargo fmt --check`,
+- [x] Run `pnpm test`, `pnpm build`, `cargo fmt --check`,
   `cargo test --offline --all-targets`, and `git diff --check`.
-- [ ] Update README, project handoff, rewrite manifest, and this plan with exact
+- [x] Update README, project handoff, rewrite manifest, and this plan with exact
   evidence and remaining matcher-data/GIS work.
-- [ ] Commit documentation and advance the roadmap to native GIS ingestion.
+- [x] Commit documentation and advance the roadmap to native GIS ingestion.
