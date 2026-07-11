@@ -249,6 +249,7 @@ function capabilityEvidence(
 const verifyCommands: Record<string, string> = {
   rust: "cargo --version",
   gpstitch: "git submodule status sidecars/roadwatcher-gpstitch",
+  "python-runtime": "uv --version && uv python find",
   valhalla: "valhalla_service <path-to-valhalla.json>",
   osrm: "curl <osrm-endpoint>/match/v1/driving/<lon,lat;...>",
   gis: "import official GIS GeoJSON/GPKG into RoadWatcher",
@@ -262,5 +263,6 @@ const slotJobTypes: Record<string, WorkstationJob["type"][]> = {
   gis: ["gis"],
   ffmpeg: ["proxy"],
   "cv-model": ["cv"],
-  gpstitch: ["gpstitch"]
+  gpstitch: ["gpstitch"],
+  "python-runtime": ["cv", "gpstitch"]
 };

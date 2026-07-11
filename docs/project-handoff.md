@@ -24,6 +24,13 @@ The runnable app today is the React/Vite evidence workstation:
   and never mutates source/proxy timestamps. The frontend queues and polls
   identity-matched renders, persists them in snapshot schema v4, and exports the
   confined output path, SHA-256, size, and exact GPStitch version.
+- Windows packaging now carries whitelisted GPStitch/CV source, lockfiles,
+  GPStitch's full GPL text, `THIRD_PARTY_NOTICES.md`, and a machine-readable
+  runtime manifest. A build-script gate and `pnpm verify:runtime` reject missing
+  source/version/license/resource mappings or falsely bundled external tools.
+  Native sidecar commands resolve installed resources through Tauri instead of
+  relying on the process working directory. `uv`, Python, FFmpeg/ffprobe,
+  GDAL/OGR, Valhalla, and OSRM remain explicit external prerequisites.
 - Browser repository loads now report `loaded`, `missing`, `corrupt`,
   `unsupported`, or `unavailable`; startup keeps seeded state usable while
   showing the precise recovery condition. Schema-declaring project imports no
@@ -532,12 +539,17 @@ than stored text, and packet export is disabled until media plus a clip exist.
 
 Final verification on 2026-07-11 passed 168 frontend tests across 26 files, the
 production Vite build, TypeScript project compilation, four locked/offline
-Python sidecar tests, and 63 Rust tests with only the installed-FFmpeg smoke
+Python sidecar tests, and 65 Rust tests with only the installed-FFmpeg smoke
 intentionally ignored. Rust verification uses `C:\tmp\roadwatcher-target` to
 avoid a Rust 1.96 dependency-probe failure under the workspace path containing
 a space.
 The suite used a short-path temporary Cargo target to avoid the known Windows
 build-script problem with the workspace path's space.
+The packaging slice additionally passed `pnpm verify:runtime`, two focused Rust
+resource-path tests, a full debug Tauri application build, and an unsigned debug
+NSIS build. Extracting the 3,952,131-byte installer confirmed a 1,541-byte
+runtime manifest, 1,643-byte notices file, 36,606-byte GPL text, both sidecar
+source trees/locks, and no `__pycache__` entries.
 
 The CV sidecar and durable schema foundation are complete. Four Python tests prove request limits,
 label validation, confidence/bounds filtering, deterministic ordering, bounded
@@ -551,12 +563,11 @@ atomic finding publication, invalid-output rollback, and interrupted-job recover
 The asynchronous manager queues before returning, invokes locked/offline `uv`
 without a shell, canonicalizes source/model/label identities, caps process output,
 rejects mismatched aggregates, and records terminal blocked/failed states. Full
-Rust verification passes 60 tests with only the installed-FFmpeg smoke ignored.
+Rust verification passes 65 tests with only the installed-FFmpeg smoke ignored.
 
-1. Package/document GPStitch's GPL distribution posture, GDAL/OGR, FFmpeg, the
-   CV sidecar environment, and
-   user-supplied model
-   discovery for Windows distribution.
+1. Choose, inventory, and license a self-contained Windows runtime strategy for
+   `uv`/Python and FFmpeg/ffprobe, or formalize them as administrator-installed
+   prerequisites with an in-app preflight. The source/license bundle is complete.
 2. Add a real GPStitch/FFmpeg video+GPX smoke, real-model/video CV smoke, live
    matcher, and installed-binary coverage at
    the end of the implementation cycle.

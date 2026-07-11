@@ -212,10 +212,18 @@ Build a Windows-first, local-first evidence workstation:
 ## Current Verification
 
 Latest module verification on 2026-07-11: 168 frontend tests across 26 files,
-TypeScript compilation, production Vite build, and 63 Rust tests passed; the one
+TypeScript compilation, production Vite build, and 65 Rust tests passed; the one
 installed-FFmpeg smoke remains intentionally ignored. GPStitch worker/store tests
 use a fake executor because no compatible local GPStitch/FFmpeg render toolchain
 was available for a live smoke.
+
+Windows runtime packaging now has a deterministic source-and-license boundary.
+`pnpm verify:runtime` validates the exact GPStitch gitlink, component versions,
+locks, license markers, explicit Tauri resource map, notices, and six
+non-redistributed tools. A debug NSIS build and archive extraction confirmed the
+manifest, notices, GPL text, and whitelisted source files are non-empty and omit
+local Python caches. The installer still requires externally provisioned
+uv/Python and native media/GIS/matcher tools.
 
 ```powershell
 pnpm test
@@ -421,7 +429,8 @@ network/DNS access.
 | Slot | Needed For | Current Placeholder |
 | --- | --- | --- |
 | Rust/Cargo | Tauri dev/build and Rust command implementation | `src-tauri/` scaffold |
-| GPStitch sidecar | Telemetry sync and overlay processing | Pinned submodule v0.18.0; packaging/license compliance remains |
+| GPStitch sidecar | Telemetry sync and overlay processing | Pinned/bundled source v0.18.0; uv/Python/FFmpeg runtime remains external |
+| uv + Python 3.12+ | Locked GPStitch/CV execution | Editable optional UI slot; source/locks bundled, runtime external |
 | Valhalla York/GTA data | Local map matching | Editable UI slot + blocked job |
 | OSRM Match fallback | Simpler GPX matching fallback | Editable optional UI slot |
 | Official GIS layers | Stop signs/lights/bike lanes projection | Editable UI slot |
@@ -431,9 +440,11 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Resolve Windows packaging and GPL notice delivery for the implemented
-   GPStitch boundary. Production GIS container normalization, local CV, and
-   GPStitch reconciliation are complete: verification passes 168 frontend tests, 63 Rust tests (one
+1. Select and inventory a self-contained `uv`/Python and FFmpeg Windows runtime,
+   or add a formal administrator prerequisite/preflight flow. GPL source and
+   notice delivery for GPStitch is now implemented. Production GIS container
+   normalization, local CV, and GPStitch reconciliation are complete:
+   verification passes 168 frontend tests, 65 Rust tests (one
    installed-FFmpeg smoke ignored), four locked/offline Python tests, and the
    production build.
 2. Verify toolchain:

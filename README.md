@@ -126,6 +126,11 @@ ordinary Vite once dependencies are installed.
   Rust tests pass, and a temp-target debug build produces both MSI and NSIS
   installers.
 - Sidecars: `uv` Python packages under `sidecars/`.
+- Windows bundles: audited GPStitch/CV source, lockfiles, the full GPL text,
+  runtime manifest, and third-party notices are installer resources. `uv`,
+  Python, FFmpeg/ffprobe, GDAL/OGR, and matcher services remain declared external
+  prerequisites; the current package is intentionally not described as
+  self-contained.
 - Package manager: pnpm 11.7.0. `pnpm-workspace.yaml` explicitly approves the
   required `esbuild` postinstall for Vite.
 
@@ -171,6 +176,12 @@ proxy copy so source/proxy evidence timestamps are never mutated. Completed
 outputs are confined below the project proxy tree and record path, SHA-256,
 size, and exact GPStitch version in SQLite, portable snapshot schema v4, the UI,
 and evidence exports.
+The Windows packaging boundary now resolves repository-relative sidecar names to
+Tauri's packaged resource directory while still permitting explicit absolute
+development paths. `src-tauri/resources/runtime-manifest.json` is validated by
+both the Rust build script and `pnpm verify:runtime`; an NSIS archive inspection
+proves the source, locks, notices, and non-empty GPL license are present without
+local Python cache artifacts.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
@@ -199,6 +210,8 @@ version 4.
 
 - Keep the pinned GPStitch v0.18.0 submodule initialized and preserve its
   GPL-3.0-or-later notices in source/distribution packaging.
+- Install `uv` and Python 3.12+ and prepare both locked environments before
+  offline sidecar use; these executables/environments are not in the installer.
 - Provide York/GTA Valhalla data/config for local map matching.
 - Optionally provide OSRM Match endpoint/config as the simpler fallback.
 - Provide official GIS files for traffic signals, stop signs, and bike lanes.

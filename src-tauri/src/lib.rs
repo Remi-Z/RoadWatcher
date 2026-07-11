@@ -14,7 +14,8 @@ use project_store::{
 use proxy_worker::{ProxyStartResponse, ProxyWorkerManager};
 use route_import::{import_gpx as store_import_gpx, GpxImportRequest};
 use route_matcher::{RouteMatcherManager, RouteMatcherRequest};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use tauri::Manager;
 
 mod cv_worker;
 mod gdal_adapter;
@@ -26,6 +27,7 @@ mod project_store;
 mod proxy_worker;
 mod route_import;
 mod route_matcher;
+mod runtime_paths;
 
 #[tauri::command]
 fn project_create(
@@ -71,6 +73,7 @@ fn native_export(
 
 #[tauri::command]
 fn cv_scan(
+    app: tauri::AppHandle,
     state: tauri::State<'_, CvWorkerManager>,
     sqlite_path: String,
     project_id: String,
@@ -83,6 +86,8 @@ fn cv_scan(
     sample_interval_seconds: f64,
     max_findings: i64,
 ) -> Result<CvStartResponse, String> {
+    let sidecar_directory =
+        resolve_runtime_component(&app, &sidecar_directory, "sidecars/roadwatcher-cv")?;
     state
         .start(CvWorkerRequest {
             store: project_store::CvScanRequest {
@@ -98,7 +103,7 @@ fn cv_scan(
                 max_findings,
             },
             uv_executable,
-            sidecar_directory: PathBuf::from(sidecar_directory),
+            sidecar_directory,
         })
         .map_err(|error| error.to_string())
 }
@@ -238,6 +243,7 @@ fn gis_job_status(
 
 #[tauri::command]
 fn gpstitch_render(
+    app: tauri::AppHandle,
     state: tauri::State<'_, GpstitchWorkerManager>,
     sqlite_path: String,
     project_id: String,
@@ -249,6 +255,8 @@ fn gpstitch_render(
     uv_executable: String,
     sidecar_directory: String,
 ) -> Result<GpstitchStartResponse, String> {
+    let sidecar_directory =
+        resolve_runtime_component(&app, &sidecar_directory, "sidecars/roadwatcher-gpstitch")?;
     state
         .start(GpstitchWorkerRequest {
             store: project_store::GpstitchRenderRequest {
@@ -263,7 +271,7 @@ fn gpstitch_render(
                 time_offset_seconds,
             },
             uv_executable,
-            sidecar_directory: PathBuf::from(sidecar_directory),
+            sidecar_directory,
         })
         .map_err(|error| error.to_string())
 }
@@ -288,6 +296,22 @@ fn gpstitch_job_status(
         alignment: "gpx_timestamps".to_string(),
         time_offset_seconds: 0,
     })
+    .map_err(|error| error.to_string())
+}
+
+fn resolve_runtime_component(
+    app: &tauri::AppHandle,
+    configured: &str,
+    expected_relative: &str,
+) -> Result<PathBuf, String> {
+    let resource_directory = app.path().resource_dir().map_err(|error| {
+        format!("could not resolve packaged runtime resource directory: {error}")
+    })?;
+    runtime_paths::resolve_runtime_directory(
+        Path::new(configured),
+        &resource_directory,
+        Path::new(expected_relative),
+    )
     .map_err(|error| error.to_string())
 }
 

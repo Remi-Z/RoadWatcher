@@ -28,6 +28,23 @@
     "targets": "all",
     "icon": ["icons/icon.ico"],
     "license": "GPL-3.0-or-later",
+    "licenseFile": "../sidecars/roadwatcher-gpstitch/LICENSE",
+    "resources": {
+      "resources/runtime-manifest.json": "runtime-manifest.json",
+      "../docs/THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../sidecars/roadwatcher-cv/pyproject.toml": "sidecars/roadwatcher-cv/pyproject.toml",
+      "../sidecars/roadwatcher-cv/uv.lock": "sidecars/roadwatcher-cv/uv.lock",
+      "../sidecars/roadwatcher-cv/README.md": "sidecars/roadwatcher-cv/README.md",
+      "../sidecars/roadwatcher-cv/src/roadwatcher_cv/__init__.py": "sidecars/roadwatcher-cv/src/roadwatcher_cv/__init__.py",
+      "../sidecars/roadwatcher-cv/src/roadwatcher_cv/cli.py": "sidecars/roadwatcher-cv/src/roadwatcher_cv/cli.py",
+      "../sidecars/roadwatcher-cv/src/roadwatcher_cv/scanner.py": "sidecars/roadwatcher-cv/src/roadwatcher_cv/scanner.py",
+      "../sidecars/roadwatcher-gpstitch/pyproject.toml": "sidecars/roadwatcher-gpstitch/pyproject.toml",
+      "../sidecars/roadwatcher-gpstitch/uv.lock": "sidecars/roadwatcher-gpstitch/uv.lock",
+      "../sidecars/roadwatcher-gpstitch/LICENSE": "sidecars/roadwatcher-gpstitch/LICENSE",
+      "../sidecars/roadwatcher-gpstitch/README.md": "sidecars/roadwatcher-gpstitch/README.md",
+      "../sidecars/roadwatcher-gpstitch/RELEASE_NOTES.md": "sidecars/roadwatcher-gpstitch/RELEASE_NOTES.md",
+      "../sidecars/roadwatcher-gpstitch/src": "sidecars/roadwatcher-gpstitch/src"
+    },
     "category": "Utility"
   }
 }

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "distributionMode": "source_bundle_with_external_tools",
+  "components": [
+    {
+      "id": "gpstitch",
+      "version": "0.18.0",
+      "license": "GPL-3.0-or-later",
+      "sourceRoot": "../sidecars/roadwatcher-gpstitch",
+      "resourcePath": "sidecars/roadwatcher-gpstitch",
+      "requiredFiles": ["pyproject.toml", "uv.lock", "LICENSE", "README.md", "src"],
+      "versionMarker": "version = \"0.18.0\"",
+      "licenseMarker": "GNU GENERAL PUBLIC LICENSE"
+    },
+    {
+      "id": "roadwatcher-cv",
+      "version": "0.1.0",
+      "license": "GPL-3.0-or-later",
+      "sourceRoot": "../sidecars/roadwatcher-cv",
+      "resourcePath": "sidecars/roadwatcher-cv",
+      "requiredFiles": [
+        "pyproject.toml",
+        "uv.lock",
+        "README.md",
+        "src/roadwatcher_cv/__init__.py",
+        "src/roadwatcher_cv/cli.py",
+        "src/roadwatcher_cv/scanner.py"
+      ],
+      "versionMarker": "version = \"0.1.0\"",
+      "licenseMarker": null
+    }
+  ],
+  "externalTools": [
+    { "id": "uv", "requiredFor": ["gpstitch", "roadwatcher-cv"], "distributed": false },
+    { "id": "ffmpeg", "requiredFor": ["proxy", "gpstitch"], "distributed": false },
+    { "id": "ffprobe", "requiredFor": ["proxy"], "distributed": false },
+    { "id": "gdal-ogr", "requiredFor": ["non-GeoJSON GIS import"], "distributed": false },
+    { "id": "valhalla", "requiredFor": ["primary route matching"], "distributed": false },
+    { "id": "osrm", "requiredFor": ["fallback route matching"], "distributed": false }
+  ]
+}

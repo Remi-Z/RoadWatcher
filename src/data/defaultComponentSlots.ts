@@ -14,6 +14,12 @@ export const defaultComponentSlots: ComponentSlot[] = [
     notes: "Runs locally through uv --locked --offline; telemetry output records the exact GPStitch version and SHA-256."
   },
   {
+    id: "python-runtime", label: "uv and Python sidecar runtime",
+    ownerAction: "Install uv and Python 3.12+ and sync the locked GPStitch/CV environments before offline use.",
+    status: "optional", reference: "slot: uv executable on PATH or managed absolute path",
+    notes: "Sidecar source and locks are bundled, but uv, Python, and prepared virtual environments are not redistributed yet."
+  },
+  {
     id: "valhalla", label: "York/GTA Valhalla data",
     ownerAction: "Provide local Valhalla tiles/config or extraction workflow.",
     status: "needed", reference: "slot: local Valhalla tiles/config path",
