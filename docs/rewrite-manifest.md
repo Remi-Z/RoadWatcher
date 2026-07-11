@@ -415,7 +415,8 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Implement schema-v7 durable CV job execution for the real Python scanner.
+1. Implement asynchronous CV sidecar execution/status polling over the completed
+   schema-v7 scan/finding persistence layer (23 focused store tests pass).
    Production empty-project hydration is
    complete: no implicit demo evidence, explicit fixture injection, actionable
    empty regions, and real export readiness. Verification passed 157 frontend

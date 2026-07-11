@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
 
-const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 6;
+const PROJECT_DATABASE_SCHEMA_VERSION: i64 = 7;
 
 #[derive(Debug)]
 pub struct ProjectCreateRequest {
@@ -235,6 +235,64 @@ pub struct GisProjectionStatus {
 }
 
 #[derive(Clone, Debug)]
+pub struct CvScanRequest {
+    pub sqlite_path: PathBuf,
+    pub project_id: String,
+    pub media_id: String,
+    pub scan_id: String,
+    pub job_id: String,
+    pub model_path: PathBuf,
+    pub labels_path: PathBuf,
+    pub confidence_threshold: f64,
+    pub sample_interval_seconds: f64,
+    pub max_findings: i64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClaimedCvScan {
+    pub source_path: PathBuf,
+    pub model_path: PathBuf,
+    pub labels_path: PathBuf,
+    pub confidence_threshold: f64,
+    pub sample_interval_seconds: f64,
+    pub max_findings: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CvFinding {
+    pub id: String,
+    pub label: String,
+    pub confidence: f64,
+    pub time_seconds: f64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub frame_width: i64,
+    pub frame_height: i64,
+    pub review_status: String,
+    pub review_note: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CvScanStatus {
+    pub scan_id: String,
+    pub job_id: String,
+    pub media_id: String,
+    pub status: String,
+    pub progress: f64,
+    pub detail: String,
+    pub engine: String,
+    pub model_path: String,
+    pub labels_path: String,
+    pub finding_count: i64,
+    pub review_required: bool,
+    pub findings: Vec<CvFinding>,
+}
+
+#[derive(Clone, Debug)]
 pub struct ProxyJobRequest {
     pub sqlite_path: PathBuf,
     pub project_id: String,
@@ -338,6 +396,12 @@ pub enum ProjectStoreError {
     InvalidSystemClock,
     #[error("Export manifest was not found in staging state for the supplied project identity.")]
     ExportManifestNotStaging,
+    #[error("CV scan configuration is invalid: {0}")]
+    InvalidCvScan(String),
+    #[error("CV scan job was not found for the supplied project/media identity.")]
+    CvScanJobNotFound,
+    #[error("CV scan job cannot transition from state {0}.")]
+    InvalidCvScanState(String),
 }
 
 pub fn create_project(
@@ -1446,6 +1510,364 @@ fn sha256_file(path: &Path) -> Result<String, ProjectStoreError> {
     Ok(hex::encode(digest.finalize()))
 }
 
+pub fn queue_cv_scan(request: &CvScanRequest) -> Result<(), ProjectStoreError> {
+    validate_cv_scan_request(request)?;
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let media_exists: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM media_assets WHERE id = ?1 AND project_id = ?2",
+        params![request.media_id, request.project_id],
+        |row| row.get(0),
+    )?;
+    if media_exists != 1 {
+        return Err(ProjectStoreError::CvScanJobNotFound);
+    }
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO jobs (id, project_id, media_id, job_type, label, status, progress, detail)
+         VALUES (?1, ?2, ?3, 'cv', 'Local CV scan', 'queued', 0,
+                 'CV scan queued for local ONNX inference.')",
+        params![request.job_id, request.project_id, request.media_id],
+    )?;
+    transaction.execute(
+        "INSERT INTO cv_scans
+         (id, job_id, project_id, media_id, model_path, labels_path,
+          confidence_threshold, sample_interval_seconds, max_findings, status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'queued')",
+        params![
+            request.scan_id,
+            request.job_id,
+            request.project_id,
+            request.media_id,
+            path_string(&request.model_path),
+            path_string(&request.labels_path),
+            request.confidence_threshold,
+            request.sample_interval_seconds,
+            request.max_findings
+        ],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn claim_cv_scan(request: &CvScanRequest) -> Result<ClaimedCvScan, ProjectStoreError> {
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let status: String = connection
+        .query_row(
+            "SELECT jobs.status FROM jobs JOIN cv_scans ON cv_scans.job_id = jobs.id
+             WHERE cv_scans.id = ?1 AND jobs.id = ?2 AND jobs.project_id = ?3
+               AND jobs.media_id = ?4 AND jobs.job_type = 'cv'",
+            params![
+                request.scan_id,
+                request.job_id,
+                request.project_id,
+                request.media_id
+            ],
+            |row| row.get(0),
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::CvScanJobNotFound,
+            other => ProjectStoreError::Sqlite(other),
+        })?;
+    if status != "queued" {
+        return Err(ProjectStoreError::InvalidCvScanState(status));
+    }
+    let claimed = connection.query_row(
+        "SELECT media_assets.original_path, cv_scans.model_path, cv_scans.labels_path,
+                cv_scans.confidence_threshold, cv_scans.sample_interval_seconds,
+                cv_scans.max_findings
+         FROM cv_scans JOIN media_assets ON media_assets.id = cv_scans.media_id
+         WHERE cv_scans.id = ?1 AND cv_scans.project_id = ?2 AND cv_scans.media_id = ?3",
+        params![request.scan_id, request.project_id, request.media_id],
+        |row| {
+            Ok(ClaimedCvScan {
+                source_path: PathBuf::from(row.get::<_, String>(0)?),
+                model_path: PathBuf::from(row.get::<_, String>(1)?),
+                labels_path: PathBuf::from(row.get::<_, String>(2)?),
+                confidence_threshold: row.get(3)?,
+                sample_interval_seconds: row.get(4)?,
+                max_findings: row.get(5)?,
+            })
+        },
+    )?;
+    let transaction = connection.transaction()?;
+    let changed = transaction.execute(
+        "UPDATE jobs SET status = 'running', progress = 1,
+         detail = 'Launching local ONNX video scanner.'
+         WHERE id = ?1 AND project_id = ?2 AND media_id = ?3 AND status = 'queued'",
+        params![request.job_id, request.project_id, request.media_id],
+    )?;
+    if changed != 1 {
+        return Err(ProjectStoreError::CvScanJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE cv_scans SET status = 'running' WHERE id = ?1 AND project_id = ?2",
+        params![request.scan_id, request.project_id],
+    )?;
+    transaction.commit()?;
+    Ok(claimed)
+}
+
+pub fn complete_cv_scan(
+    request: &CvScanRequest,
+    engine: &str,
+    result_json: &str,
+    findings: &[CvFinding],
+) -> Result<(), ProjectStoreError> {
+    validate_cv_findings(findings, request.max_findings)?;
+    if engine.trim().is_empty() || engine.len() > 120 {
+        return Err(ProjectStoreError::InvalidCvScan(
+            "invalid engine".to_string(),
+        ));
+    }
+    serde_json::from_str::<serde_json::Value>(result_json)
+        .map_err(|error| ProjectStoreError::InvalidCvScan(format!("result JSON: {error}")))?;
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let running: i64 = transaction.query_row(
+        "SELECT COUNT(*) FROM jobs WHERE id = ?1 AND project_id = ?2 AND media_id = ?3
+         AND job_type = 'cv' AND status = 'running'",
+        params![request.job_id, request.project_id, request.media_id],
+        |row| row.get(0),
+    )?;
+    if running != 1 {
+        return Err(ProjectStoreError::CvScanJobNotFound);
+    }
+    transaction.execute(
+        "DELETE FROM cv_findings WHERE scan_id = ?1",
+        [&request.scan_id],
+    )?;
+    {
+        let mut statement = transaction.prepare(
+            "INSERT INTO cv_findings
+             (id, scan_id, project_id, media_id, sequence, label, confidence,
+              time_seconds, x, y, width, height, frame_width, frame_height,
+              review_status, review_note)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+        )?;
+        for (sequence, finding) in findings.iter().enumerate() {
+            statement.execute(params![
+                finding.id,
+                request.scan_id,
+                request.project_id,
+                request.media_id,
+                sequence as i64,
+                finding.label,
+                finding.confidence,
+                finding.time_seconds,
+                finding.x,
+                finding.y,
+                finding.width,
+                finding.height,
+                finding.frame_width,
+                finding.frame_height,
+                finding.review_status,
+                finding.review_note
+            ])?;
+        }
+    }
+    transaction.execute(
+        "UPDATE cv_scans SET status = 'complete', engine = ?1, finding_count = ?2,
+         review_required = ?3, result_json = ?4
+         WHERE id = ?5 AND project_id = ?6 AND status = 'running'",
+        params![
+            engine,
+            findings.len() as i64,
+            !findings.is_empty(),
+            result_json,
+            request.scan_id,
+            request.project_id
+        ],
+    )?;
+    transaction.execute(
+        "UPDATE jobs SET status = 'complete', progress = 100, detail = ?1
+         WHERE id = ?2 AND project_id = ?3 AND status = 'running'",
+        params![
+            format!(
+                "Local CV scan complete: {} findings require review.",
+                findings.len()
+            ),
+            request.job_id,
+            request.project_id
+        ],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn fail_cv_scan(
+    request: &CvScanRequest,
+    status: &str,
+    detail: &str,
+) -> Result<(), ProjectStoreError> {
+    if !matches!(status, "failed" | "blocked" | "cancelled") || detail.trim().is_empty() {
+        return Err(ProjectStoreError::InvalidCvScanState(status.to_string()));
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let changed = transaction.execute(
+        "UPDATE jobs SET status = ?1, detail = ?2
+         WHERE id = ?3 AND project_id = ?4 AND media_id = ?5
+           AND job_type = 'cv' AND status IN ('queued', 'running')",
+        params![
+            status,
+            detail,
+            request.job_id,
+            request.project_id,
+            request.media_id
+        ],
+    )?;
+    if changed != 1 {
+        return Err(ProjectStoreError::CvScanJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE cv_scans SET status = ?1 WHERE id = ?2 AND project_id = ?3",
+        params![status, request.scan_id, request.project_id],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn read_cv_scan_status(request: &CvScanRequest) -> Result<CvScanStatus, ProjectStoreError> {
+    let connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let mut status = connection
+        .query_row(
+            "SELECT cv_scans.id, jobs.id, jobs.media_id, jobs.status, jobs.progress,
+                    jobs.detail, cv_scans.engine, cv_scans.model_path,
+                    cv_scans.labels_path, cv_scans.finding_count, cv_scans.review_required
+             FROM cv_scans JOIN jobs ON jobs.id = cv_scans.job_id
+             WHERE cv_scans.id = ?1 AND jobs.id = ?2 AND jobs.project_id = ?3
+               AND jobs.media_id = ?4",
+            params![
+                request.scan_id,
+                request.job_id,
+                request.project_id,
+                request.media_id
+            ],
+            |row| {
+                Ok(CvScanStatus {
+                    scan_id: row.get(0)?,
+                    job_id: row.get(1)?,
+                    media_id: row.get(2)?,
+                    status: row.get(3)?,
+                    progress: row.get(4)?,
+                    detail: row.get(5)?,
+                    engine: row.get(6)?,
+                    model_path: row.get(7)?,
+                    labels_path: row.get(8)?,
+                    finding_count: row.get(9)?,
+                    review_required: row.get::<_, i64>(10)? != 0,
+                    findings: Vec::new(),
+                })
+            },
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::CvScanJobNotFound,
+            other => ProjectStoreError::Sqlite(other),
+        })?;
+    let mut statement = connection.prepare(
+        "SELECT id, label, confidence, time_seconds, x, y, width, height,
+                frame_width, frame_height, review_status, review_note
+         FROM cv_findings WHERE scan_id = ?1 ORDER BY sequence",
+    )?;
+    status.findings = statement
+        .query_map([&request.scan_id], |row| {
+            Ok(CvFinding {
+                id: row.get(0)?,
+                label: row.get(1)?,
+                confidence: row.get(2)?,
+                time_seconds: row.get(3)?,
+                x: row.get(4)?,
+                y: row.get(5)?,
+                width: row.get(6)?,
+                height: row.get(7)?,
+                frame_width: row.get(8)?,
+                frame_height: row.get(9)?,
+                review_status: row.get(10)?,
+                review_note: row.get(11)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(status)
+}
+
+fn validate_cv_scan_request(request: &CvScanRequest) -> Result<(), ProjectStoreError> {
+    for (label, path) in [
+        ("ONNX model", &request.model_path),
+        ("labels file", &request.labels_path),
+    ] {
+        if !path.is_file() {
+            return Err(ProjectStoreError::InvalidCvScan(format!(
+                "{label} is not a regular file: {}",
+                path_string(path)
+            )));
+        }
+    }
+    if request
+        .model_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+        != Some("onnx")
+        || !request.confidence_threshold.is_finite()
+        || !(0.01..=1.0).contains(&request.confidence_threshold)
+        || !request.sample_interval_seconds.is_finite()
+        || !(0.1..=60.0).contains(&request.sample_interval_seconds)
+        || !(1..=10_000).contains(&request.max_findings)
+    {
+        return Err(ProjectStoreError::InvalidCvScan(
+            "model extension or scan bounds are invalid".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_cv_findings(
+    findings: &[CvFinding],
+    max_findings: i64,
+) -> Result<(), ProjectStoreError> {
+    if findings.len() > max_findings as usize {
+        return Err(ProjectStoreError::InvalidCvScan(
+            "finding count exceeds configured maximum".to_string(),
+        ));
+    }
+    for finding in findings {
+        if finding.id.trim().is_empty()
+            || finding.label.trim().is_empty()
+            || finding.label.len() > 160
+            || !finding.confidence.is_finite()
+            || !(0.0..=1.0).contains(&finding.confidence)
+            || !finding.time_seconds.is_finite()
+            || finding.time_seconds < 0.0
+            || ![finding.x, finding.y, finding.width, finding.height]
+                .iter()
+                .all(|value| value.is_finite())
+            || finding.x < 0.0
+            || finding.y < 0.0
+            || finding.width <= 0.0
+            || finding.height <= 0.0
+            || finding.frame_width <= 0
+            || finding.frame_height <= 0
+            || finding.x + finding.width > finding.frame_width as f64 + 1e-6
+            || finding.y + finding.height > finding.frame_height as f64 + 1e-6
+            || !matches!(
+                finding.review_status.as_str(),
+                "needs_review" | "included" | "excluded"
+            )
+        {
+            return Err(ProjectStoreError::InvalidCvScan(
+                "finding fields are invalid".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn claim_proxy_job(request: &ProxyJobRequest) -> Result<ClaimedProxyJob, ProjectStoreError> {
     if request.profile != "review-proxy" {
         return Err(ProjectStoreError::InvalidProxyProfile(
@@ -1711,6 +2133,9 @@ fn migrate_database(connection: &mut Connection) -> Result<(), ProjectStoreError
         if version <= 5 {
             transaction.execute_batch(EXPORT_MANIFEST_MIGRATION_SQL)?;
         }
+        if version <= 6 {
+            transaction.execute_batch(CV_SCAN_MIGRATION_SQL)?;
+        }
         transaction.execute(
             "UPDATE schema_info SET version = ?1",
             params![PROJECT_DATABASE_SCHEMA_VERSION],
@@ -1828,7 +2253,7 @@ fn path_string(path: &Path) -> String {
 const SCHEMA_SQL: &str = r#"
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;
 
 CREATE TABLE schema_info (
     version INTEGER NOT NULL CHECK (version > 0)
@@ -1997,6 +2422,39 @@ CREATE TABLE export_artifacts (
     final_path TEXT NOT NULL,
     PRIMARY KEY (export_id, file_name)
 );
+
+CREATE TABLE cv_scans (
+    id TEXT PRIMARY KEY NOT NULL,
+    job_id TEXT UNIQUE NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+    model_path TEXT NOT NULL,
+    labels_path TEXT NOT NULL,
+    confidence_threshold REAL NOT NULL,
+    sample_interval_seconds REAL NOT NULL,
+    max_findings INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'complete', 'failed', 'blocked', 'cancelled')),
+    engine TEXT NOT NULL DEFAULT '',
+    finding_count INTEGER NOT NULL DEFAULT 0,
+    review_required INTEGER NOT NULL DEFAULT 0,
+    result_json TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE cv_findings (
+    id TEXT PRIMARY KEY NOT NULL,
+    scan_id TEXT NOT NULL REFERENCES cv_scans(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL,
+    label TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    time_seconds REAL NOT NULL,
+    x REAL NOT NULL, y REAL NOT NULL, width REAL NOT NULL, height REAL NOT NULL,
+    frame_width INTEGER NOT NULL, frame_height INTEGER NOT NULL,
+    review_status TEXT NOT NULL CHECK (review_status IN ('needs_review', 'included', 'excluded')),
+    review_note TEXT NOT NULL DEFAULT '',
+    UNIQUE(scan_id, sequence)
+);
 "#;
 
 const PROJECT_SNAPSHOT_TABLE_SQL: &str = r#"
@@ -2141,17 +2599,50 @@ CREATE TABLE export_artifacts (
 );
 "#;
 
+const CV_SCAN_MIGRATION_SQL: &str = r#"
+CREATE TABLE cv_scans (
+    id TEXT PRIMARY KEY NOT NULL,
+    job_id TEXT UNIQUE NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+    model_path TEXT NOT NULL, labels_path TEXT NOT NULL,
+    confidence_threshold REAL NOT NULL, sample_interval_seconds REAL NOT NULL,
+    max_findings INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'complete', 'failed', 'blocked', 'cancelled')),
+    engine TEXT NOT NULL DEFAULT '', finding_count INTEGER NOT NULL DEFAULT 0,
+    review_required INTEGER NOT NULL DEFAULT 0, result_json TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE cv_findings (
+    id TEXT PRIMARY KEY NOT NULL,
+    scan_id TEXT NOT NULL REFERENCES cv_scans(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL, label TEXT NOT NULL, confidence REAL NOT NULL,
+    time_seconds REAL NOT NULL, x REAL NOT NULL, y REAL NOT NULL,
+    width REAL NOT NULL, height REAL NOT NULL,
+    frame_width INTEGER NOT NULL, frame_height INTEGER NOT NULL,
+    review_status TEXT NOT NULL CHECK (review_status IN ('needs_review', 'included', 'excluded')),
+    review_note TEXT NOT NULL DEFAULT '', UNIQUE(scan_id, sequence)
+);
+UPDATE jobs SET status = 'queued', progress = 0,
+    detail = 'CV scan recovered after restart.', cancellation_requested = 0
+WHERE job_type = 'cv' AND status = 'running';
+UPDATE cv_scans SET status = 'queued' WHERE status = 'running';
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::{
-        claim_proxy_job, claim_route_match_job, complete_proxy_job, complete_route_match_job,
-        create_project_at, fail_proxy_job, fail_route_match_job, import_feature_source_at,
-        import_media_at, import_route_at, load_project_snapshot, open_project_database,
-        read_proxy_job_status, read_route_match_status, request_proxy_job_cancel,
-        save_project_snapshot, update_proxy_progress, update_route_match_progress,
-        FeatureImportRequest, MediaImportRequest, NormalizedOfficialFeature, ProjectCreateRequest,
-        ProjectSaveRequest, ProjectStoreError, ProxyCompletion, ProxyJobRequest,
-        RouteImportRequest, RouteMatchRequest, RoutePoint,
+        claim_cv_scan, claim_proxy_job, claim_route_match_job, complete_cv_scan,
+        complete_proxy_job, complete_route_match_job, create_project_at, fail_cv_scan,
+        fail_proxy_job, fail_route_match_job, import_feature_source_at, import_media_at,
+        import_route_at, load_project_snapshot, open_project_database, queue_cv_scan,
+        read_cv_scan_status, read_proxy_job_status, read_route_match_status,
+        request_proxy_job_cancel, save_project_snapshot, update_proxy_progress,
+        update_route_match_progress, CvFinding, CvScanRequest, FeatureImportRequest,
+        MediaImportRequest, NormalizedOfficialFeature, ProjectCreateRequest, ProjectSaveRequest,
+        ProjectStoreError, ProxyCompletion, ProxyJobRequest, RouteImportRequest, RouteMatchRequest,
+        RoutePoint,
     };
     use rusqlite::{params, Connection};
     use std::collections::BTreeSet;
@@ -2200,7 +2691,7 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(schema_version, 6);
+        assert_eq!(schema_version, 7);
         assert_eq!(
             metadata,
             (
@@ -2233,6 +2724,8 @@ mod tests {
             "project_snapshots",
             "export_manifests",
             "export_artifacts",
+            "cv_scans",
+            "cv_findings",
         ] {
             assert!(table_names.contains(table), "missing table {table}");
         }
@@ -2651,8 +3144,8 @@ mod tests {
         let schema_version: i64 = connection
             .query_row("SELECT version FROM schema_info", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(user_version, 6);
-        assert_eq!(schema_version, 6);
+        assert_eq!(user_version, 7);
+        assert_eq!(schema_version, 7);
     }
 
     #[test]
@@ -2720,7 +3213,7 @@ mod tests {
             load_project_snapshot(Path::new(&created.sqlite_path)),
             Err(ProjectStoreError::UnsupportedDatabaseVersion {
                 found: 99,
-                supported: 6
+                supported: 7
             })
         ));
     }
@@ -2924,7 +3417,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
         let media_columns: BTreeSet<String> = connection
             .prepare("PRAGMA table_info(media_assets)")
             .unwrap()
@@ -2982,7 +3475,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
         let migrated: (String, String, f64) = connection
             .query_row(
                 "SELECT route_id, point_set, time_seconds FROM route_points WHERE sequence = 1",
@@ -3043,7 +3536,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
         let source: (String, String, i64) = connection.query_row(
             "SELECT source_crs, normalized_crs, feature_count FROM feature_sources WHERE id = 'legacy-gis-gis-project'",
             [],
@@ -3091,7 +3584,20 @@ mod tests {
                  CREATE TABLE projects (
                    id TEXT PRIMARY KEY, display_name TEXT NOT NULL, created_at_unix INTEGER NOT NULL
                  );
-                 INSERT INTO projects VALUES ('export-project', 'Legacy export', 0);",
+                 INSERT INTO projects VALUES ('export-project', 'Legacy export', 0);
+                 CREATE TABLE media_assets (
+                   id TEXT PRIMARY KEY, project_id TEXT NOT NULL, file_name TEXT NOT NULL,
+                   original_path TEXT NOT NULL, duration_seconds REAL NOT NULL DEFAULT 0,
+                   detected_start TEXT NOT NULL DEFAULT '', proxy_status TEXT NOT NULL,
+                   hash TEXT NOT NULL DEFAULT '', file_size_bytes INTEGER NOT NULL DEFAULT 0
+                 );
+                 CREATE TABLE jobs (
+                   id TEXT PRIMARY KEY, project_id TEXT NOT NULL, media_id TEXT NOT NULL DEFAULT '',
+                   route_id TEXT NOT NULL DEFAULT '', feature_source_id TEXT NOT NULL DEFAULT '',
+                   job_type TEXT NOT NULL, label TEXT NOT NULL, status TEXT NOT NULL,
+                   progress REAL NOT NULL DEFAULT 0, detail TEXT NOT NULL DEFAULT '',
+                   cancellation_requested INTEGER NOT NULL DEFAULT 0
+                 );",
             )
             .unwrap();
         drop(connection);
@@ -3105,7 +3611,7 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        assert_eq!(versions, (6, 6));
+        assert_eq!(versions, (7, 7));
         let tables: BTreeSet<String> = connection
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
             .unwrap()
@@ -3234,6 +3740,139 @@ mod tests {
         assert_eq!(stale.0, "failed");
         assert!(stale.1.contains("manual cleanup"));
         assert_eq!(complete, ("complete".to_string(), "{}".to_string()));
+    }
+
+    #[test]
+    fn queues_claims_and_atomically_completes_cv_findings() {
+        let root = TestRoot::new();
+        let project_id = Uuid::new_v4();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "CV findings".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let source = root.path().join("source.mp4");
+        let model = root.path().join("detector.onnx");
+        let labels = root.path().join("labels.txt");
+        fs::write(&source, b"video").unwrap();
+        fs::write(&model, b"onnx").unwrap();
+        fs::write(&labels, b"car\nbike\n").unwrap();
+        let media_id = Uuid::new_v4();
+        import_media_at(
+            MediaImportRequest {
+                sqlite_path: PathBuf::from(&created.sqlite_path),
+                project_id: project_id.to_string(),
+                source_path: source.clone(),
+            },
+            media_id,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+        let request = CvScanRequest {
+            sqlite_path: PathBuf::from(&created.sqlite_path),
+            project_id: project_id.to_string(),
+            media_id: media_id.to_string(),
+            scan_id: Uuid::new_v4().to_string(),
+            job_id: Uuid::new_v4().to_string(),
+            model_path: model.clone(),
+            labels_path: labels.clone(),
+            confidence_threshold: 0.5,
+            sample_interval_seconds: 1.0,
+            max_findings: 500,
+        };
+
+        queue_cv_scan(&request).unwrap();
+        let queued = read_cv_scan_status(&request).unwrap();
+        assert_eq!(
+            (queued.status.as_str(), queued.finding_count),
+            ("queued", 0)
+        );
+        let claimed = claim_cv_scan(&request).unwrap();
+        assert_eq!(claimed.source_path, source);
+        assert_eq!(claimed.model_path, model);
+        assert_eq!(claimed.labels_path, labels);
+        let findings = vec![
+            cv_finding("finding-1", "car", 0.91, 1.0),
+            cv_finding("finding-2", "bike", 0.82, 2.0),
+        ];
+        complete_cv_scan(
+            &request,
+            "onnxruntime-cpu",
+            r#"{"status":"complete","findingCount":2}"#,
+            &findings,
+        )
+        .unwrap();
+
+        let complete = read_cv_scan_status(&request).unwrap();
+        assert_eq!(complete.status, "complete");
+        assert_eq!(complete.progress, 100.0);
+        assert_eq!(complete.engine, "onnxruntime-cpu");
+        assert_eq!(complete.finding_count, 2);
+        assert!(complete.review_required);
+        assert_eq!(complete.findings, findings);
+        assert!(matches!(
+            fail_cv_scan(&request, "failed", "late failure"),
+            Err(ProjectStoreError::CvScanJobNotFound)
+        ));
+    }
+
+    #[test]
+    fn cv_completion_rejects_invalid_findings_without_partial_publication() {
+        let (root, request) = queued_cv_fixture();
+        claim_cv_scan(&request).unwrap();
+        let mut invalid = cv_finding("bad", "car", 0.9, 1.0);
+        invalid.x = -1.0;
+        assert!(matches!(
+            complete_cv_scan(&request, "onnxruntime-cpu", "{}", &[invalid]),
+            Err(ProjectStoreError::InvalidCvScan(_))
+        ));
+        let status = read_cv_scan_status(&request).unwrap();
+        assert_eq!(status.status, "running");
+        assert!(status.findings.is_empty());
+        fail_cv_scan(&request, "failed", "invalid sidecar output").unwrap();
+        assert_eq!(read_cv_scan_status(&request).unwrap().status, "failed");
+        drop(root);
+    }
+
+    #[test]
+    fn migrates_v6_and_recovers_interrupted_cv_jobs() {
+        let (root, request) = queued_cv_fixture();
+        claim_cv_scan(&request).unwrap();
+        let connection = Connection::open(&request.sqlite_path).unwrap();
+        connection
+            .execute_batch(
+                "DROP TABLE cv_findings;
+             DROP TABLE cv_scans;
+             PRAGMA user_version = 6;
+             UPDATE schema_info SET version = 6;",
+            )
+            .unwrap();
+        drop(connection);
+
+        drop(open_project_database(&request.sqlite_path).unwrap());
+        let connection = Connection::open(&request.sqlite_path).unwrap();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        let status: String = connection
+            .query_row(
+                "SELECT status FROM jobs WHERE id = ?1",
+                [&request.job_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, 7);
+        assert_eq!(status, "queued");
+        let tables: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('cv_scans','cv_findings')",
+            [], |row| row.get(0)
+        ).unwrap();
+        assert_eq!(tables, 2);
+        drop(root);
     }
 
     #[test]
@@ -3408,6 +4047,68 @@ mod tests {
             },
             raw_route,
         )
+    }
+
+    fn queued_cv_fixture() -> (TestRoot, CvScanRequest) {
+        let root = TestRoot::new();
+        let project_id = Uuid::new_v4();
+        let created = create_project_at(
+            ProjectCreateRequest {
+                project_name: "CV fixture".to_string(),
+                root_directory: root.path().to_path_buf(),
+            },
+            project_id,
+            1_788_000_000,
+        )
+        .unwrap();
+        let source = root.path().join("fixture.mp4");
+        let model = root.path().join("fixture.onnx");
+        let labels = root.path().join("labels.txt");
+        fs::write(&source, b"video").unwrap();
+        fs::write(&model, b"onnx").unwrap();
+        fs::write(&labels, b"car\n").unwrap();
+        let media_id = Uuid::new_v4();
+        import_media_at(
+            MediaImportRequest {
+                sqlite_path: PathBuf::from(&created.sqlite_path),
+                project_id: project_id.to_string(),
+                source_path: source,
+            },
+            media_id,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+        let request = CvScanRequest {
+            sqlite_path: PathBuf::from(created.sqlite_path),
+            project_id: project_id.to_string(),
+            media_id: media_id.to_string(),
+            scan_id: Uuid::new_v4().to_string(),
+            job_id: Uuid::new_v4().to_string(),
+            model_path: model,
+            labels_path: labels,
+            confidence_threshold: 0.5,
+            sample_interval_seconds: 1.0,
+            max_findings: 500,
+        };
+        queue_cv_scan(&request).unwrap();
+        (root, request)
+    }
+
+    fn cv_finding(id: &str, label: &str, confidence: f64, time_seconds: f64) -> CvFinding {
+        CvFinding {
+            id: id.to_string(),
+            label: label.to_string(),
+            confidence,
+            time_seconds,
+            x: 10.0,
+            y: 20.0,
+            width: 30.0,
+            height: 40.0,
+            frame_width: 1920,
+            frame_height: 1080,
+            review_status: "needs_review".to_string(),
+            review_note: String::new(),
+        }
     }
 
     struct TestRoot(PathBuf);

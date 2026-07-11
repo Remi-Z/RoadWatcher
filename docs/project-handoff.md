@@ -492,7 +492,7 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `src/features/project/nativeProjectLocator.ts` - stores only the last SQLite
   path for startup hydration; clearing it never deletes the project directory.
 - `src-tauri/` - Tauri 2 shell with implemented project/media/proxy/GPX/matcher
-  commands, schema version 6 migrations, streaming SHA-256, durable background
+  commands, schema version 7 migrations, streaming SHA-256, durable background
   jobs, transactional raw/matched routes, and identified GIS source/projection
   persistence. Schema v6 includes export manifests/artifacts and confined stale
   staging recovery. The registered `native_export` command validates bounded
@@ -500,6 +500,8 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   finalizes paths and metadata transactionally. Its strict frontend adapter and
   UI reconciliation are implemented with verified metadata rendering, browser
   fallback retention, success-only link hiding, and stale-result race guards.
+  Schema v7 also persists identified CV scans/findings with atomic terminal
+  publication and interrupted-job recovery; process execution is not wired yet.
 - `sidecars/roadwatcher-cv/` - real bounded YOLO-style ONNX/video scanner with
   ONNX Runtime CPU, OpenCV headless, locked dependencies, and pipeline/CLI tests.
   Native durable execution is not registered yet.
@@ -522,14 +524,17 @@ intentionally ignored; this frontend-only state boundary did not alter Rust.
 The suite used a short-path temporary Cargo target to avoid the known Windows
 build-script problem with the workspace path's space.
 
-The first local-CV slice is complete. Four Python tests prove request limits,
+The CV sidecar and durable schema foundation are complete. Four Python tests prove request limits,
 label validation, confidence/bounds filtering, deterministic ordering, bounded
 camel-case finding JSON, status CLI behavior, and a real NumPy/OpenCV parse of a
 synthetic transposed YOLOv8 tensor. The locked Python 3.14 environment installs
 and imports ONNX Runtime 1.27, NumPy 2.5.1, and OpenCV headless 5.0. A real
 model/video smoke remains conditional on compatible user-supplied weights.
+All 23 focused project-store tests pass for schema v7, including v6 migration,
+queued/running/complete/failed transitions, exact source/model/label provenance,
+atomic finding publication, invalid-output rollback, and interrupted-job recovery.
 
-1. Add schema-v7 durable CV jobs/findings and asynchronous sidecar execution.
+1. Add asynchronous sidecar execution over the schema-v7 store and status polling.
 2. Reconcile polled findings into explicit reviewer decisions and exports.
 3. Add GDAL/PostGIS import for production GIS containers and arbitrary CRSs.
 4. Implement the GPStitch integration boundary.
