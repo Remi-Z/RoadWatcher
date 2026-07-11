@@ -38,8 +38,9 @@ development/test overrides; arbitrary relative paths and traversal are rejected.
 ## External Prerequisites
 
 The runtime manifest explicitly declares `uv`, FFmpeg, ffprobe, GDAL/OGR,
-Valhalla, and OSRM as not distributed. Python 3.12+ and the locked environments
-must be prepared before offline sidecar execution. The notices explain that a
+Valhalla, and OSRM as not distributed. Python 3.12+ must be available before
+RoadWatcher prepares versioned environments in app-local data for offline
+sidecar execution. The notices explain that a
 future embedded runtime requires an exact binary/package and license inventory.
 
 ## Verification Evidence
@@ -51,7 +52,7 @@ sources, and locks, with no Python cache artifacts.
 ## Deferred Release Work
 
 - Choose between a fully inventoried embedded runtime and retaining the
-  implemented administrator-led prerequisite/preflight model.
+  implemented user-triggered environment preparation/preflight model.
 - Add code signing, release versioning, update policy, and clean-machine tests.
 - Run real CV model/video, installed-GDAL, and live matcher smokes; real
   GPStitch and FFmpeg smokes now pass.

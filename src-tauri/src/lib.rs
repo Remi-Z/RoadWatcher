@@ -23,6 +23,7 @@ mod gdal_adapter;
 mod gis_import;
 mod gis_projector;
 mod gpstitch_worker;
+mod managed_runtime;
 mod native_export;
 mod project_store;
 mod proxy_worker;
@@ -90,6 +91,7 @@ fn cv_scan(
 ) -> Result<CvStartResponse, String> {
     let sidecar_directory =
         resolve_runtime_component(&app, &sidecar_directory, "sidecars/roadwatcher-cv")?;
+    let environment_directory = managed_environments(&app)?.cv;
     state
         .start(CvWorkerRequest {
             store: project_store::CvScanRequest {
@@ -106,6 +108,7 @@ fn cv_scan(
             },
             uv_executable,
             sidecar_directory,
+            environment_directory,
         })
         .map_err(|error| error.to_string())
 }
@@ -259,6 +262,7 @@ fn gpstitch_render(
 ) -> Result<GpstitchStartResponse, String> {
     let sidecar_directory =
         resolve_runtime_component(&app, &sidecar_directory, "sidecars/roadwatcher-gpstitch")?;
+    let environment_directory = managed_environments(&app)?.gpstitch;
     state
         .start(GpstitchWorkerRequest {
             store: project_store::GpstitchRenderRequest {
@@ -274,6 +278,7 @@ fn gpstitch_render(
             },
             uv_executable,
             sidecar_directory,
+            environment_directory,
         })
         .map_err(|error| error.to_string())
 }
@@ -317,6 +322,15 @@ fn resolve_runtime_component(
     .map_err(|error| error.to_string())
 }
 
+fn managed_environments(
+    app: &tauri::AppHandle,
+) -> Result<managed_runtime::ManagedEnvironmentPaths, String> {
+    let app_local_data = app.path().app_local_data_dir().map_err(|error| {
+        format!("could not resolve RoadWatcher app-local data directory: {error}")
+    })?;
+    Ok(managed_runtime::managed_environment_paths(&app_local_data))
+}
+
 #[tauri::command]
 fn runtime_preflight(
     app: tauri::AppHandle,
@@ -331,6 +345,7 @@ fn runtime_preflight(
     )?;
     let cv_source =
         resolve_runtime_component(&app, "sidecars/roadwatcher-cv", "sidecars/roadwatcher-cv")?;
+    let environments = managed_environments(&app)?;
     Ok(runtime_preflight::run_runtime_preflight(
         runtime_preflight::RuntimePreflightRequest {
             uv_executable,
@@ -338,6 +353,30 @@ fn runtime_preflight(
             gdal_binary_directory,
             gpstitch_source,
             cv_source,
+            gpstitch_environment: environments.gpstitch,
+            cv_environment: environments.cv,
+        },
+    ))
+}
+
+#[tauri::command]
+fn runtime_prepare(
+    app: tauri::AppHandle,
+    uv_executable: String,
+) -> Result<managed_runtime::RuntimePrepareResponse, String> {
+    let gpstitch_source = resolve_runtime_component(
+        &app,
+        "sidecars/roadwatcher-gpstitch",
+        "sidecars/roadwatcher-gpstitch",
+    )?;
+    let cv_source =
+        resolve_runtime_component(&app, "sidecars/roadwatcher-cv", "sidecars/roadwatcher-cv")?;
+    Ok(managed_runtime::prepare_runtime_environments(
+        managed_runtime::RuntimePrepareRequest {
+            uv_executable,
+            gpstitch_source,
+            cv_source,
+            environments: managed_environments(&app)?,
         },
     ))
 }
@@ -460,6 +499,7 @@ pub fn run() {
             gpstitch_render,
             gpstitch_job_status,
             runtime_preflight,
+            runtime_prepare,
             gpx_match,
             gpx_job_status,
             ffmpeg_proxy,

@@ -211,9 +211,10 @@ Build a Windows-first, local-first evidence workstation:
 
 ## Current Verification
 
-Latest module verification on 2026-07-11: 171 frontend tests across 27 files,
-TypeScript compilation, production Vite build, and 68 default Rust tests passed.
-The ignored installed-FFmpeg smoke also passes when explicitly enabled.
+Latest module verification on 2026-07-11: 173 frontend tests across 27 files,
+TypeScript compilation, production Vite build, and 70 default Rust tests passed.
+The ignored managed-uv and installed-FFmpeg smokes also pass when explicitly
+enabled.
 
 Windows runtime packaging now has a deterministic source-and-license boundary.
 `pnpm verify:runtime` validates the exact GPStitch gitlink, component versions,
@@ -229,6 +230,13 @@ parallel bounded probes. A real locked/offline GPStitch render of the upstream
 five-second fixture produced a verified H.264/AAC output after RoadWatcher added
 explicit Windows system-font selection. Installed GDAL, real CV model/video, and
 live matcher smokes remain.
+
+`runtime_prepare` now uses external uv to build both locked environments in
+parallel under versioned app-local paths. Unique staging directories, explicit
+ownership markers, entrypoint validation, and atomic renames prevent partial or
+foreign environment replacement. CV/GPStitch execution uses those writable
+environments with locked/offline runtime commands. A real ignored Rust smoke
+prepared and validated both environments successfully.
 
 ```powershell
 pnpm test
@@ -435,7 +443,7 @@ network/DNS access.
 | --- | --- | --- |
 | Rust/Cargo | Tauri dev/build and Rust command implementation | `src-tauri/` scaffold |
 | GPStitch sidecar | Telemetry sync and overlay processing | Pinned/bundled source v0.18.0; uv/Python/FFmpeg runtime remains external |
-| uv + Python 3.12+ | Locked GPStitch/CV execution | Editable optional UI slot; source/locks bundled, runtime external |
+| uv + Python 3.12+ | Locked GPStitch/CV execution | External executable; UI prepares versioned app-local environments |
 | Valhalla York/GTA data | Local map matching | Editable UI slot + blocked job |
 | OSRM Match fallback | Simpler GPX matching fallback | Editable optional UI slot |
 | Official GIS layers | Stop signs/lights/bike lanes projection | Editable UI slot |
@@ -446,11 +454,11 @@ network/DNS access.
 ## Next Agent Checklist
 
 1. Select and inventory a self-contained `uv`/Python and FFmpeg Windows runtime,
-   or retain the implemented administrator prerequisite/preflight flow. GPL
+   or retain the implemented user-triggered preparation/preflight flow. GPL
    source and notice delivery for GPStitch is implemented. Production GIS container
    normalization, local CV, and GPStitch reconciliation are complete:
-   verification passes 171 frontend tests, 68 default Rust tests plus the
-   explicitly enabled installed-FFmpeg smoke, four locked/offline Python tests, and the
+   verification passes 173 frontend tests, 70 default Rust tests plus the
+   explicitly enabled managed-uv and installed-FFmpeg smokes, four locked/offline Python tests, and the
    production build.
 2. Verify toolchain:
    - `node --version`

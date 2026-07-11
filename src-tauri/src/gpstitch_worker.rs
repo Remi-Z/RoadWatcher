@@ -1,3 +1,5 @@
+use crate::bounded_process::run_bounded_process;
+use crate::managed_runtime::environment_ready;
 use crate::project_store::{
     claim_gpstitch_render, complete_gpstitch_render, fail_gpstitch_render, queue_gpstitch_render,
     ClaimedGpstitchRender, GpstitchRenderRequest, ProjectStoreError,
@@ -22,6 +24,7 @@ pub struct GpstitchWorkerRequest {
     pub store: GpstitchRenderRequest,
     pub uv_executable: String,
     pub sidecar_directory: PathBuf,
+    pub environment_directory: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -77,7 +80,8 @@ impl GpstitchExecutor for ProcessGpstitchExecutor {
             .arg(staging_output)
             .arg("--use-gpx-only")
             .arg("--gpx")
-            .arg(&claimed.route_path);
+            .arg(&claimed.route_path)
+            .env("UV_PROJECT_ENVIRONMENT", &request.environment_directory);
         if claimed.alignment != "gpx_timestamps" {
             command.arg("--video-time-start").arg("file-modified");
         }
@@ -207,9 +211,13 @@ fn run_gpstitch_render(
 }
 
 fn validate_sidecar(request: &GpstitchWorkerRequest) -> Result<(), GpstitchWorkerError> {
-    if request.uv_executable.trim().is_empty() || !request.sidecar_directory.is_dir() {
+    if request.uv_executable.trim().is_empty()
+        || !request.sidecar_directory.is_dir()
+        || !environment_ready(&request.environment_directory, "gpstitch-0.18.0")
+    {
         return Err(GpstitchWorkerError::InvalidConfiguration(
-            "uv executable and the pinned GPStitch submodule are required".to_string(),
+            "uv, bundled GPStitch source, and a prepared managed GPStitch environment are required"
+                .to_string(),
         ));
     }
     let pyproject = fs::read_to_string(request.sidecar_directory.join("pyproject.toml"))?;
@@ -469,6 +477,7 @@ mod tests {
             },
             uv_executable: "uv".to_string(),
             sidecar_directory: root.path.join("sidecar"),
+            environment_directory: root.path.join("environment"),
         };
         (root, request)
     }
@@ -490,4 +499,3 @@ mod tests {
         }
     }
 }
-use crate::bounded_process::run_bounded_process;

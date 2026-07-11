@@ -200,6 +200,10 @@ export function App({
 
   const selectedClip = clips.find((clip) => clip.id === selectedClipId) ?? clips[0];
   const primaryMedia = media[0];
+  const uvExecutable = configuredExecutableReference(
+    componentSlots.find((slot) => slot.id === "python-runtime")?.reference,
+    "uv"
+  );
   const completedRouteJob = jobs.find((job) => job.type === "valhalla" && job.status === "complete");
   const routeMatchSummary = completedRouteJob
     ? completedRouteJob.detail.includes("OSRM")
@@ -501,7 +505,7 @@ export function App({
       mediaId: activeCvJob.mediaId,
       modelPath: nativeCvModelPath,
       labelsPath: nativeCvLabelsPath,
-      uvExecutable: "uv",
+      uvExecutable,
       sidecarDirectory: NATIVE_CV_SIDECAR_DIRECTORY
     });
     const poll = async () => {
@@ -524,7 +528,7 @@ export function App({
     };
     void poll();
     return () => { active = false; if (timer) clearTimeout(timer); };
-  }, [activeCvJob, activeNativeSqlitePath, nativeCommandBridge, nativeCvLabelsPath, nativeCvModelPath, projectId]);
+  }, [activeCvJob, activeNativeSqlitePath, nativeCommandBridge, nativeCvLabelsPath, nativeCvModelPath, projectId, uvExecutable]);
 
   useEffect(() => {
     if (!activeGpstitchJob || !activeNativeSqlitePath) return;
@@ -534,7 +538,7 @@ export function App({
     const repository = createNativeGpstitchRepository(nativeCommandBridge, {
       sqlitePath: activeNativeSqlitePath, projectId, mediaId: monitored.mediaId, routeId: monitored.routeId,
       layout: monitored.layout, alignment: monitored.alignment, timeOffsetSeconds: monitored.timeOffsetSeconds,
-      uvExecutable: "uv", sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
+      uvExecutable, sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
     });
     const poll = async () => {
       const response = await repository.status(monitored.renderId, monitored.jobId);
@@ -556,7 +560,7 @@ export function App({
     };
     void poll();
     return () => { active = false; if (timer) clearTimeout(timer); };
-  }, [activeGpstitchJob, activeNativeSqlitePath, nativeCommandBridge, projectId]);
+  }, [activeGpstitchJob, activeNativeSqlitePath, nativeCommandBridge, projectId, uvExecutable]);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -929,7 +933,7 @@ export function App({
       mediaId,
       modelPath: nativeCvModelPath,
       labelsPath: nativeCvLabelsPath,
-      uvExecutable: "uv",
+      uvExecutable,
       sidecarDirectory: NATIVE_CV_SIDECAR_DIRECTORY
     };
     const result = await createNativeCvRepository(nativeCommandBridge, config).start();
@@ -973,7 +977,7 @@ export function App({
       mediaId: finding.mediaId,
       modelPath: finding.modelPath,
       labelsPath: finding.labelsPath,
-      uvExecutable: "uv",
+      uvExecutable,
       sidecarDirectory: NATIVE_CV_SIDECAR_DIRECTORY
     }).review({ id: finding.id, scanId: finding.scanId, reviewStatus: status, reviewNote: note });
     setAppStatus(result.status === "saved"
@@ -996,7 +1000,7 @@ export function App({
     const config = {
       sqlitePath: activeNativeSqlitePath, projectId, mediaId: mediaAsset.id, routeId: routeJob.routeId,
       layout: gpstitchLayout, alignment: gpstitchAlignment, timeOffsetSeconds: gpstitchTimeOffsetSeconds,
-      uvExecutable: "uv", sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
+      uvExecutable, sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
     };
     const result = await createNativeGpstitchRepository(nativeCommandBridge, config).start();
     const attempt: NativeCommandAttempt = {
@@ -1031,7 +1035,7 @@ export function App({
     const ffmpegReference = componentSlots.find((slot) => slot.id === "ffmpeg")?.reference ?? "";
     const gdalReference = componentSlots.find((slot) => slot.id === "gdal")?.reference ?? "";
     const config = {
-      uvExecutable: "uv",
+      uvExecutable,
       ffmpegBinaryDirectory: ffmpegReference.startsWith("slot:") ? "" : ffmpegReference,
       gdalBinaryDirectory: gdalReference.startsWith("slot:") ? "" : gdalReference
     };
@@ -1056,6 +1060,34 @@ export function App({
       setRuntimePreflightReport(null);
       setAppStatus(`runtime_preflight ${result.commandStatus}: ${result.message}`);
     }
+  }
+
+  async function handleRuntimePrepare() {
+    const requestedAtIso = new Date().toISOString();
+    const result = await createNativeRuntimePreflightRepository(nativeCommandBridge, {
+      uvExecutable,
+      ffmpegBinaryDirectory: "",
+      gdalBinaryDirectory: ""
+    }).prepare();
+    const attempt: NativeCommandAttempt = {
+      id: `runtime-prepare-${Date.now().toString(36)}`,
+      command: "runtime_prepare",
+      status: result.status === "loaded" ? "invoked" : result.commandStatus,
+      requestedAtIso,
+      requestSummary: `uv: ${uvExecutable}; targets: GPStitch 0.18.0 and RoadWatcher CV 0.1.0`,
+      resultSummary: result.status === "loaded"
+        ? `${result.report.status}; ${result.report.environments.map((environment) => `${environment.id}: ${environment.status}`).join(", ")}`
+        : result.message
+    };
+    dispatchWorkstation({ type: "record_native_attempt", attempt });
+    if (result.status !== "loaded") {
+      setAppStatus(`runtime_prepare ${result.commandStatus}: ${result.message}`);
+      return;
+    }
+    setAppStatus(result.report.status === "ready"
+      ? "Managed sidecar environments prepared; refreshing installed runtime evidence."
+      : "Managed sidecar environment preparation was incomplete; refreshing installed runtime evidence.");
+    await handleRuntimePreflight();
   }
 
   async function handleProbeGpxMatch() {
@@ -1633,6 +1665,7 @@ export function App({
             onGpstitchRender={() => void handleGpstitchRender()}
             runtimePreflightReport={runtimePreflightReport}
             onRuntimePreflight={() => void handleRuntimePreflight()}
+            onRuntimePrepare={() => void handleRuntimePrepare()}
           />
         </section>
 
@@ -1825,6 +1858,7 @@ function ReviewReadinessPanel({
   onGpstitchTimeOffsetSecondsChange,
   onGpstitchRender,
   onRuntimePreflight,
+  onRuntimePrepare,
   onProbeFfmpegProxy,
   onProbeGisProjection,
   onProbeGpxMatch,
@@ -1867,6 +1901,7 @@ function ReviewReadinessPanel({
   onGpstitchTimeOffsetSecondsChange: (value: number) => void;
   onGpstitchRender: () => void;
   onRuntimePreflight: () => void;
+  onRuntimePrepare: () => void;
   onProbeFfmpegProxy: () => void;
   onProbeGisProjection: () => void;
   onProbeGpxMatch: () => void;
@@ -1916,6 +1951,10 @@ function ReviewReadinessPanel({
         <button type="button" className="button secondary native-probe-button" onClick={onRuntimePreflight}>
           <ShieldCheck size={15} />
           Check installed runtime
+        </button>
+        <button type="button" className="button secondary native-probe-button" onClick={onRuntimePrepare}>
+          <Settings size={15} />
+          Prepare sidecar environments
         </button>
         {runtimePreflightReport ? (
           <div className="native-attempt-list" aria-label="Installed runtime preflight results">
@@ -3022,6 +3061,11 @@ function formatMediaDuration(seconds: number): string {
   }
 
   return `${Math.max(1, minutes)}m`;
+}
+
+function configuredExecutableReference(reference: string | undefined, fallback: string): string {
+  const value = reference?.trim() ?? "";
+  return !value || value.startsWith("slot:") ? fallback : value;
 }
 
 function formatFileSize(bytes: number): string {

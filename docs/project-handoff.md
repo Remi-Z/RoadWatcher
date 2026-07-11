@@ -37,6 +37,12 @@ The runnable app today is the React/Vite evidence workstation:
   readiness UI expose per-component paths, versions, and failures. CV and
   GPStitch now share the bounded-process runner, giving CV a four-hour timeout
   and streaming output cap.
+- `runtime_prepare` now creates versioned GPStitch/CV environments below
+  Tauri's app-local data directory. Two bounded `uv sync --locked --no-dev`
+  operations run in parallel, publish only after Python plus the expected
+  command entrypoint exist, and use ownership markers/staging directories so
+  unknown folders are never overwritten. Native jobs point
+  `UV_PROJECT_ENVIRONMENT` at these writable locations and remain locked/offline.
 - Browser repository loads now report `loaded`, `missing`, `corrupt`,
   `unsupported`, or `unavailable`; startup keeps seeded state usable while
   showing the precise recovery condition. Schema-declaring project imports no
@@ -329,9 +335,9 @@ Follow-up Bash/WSL check on 2026-07-07:
   workspace restricts generated writes.
 - Vitest/Vite needed elevated execution in the sandbox because esbuild was
   denied parent-directory access while resolving config files.
-- `uv run --project sidecars\roadwatcher-cv roadwatcher-cv` was blocked by
-  uv cache permissions in this sandbox. Direct Python verification worked with
-  `PYTHONPATH=sidecars\roadwatcher-cv\src`.
+- Sandbox-level uv cache access can still require elevated execution. The real
+  managed-runtime smoke now succeeds elevated and prepares both locked
+  environments in a temporary app-data root.
 - Old WinUI text/code files were removed. The leftover old WinUI binary assets
   under `src/DashcamEvidence.WinUI\Assets\` were deleted in the follow-up
   handoff check.
@@ -543,10 +549,10 @@ an explicit test/demo dependency. Empty regions have actionable guidance,
 decorative route evidence is suppressed, blank plates use a placeholder rather
 than stored text, and packet export is disabled until media plus a clip exist.
 
-Final verification on 2026-07-11 passed 171 frontend tests across 27 files, the
+Final verification on 2026-07-11 passed 173 frontend tests across 27 files, the
 production Vite build, TypeScript project compilation, four locked/offline
-Python sidecar tests, and 68 default Rust tests with only the separately executed
-installed-FFmpeg smoke ignored by default. Rust verification uses `C:\tmp\roadwatcher-target` to
+Python sidecar tests, and 70 default Rust tests with the installed-FFmpeg and
+managed-uv smokes ignored by default. Rust verification uses `C:\tmp\roadwatcher-target` to
 avoid a Rust 1.96 dependency-probe failure under the workspace path containing
 a space.
 The suite used a short-path temporary Cargo target to avoid the known Windows
@@ -556,8 +562,9 @@ resource-path tests, a full debug Tauri application build, and an unsigned debug
 NSIS build. Extracting the 3,952,131-byte installer confirmed a 1,541-byte
 runtime manifest, 1,643-byte notices file, 36,606-byte GPL text, both sidecar
 source trees/locks, and no `__pycache__` entries.
-The ignored real FFmpeg test was then run explicitly and passed with FFmpeg
-8.1.1. A real locked/offline GPStitch CLI render also passed after the worker was
+Both locked sidecar environments were prepared and validated by explicitly
+running the real managed-uv smoke. The ignored real FFmpeg test was also run
+explicitly and passed with FFmpeg 8.1.1. A real locked/offline GPStitch CLI render passed after the worker was
 updated to select an installed Windows TrueType font: the upstream five-second
 fixture produced a 198,791-byte H.264/AAC 320x180 output of 5.08 seconds with
 SHA-256 `7800DC1510B29D72AC1ECBE95AF1205141AA743FE3AF72EED48AE17C24DD6A87`.
@@ -574,12 +581,13 @@ atomic finding publication, invalid-output rollback, and interrupted-job recover
 The asynchronous manager queues before returning, invokes locked/offline `uv`
 without a shell, canonicalizes source/model/label identities, caps process output,
 rejects mismatched aggregates, and records terminal blocked/failed states. Full
-default Rust verification passes 68 tests with the installed-FFmpeg smoke also
-passing when explicitly enabled.
+default Rust verification passes 70 tests; the managed-uv and installed-FFmpeg
+smokes also pass when explicitly enabled.
 
-1. Choose, inventory, and license a self-contained Windows runtime strategy for
-   `uv`/Python and FFmpeg/ffprobe, or retain the now-implemented administrator
-   prerequisite/preflight model. The source/license bundle and preflight are complete.
+1. Choose, inventory, and license a self-contained Windows distribution for the
+   still-external `uv`/Python and FFmpeg/ffprobe executables, or retain the
+   implemented user-triggered preparation/preflight model. Source/license
+   bundling and writable managed environments are complete.
 2. Add a real-model/video CV smoke, live matcher, and installed-GDAL coverage at
    the end of the implementation cycle.
 3. Add PostGIS/spatial indexing only if dataset scale proves the SQLite

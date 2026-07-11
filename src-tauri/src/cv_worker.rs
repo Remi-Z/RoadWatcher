@@ -1,3 +1,5 @@
+use crate::bounded_process::{run_bounded_process, BoundedProcessError};
+use crate::managed_runtime::environment_ready;
 use crate::project_store::{
     claim_cv_scan, complete_cv_scan, fail_cv_scan, queue_cv_scan, CvFinding, CvScanRequest,
     ProjectStoreError,
@@ -18,6 +20,7 @@ pub struct CvWorkerRequest {
     pub store: CvScanRequest,
     pub uv_executable: String,
     pub sidecar_directory: PathBuf,
+    pub environment_directory: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -58,9 +61,13 @@ impl CvExecutor for ProcessCvExecutor {
         request: &CvWorkerRequest,
         source_path: &Path,
     ) -> Result<String, CvWorkerError> {
-        if request.uv_executable.trim().is_empty() || !request.sidecar_directory.is_dir() {
+        if request.uv_executable.trim().is_empty()
+            || !request.sidecar_directory.is_dir()
+            || !environment_ready(&request.environment_directory, "roadwatcher-cv-0.1.0")
+        {
             return Err(CvWorkerError::InvalidConfiguration(
-                "uv executable and an existing sidecar directory are required".to_string(),
+                "uv, bundled CV source, and a prepared managed CV environment are required"
+                    .to_string(),
             ));
         }
         let mut command = Command::new(&request.uv_executable);
@@ -83,7 +90,8 @@ impl CvExecutor for ProcessCvExecutor {
             .arg("--interval-seconds")
             .arg(request.store.sample_interval_seconds.to_string())
             .arg("--max-findings")
-            .arg(request.store.max_findings.to_string());
+            .arg(request.store.max_findings.to_string())
+            .env("UV_PROJECT_ENVIRONMENT", &request.environment_directory);
         let output = run_bounded_process(&mut command, MAX_SCAN_DURATION, MAX_SIDECAR_OUTPUT_BYTES)
             .map_err(map_process_error)?;
         if !output.status.success() {
@@ -391,6 +399,7 @@ mod tests {
             },
             uv_executable: "uv".to_string(),
             sidecar_directory: root.path.join("sidecar"),
+            environment_directory: root.path.join("environment"),
         };
         (root, request)
     }
@@ -412,4 +421,3 @@ mod tests {
         }
     }
 }
-use crate::bounded_process::{run_bounded_process, BoundedProcessError};

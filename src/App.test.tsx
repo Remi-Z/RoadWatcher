@@ -806,7 +806,9 @@ describe("RoadWatcher workstation", () => {
       ["ffmpeg", "FFmpeg video processor", true, "ready"],
       ["ffprobe", "ffprobe metadata reader", true, "ready"],
       ["ogrinfo", "GDAL ogrinfo", false, "missing"],
-      ["ogr2ogr", "GDAL ogr2ogr", false, "missing"]
+      ["ogr2ogr", "GDAL ogr2ogr", false, "missing"],
+      ["gpstitch-environment", "Managed GPStitch environment", true, "ready"],
+      ["cv-environment", "Managed RoadWatcher CV environment", true, "ready"]
     ] as const;
     const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
       if (command === "project_load") return { projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion, savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot) };
@@ -830,6 +832,41 @@ describe("RoadWatcher workstation", () => {
     expect(results).toHaveTextContent("Python 3.12+ through uv");
     expect(results).toHaveTextContent("not installed");
     expect(screen.getByText(/runtime_preflight: invoked/)).toBeInTheDocument();
+  });
+
+  it("prepares managed sidecar environments and refreshes preflight with the configured uv executable", async () => {
+    const sqlitePath = "D:/RoadWatcherProjects/runtime-prepare/project.sqlite";
+    const uvExecutable = "D:/Tools/uv.exe";
+    const snapshot = createProjectSnapshot({ clips: initialClips,
+      componentSlots: missingSlots.map((slot) => slot.id === "python-runtime" ? { ...slot, reference: uvExecutable } : slot),
+      incident: incidentDraft, jobs: initialJobs, media: mediaAssets,
+      projectId: "native-runtime-prepare-project" as ProjectId, projectedFeatures });
+    const componentIds = ["gpstitch-source", "cv-source", "gpstitch-environment", "cv-environment", "uv", "python", "ffmpeg", "ffprobe", "ogrinfo", "ogr2ogr"];
+    const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
+      if (command === "project_load") return { projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion, savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot) };
+      if (command === "runtime_prepare") return { preparedAtUnix: 1_788_000_000, status: "ready", environments: [
+        { id: "gpstitch-environment", status: "ready", environmentPath: "D:/AppData/gpstitch-0.18.0", detail: "prepared" },
+        { id: "cv-environment", status: "ready", environmentPath: "D:/AppData/roadwatcher-cv-0.1.0", detail: "prepared" }
+      ] };
+      if (command === "runtime_preflight") return { checkedAtUnix: 1_788_000_001, status: "ready", components: componentIds.map((id) => ({
+        id, label: id, required: id !== "ogrinfo" && id !== "ogr2ogr", status: "ready",
+        executable: `D:/${id}`, version: id.includes("source") || id.includes("environment") ? "0.1.0" : "1.0", detail: "ready"
+      })) };
+      throw new Error(`Unexpected command ${command}`);
+    });
+    render(<App nativeInvoke={nativeInvoke}
+      nativeProjectLocator={createMemoryNativeProjectLocator(sqlitePath)}
+      nativeRuntimeStatus={detectNativeRuntime({ __TAURI_INTERNALS__: {} }, { bridgeAvailable: true })}
+      projectRepository={createMemoryProjectRepository()} />);
+    await screen.findByText(/Restored native SQLite project/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Prepare sidecar environments" }));
+
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("preflight passed"));
+    expect(nativeInvoke).toHaveBeenCalledWith("runtime_prepare", { uvExecutable });
+    expect(nativeInvoke).toHaveBeenCalledWith("runtime_preflight", { uvExecutable, ffmpegBinaryDirectory: "", gdalBinaryDirectory: "" });
+    expect(screen.getByText(/runtime_prepare: invoked/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Installed runtime preflight results")).toHaveTextContent("Installed runtime: ready");
   });
 
   it("starts, reconciles, reviews, and exports native CV findings", async () => {

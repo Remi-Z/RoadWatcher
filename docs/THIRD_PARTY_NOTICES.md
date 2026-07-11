@@ -33,6 +33,13 @@ provide these separately and are responsible for selecting builds and data whose
 licenses are appropriate for their deployment. In particular, FFmpeg license
 terms depend on how a specific binary was configured.
 
+When the user explicitly selects **Prepare sidecar environments**, RoadWatcher
+uses external `uv` to download/install the exact Python packages identified by
+the bundled `uv.lock` files into versioned app-local environments. Those packages
+are not embedded in the installer, but their own licenses still apply to the
+resulting local installations. A release that pre-populates or redistributes
+these environments must add an exact package/license inventory here.
+
 If a future installer embeds any of these tools or a prepared Python environment,
 its release process must inventory the exact binaries/packages, retain their
 license notices, and update this document before publication.

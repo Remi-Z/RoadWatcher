@@ -18,7 +18,8 @@ export type NativeCommandName =
   | "cv_finding_review"
   | "gpstitch_render"
   | "gpstitch_job_status"
-  | "runtime_preflight";
+  | "runtime_preflight"
+  | "runtime_prepare";
 export type NativeCommandImplementation = "implemented" | "planned";
 
 export interface NativeCommandContract {
@@ -304,5 +305,16 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     responseFields: ["checkedAtUnix", "status", "components"],
     fallback: "editable setup slots and per-job blocked details",
     ownerAction: "Probe packaged sources and externally provided tools with bounded no-shell version commands."
+  },
+  {
+    id: "runtime-prepare",
+    label: "Managed sidecar environment preparation",
+    command: "runtime_prepare",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["uvExecutable"],
+    responseFields: ["preparedAtUnix", "status", "environments"],
+    fallback: "administrator-prepared locked environments",
+    ownerAction: "Synchronize versioned sidecar environments into RoadWatcher app-local data through bounded uv processes."
   }
 ];

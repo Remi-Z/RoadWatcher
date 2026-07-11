@@ -70,7 +70,8 @@ matcher, GIS projection, FFmpeg proxy, and local CV actions. Project
 create/save/load, `media_import`, `ffmpeg_proxy`, `job_status`, `job_cancel`,
 `gpx_import`, `gpx_match`, `gpx_job_status`, `gis_import`, `gis_project`, and
 `gis_job_status`, `cv_scan`, `cv_job_status`, `cv_finding_review`,
-`gpstitch_render`, `gpstitch_job_status`, and `runtime_preflight` are
+`gpstitch_render`, `gpstitch_job_status`, `runtime_preflight`, and
+`runtime_prepare` are
 implemented; the native project root and separate CV model/labels slots remain
 editable, saved in portable project snapshots, and included in exports/setup
 checklists. Probe
@@ -184,6 +185,13 @@ optional component with resolved executable and version/error evidence. The
 shared bounded-process utility now also gives CV execution a four-hour timeout
 and streaming 16 MiB output limit instead of checking size only after an
 unbounded child-process capture.
+`runtime_prepare` synchronizes both exact locked projects in parallel into
+versioned RoadWatcher-owned environments below Tauri's app-local data directory.
+Each environment is built in a unique staging directory, validated for its
+Python and sidecar entrypoints, marked as RoadWatcher-owned, and atomically
+published. Unknown/unmarked directories are never overwritten. CV and GPStitch
+set `UV_PROJECT_ENVIRONMENT` to these writable locations while retaining
+`--locked --offline` execution after preparation.
 The Windows packaging boundary now resolves repository-relative sidecar names to
 Tauri's packaged resource directory while still permitting explicit absolute
 development paths. `src-tauri/resources/runtime-manifest.json` is validated by
@@ -222,8 +230,9 @@ version 4.
 
 - Keep the pinned GPStitch v0.18.0 submodule initialized and preserve its
   GPL-3.0-or-later notices in source/distribution packaging.
-- Install `uv` and Python 3.12+ and prepare both locked environments before
-  offline sidecar use; these executables/environments are not in the installer.
+- Install `uv` with access to Python 3.12+, then use **Prepare sidecar
+  environments** once before offline sidecar use. The executable remains an
+  external prerequisite; the versioned environments are managed in app-local data.
 - Provide York/GTA Valhalla data/config for local map matching.
 - Optionally provide OSRM Match endpoint/config as the simpler fallback.
 - Provide official GIS files for traffic signals, stop signs, and bike lanes.

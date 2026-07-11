@@ -1,4 +1,5 @@
 use crate::bounded_process::run_bounded_process;
+use crate::managed_runtime::environment_ready;
 use serde::Serialize;
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
@@ -17,6 +18,8 @@ pub struct RuntimePreflightRequest {
     pub gdal_binary_directory: String,
     pub gpstitch_source: PathBuf,
     pub cv_source: PathBuf,
+    pub gpstitch_environment: PathBuf,
+    pub cv_environment: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -84,6 +87,20 @@ fn run_with_executor(
             &request.gpstitch_source,
             "0.18.0",
             Some("GNU GENERAL PUBLIC LICENSE"),
+        ),
+        environment_status(
+            "gpstitch-environment",
+            "Managed GPStitch environment",
+            &request.gpstitch_environment,
+            "gpstitch-0.18.0",
+            "0.18.0",
+        ),
+        environment_status(
+            "cv-environment",
+            "Managed RoadWatcher CV environment",
+            &request.cv_environment,
+            "roadwatcher-cv-0.1.0",
+            "0.1.0",
         ),
         source_status(
             "cv-source",
@@ -275,6 +292,34 @@ fn source_status(
     }
 }
 
+fn environment_status(
+    id: &str,
+    label: &str,
+    environment: &Path,
+    marker: &str,
+    version: &str,
+) -> RuntimeComponentStatus {
+    let ready = environment_ready(environment, marker);
+    RuntimeComponentStatus {
+        id: id.to_string(),
+        label: label.to_string(),
+        required: true,
+        status: if ready { "ready" } else { "missing" }.to_string(),
+        executable: environment.to_string_lossy().into_owned(),
+        version: if ready {
+            version.to_string()
+        } else {
+            String::new()
+        },
+        detail: if ready {
+            "managed environment is prepared for locked/offline execution"
+        } else {
+            "managed environment is not prepared; run runtime preparation"
+        }
+        .to_string(),
+    }
+}
+
 fn executable(configured: &str, fallback: &str) -> Result<PathBuf, String> {
     let value = if configured.trim().is_empty() || configured.starts_with("slot:") {
         fallback
@@ -349,6 +394,13 @@ mod tests {
             std::env::temp_dir().join(format!("roadwatcher-preflight-{}", std::process::id()));
         let gpstitch = source(&root.join("gpstitch"), "0.18.0", true);
         let cv = source(&root.join("cv"), "0.1.0", false);
+        let environments = crate::managed_runtime::managed_environment_paths(&root);
+        environment(
+            &environments.gpstitch,
+            "gpstitch-0.18.0",
+            "gpstitch-dashboard",
+        );
+        environment(&environments.cv, "roadwatcher-cv-0.1.0", "roadwatcher-cv");
         let response = run_with_executor(
             RuntimePreflightRequest {
                 uv_executable: "uv".to_string(),
@@ -356,11 +408,13 @@ mod tests {
                 gdal_binary_directory: String::new(),
                 gpstitch_source: gpstitch,
                 cv_source: cv,
+                gpstitch_environment: environments.gpstitch,
+                cv_environment: environments.cv,
             },
             Arc::new(FakeExecutor),
         );
         assert_eq!(response.status, "ready");
-        assert_eq!(response.components.len(), 8);
+        assert_eq!(response.components.len(), 10);
         assert!(response
             .components
             .iter()
@@ -381,5 +435,29 @@ mod tests {
             fs::write(root.join("LICENSE"), "GNU GENERAL PUBLIC LICENSE").unwrap();
         }
         root.to_path_buf()
+    }
+
+    fn environment(root: &Path, marker: &str, command: &str) {
+        fs::create_dir_all(root.join(if cfg!(windows) { "Scripts" } else { "bin" })).unwrap();
+        fs::write(root.join(".roadwatcher-managed-environment"), marker).unwrap();
+        fs::write(root.join("pyvenv.cfg"), "home=test").unwrap();
+        fs::write(
+            root.join(if cfg!(windows) {
+                "Scripts/python.exe"
+            } else {
+                "bin/python"
+            }),
+            "python",
+        )
+        .unwrap();
+        fs::write(
+            root.join(if cfg!(windows) {
+                format!("Scripts/{command}.exe")
+            } else {
+                format!("bin/{command}")
+            }),
+            "command",
+        )
+        .unwrap();
     }
 }

@@ -5,7 +5,8 @@ import { createNativeRuntimePreflightRepository } from "./nativeRuntimePreflight
 const config = { uvExecutable: "uv", ffmpegBinaryDirectory: "D:/ffmpeg/bin", gdalBinaryDirectory: "D:/gdal/bin" };
 const definitions = [
   ["gpstitch-source", true], ["cv-source", true], ["uv", true], ["python", true],
-  ["ffmpeg", true], ["ffprobe", true], ["ogrinfo", false], ["ogr2ogr", false]
+  ["ffmpeg", true], ["ffprobe", true], ["ogrinfo", false], ["ogr2ogr", false],
+  ["gpstitch-environment", true], ["cv-environment", true]
 ] as const;
 
 describe("native runtime preflight repository", () => {
@@ -23,5 +24,13 @@ describe("native runtime preflight repository", () => {
     const invoke = vi.fn<NativeCommandBridge["invoke"]>().mockResolvedValue({ ok: true, status: "invoked", command: "runtime_preflight", response: { checkedAtUnix: 1, status: "ready", components } });
     await expect(createNativeRuntimePreflightRepository({ invoke }, config).run())
       .resolves.toMatchObject({ status: "unavailable", commandStatus: "invalid_response" });
+  });
+
+  it("prepares exactly two identity-matched managed environments", async () => {
+    const environments = ["gpstitch-environment", "cv-environment"].map((id) => ({ id, status: "ready", environmentPath: `D:/app-data/${id}`, detail: "prepared" }));
+    const invoke = vi.fn<NativeCommandBridge["invoke"]>().mockResolvedValue({ ok: true, status: "invoked", command: "runtime_prepare", response: { preparedAtUnix: 1_788_000_000, status: "ready", environments } });
+    const result = await createNativeRuntimePreflightRepository({ invoke }, config).prepare();
+    expect(invoke).toHaveBeenCalledWith("runtime_prepare", { uvExecutable: "uv" });
+    expect(result).toMatchObject({ status: "loaded", report: { status: "ready" } });
   });
 });
