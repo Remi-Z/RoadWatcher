@@ -1,4 +1,5 @@
 use gis_import::{import_gis as store_import_gis, GisImportRequest};
+use gis_projector::GisProjectorManager;
 use project_store::{
     create_project, import_media as store_import_media, load_project_snapshot,
     read_proxy_job_status, save_project_snapshot, MediaImportRequest, MediaImportResponse,
@@ -11,6 +12,7 @@ use route_matcher::{RouteMatcherManager, RouteMatcherRequest};
 use std::path::PathBuf;
 
 mod gis_import;
+mod gis_projector;
 mod project_store;
 mod proxy_worker;
 mod route_import;
@@ -85,6 +87,44 @@ fn gis_import(
         source_crs,
         layer_kind,
     })
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn gis_project(
+    state: tauri::State<'_, GisProjectorManager>,
+    sqlite_path: String,
+    project_id: String,
+    feature_source_id: String,
+    job_id: String,
+    route_id: String,
+    corridor_meters: f64,
+) -> Result<gis_projector::GisProjectionStartResponse, String> {
+    state
+        .start(project_store::GisProjectionRequest {
+            sqlite_path: PathBuf::from(sqlite_path),
+            project_id,
+            feature_source_id,
+            job_id,
+            route_id,
+            corridor_meters,
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn gis_job_status(
+    sqlite_path: String,
+    project_id: String,
+    feature_source_id: String,
+    job_id: String,
+) -> Result<project_store::GisProjectionStatus, String> {
+    project_store::read_gis_projection_status(
+        &PathBuf::from(sqlite_path),
+        &project_id,
+        &feature_source_id,
+        &job_id,
+    )
     .map_err(|error| error.to_string())
 }
 
@@ -186,6 +226,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(ProxyWorkerManager::default())
         .manage(RouteMatcherManager::default())
+        .manage(GisProjectorManager::default())
         .invoke_handler(tauri::generate_handler![
             project_create,
             project_save,
@@ -193,6 +234,8 @@ pub fn run() {
             media_import,
             gpx_import,
             gis_import,
+            gis_project,
+            gis_job_status,
             gpx_match,
             gpx_job_status,
             ffmpeg_proxy,

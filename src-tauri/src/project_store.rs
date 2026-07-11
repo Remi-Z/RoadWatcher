@@ -162,6 +162,49 @@ pub struct FeatureImportResponse {
 }
 
 #[derive(Clone, Debug)]
+pub struct GisProjectionRequest {
+    pub sqlite_path: PathBuf,
+    pub project_id: String,
+    pub feature_source_id: String,
+    pub job_id: String,
+    pub route_id: String,
+    pub corridor_meters: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClaimedGisProjection {
+    pub features: Vec<NormalizedOfficialFeature>,
+    pub route: Vec<RoutePoint>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectedOfficialFeature {
+    pub feature_id: String,
+    pub feature_source_id: String,
+    pub route_id: String,
+    pub kind: String,
+    pub source_layer: String,
+    pub time_seconds: f64,
+    pub distance_meters: f64,
+    pub confidence: f64,
+    pub review_status: String,
+    pub review_note: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GisProjectionStatus {
+    pub job_id: String,
+    pub feature_source_id: String,
+    pub route_id: String,
+    pub status: String,
+    pub progress: f64,
+    pub detail: String,
+    pub projected_features: Vec<ProjectedOfficialFeature>,
+}
+
+#[derive(Clone, Debug)]
 pub struct ProxyJobRequest {
     pub sqlite_path: PathBuf,
     pub project_id: String,
@@ -251,6 +294,10 @@ pub enum ProjectStoreError {
     InvalidFeatureSource(String),
     #[error("Normalized official GIS features are invalid: {0}")]
     InvalidOfficialFeatures(String),
+    #[error("GIS projection job was not found for the supplied project/source/route identity.")]
+    GisProjectionJobNotFound,
+    #[error("GIS projection job cannot transition from state {0}.")]
+    InvalidGisProjectionState(String),
     #[error("Unsupported proxy profile: {0}")]
     InvalidProxyProfile(String),
     #[error("Proxy job was not found for the supplied project/media identity.")]
@@ -631,6 +678,318 @@ fn validate_official_features(
         }
     }
     Ok(())
+}
+
+pub fn claim_gis_projection_job(
+    request: &GisProjectionRequest,
+) -> Result<ClaimedGisProjection, ProjectStoreError> {
+    if !request.corridor_meters.is_finite()
+        || request.corridor_meters <= 0.0
+        || request.corridor_meters > 10_000.0
+    {
+        return Err(ProjectStoreError::InvalidGisProjectionState(
+            "projection corridor must be between 0 and 10000 meters".to_string(),
+        ));
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let status = transaction
+        .query_row(
+            "SELECT status FROM jobs WHERE id = ?1 AND project_id = ?2
+             AND feature_source_id = ?3 AND job_type = 'gis'",
+            params![
+                request.job_id,
+                request.project_id,
+                request.feature_source_id
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::GisProjectionJobNotFound,
+            other => ProjectStoreError::Sqlite(other),
+        })?;
+    if status != "queued" {
+        return Err(ProjectStoreError::InvalidGisProjectionState(status));
+    }
+    let route_exists: i64 = transaction.query_row(
+        "SELECT COUNT(*) FROM route_assets WHERE id = ?1 AND project_id = ?2",
+        params![request.route_id, request.project_id],
+        |row| row.get(0),
+    )?;
+    if route_exists != 1 {
+        return Err(ProjectStoreError::GisProjectionJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE jobs SET status = 'running', progress = 1, detail = 'Preparing GIS projection.', route_id = ?1
+         WHERE id = ?2 AND project_id = ?3 AND feature_source_id = ?4 AND status = 'queued'",
+        params![request.route_id, request.job_id, request.project_id, request.feature_source_id],
+    )?;
+    transaction.execute(
+        "UPDATE feature_sources SET projection_status = 'running', route_id = ?1
+         WHERE id = ?2 AND project_id = ?3",
+        params![
+            request.route_id,
+            request.feature_source_id,
+            request.project_id
+        ],
+    )?;
+    let features = read_official_features(&transaction, &request.feature_source_id)?;
+    let mut route = read_route_points(&transaction, &request.route_id, "matched")?;
+    if route.len() < 2 {
+        route = read_route_points(&transaction, &request.route_id, "raw")?;
+    }
+    if route.len() < 2 {
+        return Err(ProjectStoreError::InvalidRoutePoints(
+            "projection route has fewer than two points".to_string(),
+        ));
+    }
+    transaction.commit()?;
+    Ok(ClaimedGisProjection { features, route })
+}
+
+pub fn update_gis_projection_progress(
+    request: &GisProjectionRequest,
+    progress: f64,
+    detail: &str,
+) -> Result<(), ProjectStoreError> {
+    if !progress.is_finite() || !(1.0..100.0).contains(&progress) {
+        return Err(ProjectStoreError::InvalidGisProjectionState(
+            "invalid progress".to_string(),
+        ));
+    }
+    let connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let changed = connection.execute(
+        "UPDATE jobs SET progress = ?1, detail = ?2
+         WHERE id = ?3 AND project_id = ?4 AND feature_source_id = ?5
+           AND route_id = ?6 AND status = 'running'",
+        params![
+            progress,
+            detail,
+            request.job_id,
+            request.project_id,
+            request.feature_source_id,
+            request.route_id
+        ],
+    )?;
+    if changed == 1 {
+        Ok(())
+    } else {
+        Err(ProjectStoreError::GisProjectionJobNotFound)
+    }
+}
+
+pub fn complete_gis_projection_job(
+    request: &GisProjectionRequest,
+    projected: &[ProjectedOfficialFeature],
+) -> Result<(), ProjectStoreError> {
+    for feature in projected {
+        if feature.feature_source_id != request.feature_source_id
+            || feature.route_id != request.route_id
+            || !feature.time_seconds.is_finite()
+            || feature.time_seconds < 0.0
+            || !feature.distance_meters.is_finite()
+            || feature.distance_meters < 0.0
+            || !feature.confidence.is_finite()
+            || !(0.0..=1.0).contains(&feature.confidence)
+            || feature.review_status != "needs_review"
+        {
+            return Err(ProjectStoreError::InvalidGisProjectionState(
+                "projected feature metadata is invalid".to_string(),
+            ));
+        }
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let running: i64 = transaction.query_row(
+        "SELECT COUNT(*) FROM jobs WHERE id = ?1 AND project_id = ?2
+         AND feature_source_id = ?3 AND route_id = ?4 AND status = 'running'",
+        params![
+            request.job_id,
+            request.project_id,
+            request.feature_source_id,
+            request.route_id
+        ],
+        |row| row.get(0),
+    )?;
+    if running != 1 {
+        return Err(ProjectStoreError::GisProjectionJobNotFound);
+    }
+    transaction.execute(
+        "DELETE FROM projected_features WHERE feature_source_id = ?1",
+        [&request.feature_source_id],
+    )?;
+    {
+        let mut statement = transaction.prepare(
+            "INSERT INTO projected_features
+             (feature_id, project_id, feature_source_id, route_id, kind, source_layer,
+              time_seconds, distance_meters, confidence, review_status, review_note)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        )?;
+        for feature in projected {
+            statement.execute(params![
+                feature.feature_id,
+                request.project_id,
+                feature.feature_source_id,
+                feature.route_id,
+                feature.kind,
+                feature.source_layer,
+                feature.time_seconds,
+                feature.distance_meters,
+                feature.confidence,
+                feature.review_status,
+                feature.review_note
+            ])?;
+        }
+    }
+    transaction.execute(
+        "UPDATE feature_sources SET projection_status = 'complete', route_id = ?1
+         WHERE id = ?2 AND project_id = ?3",
+        params![
+            request.route_id,
+            request.feature_source_id,
+            request.project_id
+        ],
+    )?;
+    transaction.execute(
+        "UPDATE jobs SET status = 'complete', progress = 100, detail = ?1
+         WHERE id = ?2 AND project_id = ?3 AND feature_source_id = ?4
+           AND route_id = ?5 AND status = 'running'",
+        params![
+            format!(
+                "Projected {} official features onto route.",
+                projected.len()
+            ),
+            request.job_id,
+            request.project_id,
+            request.feature_source_id,
+            request.route_id
+        ],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn fail_gis_projection_job(
+    request: &GisProjectionRequest,
+    status: &str,
+    detail: &str,
+) -> Result<(), ProjectStoreError> {
+    if !matches!(status, "failed" | "blocked" | "cancelled") {
+        return Err(ProjectStoreError::InvalidGisProjectionState(
+            status.to_string(),
+        ));
+    }
+    let mut connection = open_project_database(&request.sqlite_path)?;
+    verify_project_identity(&connection, &request.project_id)?;
+    let transaction = connection.transaction()?;
+    let changed = transaction.execute(
+        "UPDATE jobs SET status = ?1, detail = ?2 WHERE id = ?3 AND project_id = ?4
+         AND feature_source_id = ?5 AND status IN ('queued', 'running')",
+        params![
+            status,
+            detail,
+            request.job_id,
+            request.project_id,
+            request.feature_source_id
+        ],
+    )?;
+    if changed != 1 {
+        return Err(ProjectStoreError::GisProjectionJobNotFound);
+    }
+    transaction.execute(
+        "UPDATE feature_sources SET projection_status = ?1 WHERE id = ?2 AND project_id = ?3",
+        params![status, request.feature_source_id, request.project_id],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn read_gis_projection_status(
+    sqlite_path: &Path,
+    project_id_value: &str,
+    feature_source_id: &str,
+    job_id: &str,
+) -> Result<GisProjectionStatus, ProjectStoreError> {
+    let connection = open_project_database(sqlite_path)?;
+    verify_project_identity(&connection, project_id_value)?;
+    let (route_id, status, progress, detail) = connection
+        .query_row(
+            "SELECT route_id, status, progress, detail FROM jobs
+         WHERE id = ?1 AND project_id = ?2 AND feature_source_id = ?3 AND job_type = 'gis'",
+            params![job_id, project_id_value, feature_source_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => ProjectStoreError::GisProjectionJobNotFound,
+            other => ProjectStoreError::Sqlite(other),
+        })?;
+    let projected_features = read_projected_features(&connection, feature_source_id)?;
+    Ok(GisProjectionStatus {
+        job_id: job_id.to_string(),
+        feature_source_id: feature_source_id.to_string(),
+        route_id,
+        status,
+        progress,
+        detail,
+        projected_features,
+    })
+}
+
+fn read_official_features(
+    connection: &Connection,
+    feature_source_id: &str,
+) -> Result<Vec<NormalizedOfficialFeature>, ProjectStoreError> {
+    let mut statement = connection.prepare(
+        "SELECT id, source_feature_id, kind, latitude, longitude, source_layer,
+                geometry_type, properties_json
+         FROM official_features WHERE feature_source_id = ?1 ORDER BY id",
+    )?;
+    let features = statement
+        .query_map([feature_source_id], |row| {
+            Ok(NormalizedOfficialFeature {
+                id: row.get(0)?,
+                source_feature_id: row.get(1)?,
+                kind: row.get(2)?,
+                latitude: row.get(3)?,
+                longitude: row.get(4)?,
+                source_layer: row.get(5)?,
+                geometry_type: row.get(6)?,
+                properties_json: row.get(7)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(features)
+}
+
+fn read_projected_features(
+    connection: &Connection,
+    feature_source_id: &str,
+) -> Result<Vec<ProjectedOfficialFeature>, ProjectStoreError> {
+    let mut statement = connection.prepare(
+        "SELECT feature_id, feature_source_id, route_id, kind, source_layer,
+                time_seconds, distance_meters, confidence, review_status, review_note
+         FROM projected_features WHERE feature_source_id = ?1 ORDER BY time_seconds, feature_id",
+    )?;
+    let features = statement
+        .query_map([feature_source_id], |row| {
+            Ok(ProjectedOfficialFeature {
+                feature_id: row.get(0)?,
+                feature_source_id: row.get(1)?,
+                route_id: row.get(2)?,
+                kind: row.get(3)?,
+                source_layer: row.get(4)?,
+                time_seconds: row.get(5)?,
+                distance_meters: row.get(6)?,
+                confidence: row.get(7)?,
+                review_status: row.get(8)?,
+                review_note: row.get(9)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(features)
 }
 
 fn validate_route_points(points: &[RoutePoint]) -> Result<(), ProjectStoreError> {

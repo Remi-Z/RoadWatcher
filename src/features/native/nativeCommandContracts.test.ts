@@ -14,6 +14,7 @@ describe("native command contracts", () => {
       "gpx_job_status",
       "gis_import",
       "gis_project",
+      "gis_job_status",
       "ffmpeg_proxy",
       "job_status",
       "job_cancel",
@@ -95,6 +96,17 @@ describe("native command contracts", () => {
       implementation: "implemented",
       readinessRequired: true,
       requestFields: ["sqlitePath", "projectId", "sourcePath", "sourceCrs", "layerKind"]
+    });
+    expect(nativeCommandContracts.find((contract) => contract.command === "gis_project")).toMatchObject({
+      implementation: "implemented",
+      readinessRequired: true,
+      requestFields: ["sqlitePath", "projectId", "featureSourceId", "jobId", "routeId", "corridorMeters"],
+      responseFields: ["jobId", "status"]
+    });
+    expect(nativeCommandContracts.find((contract) => contract.command === "gis_job_status")).toMatchObject({
+      implementation: "implemented",
+      readinessRequired: false,
+      requestFields: ["sqlitePath", "projectId", "featureSourceId", "jobId"]
     });
     expect(nativeCommandContracts.find((contract) => contract.command === "job_status")).toMatchObject({
       implementation: "implemented",

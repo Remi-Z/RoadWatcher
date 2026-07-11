@@ -22,11 +22,11 @@ normalized road features onto durable matched routes.
 
 ### Task 3: Durable Route Projection Worker
 
-- [ ] Add failing tests for projection distance/time/confidence, source-specific
+- [x] Add failing tests for projection distance/time/confidence, source-specific
   publication, missing-route blocking, and background execution.
-- [ ] Implement serialized native projection worker plus `gis_project` and
+- [x] Implement serialized native projection worker plus `gis_project` and
   `gis_job_status` commands.
-- [ ] Run Rust regression tests and commit.
+- [x] Run Rust regression tests and commit.
 
 ### Task 4: Frontend GIS Reconciliation
 

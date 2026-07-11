@@ -8,6 +8,7 @@ export type NativeCommandName =
   | "gpx_job_status"
   | "gis_import"
   | "gis_project"
+  | "gis_job_status"
   | "ffmpeg_proxy"
   | "job_status"
   | "job_cancel"
@@ -158,12 +159,23 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     id: "gis-project",
     label: "Official GIS projection",
     command: "gis_project",
-    implementation: "planned",
+    implementation: "implemented",
     readinessRequired: true,
-    requestFields: ["projectId", "sourcePath", "layerKind"],
-    responseFields: ["featureSourceId", "importedFeatureCount", "projectedFeatureCount"],
+    requestFields: ["sqlitePath", "projectId", "featureSourceId", "jobId", "routeId", "corridorMeters"],
+    responseFields: ["jobId", "status"],
     fallback: "browser GeoJSON projection",
     ownerAction: "Import official GIS files, normalize CRS, and project features onto matched routes."
+  },
+  {
+    id: "gis-job-status",
+    label: "GIS projection job status",
+    command: "gis_job_status",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["sqlitePath", "projectId", "featureSourceId", "jobId"],
+    responseFields: ["jobId", "featureSourceId", "routeId", "status", "progress", "detail", "projectedFeatures"],
+    fallback: "browser projected feature state",
+    ownerAction: "Poll durable native GIS projection progress and results."
   },
   {
     id: "proxy-render",
