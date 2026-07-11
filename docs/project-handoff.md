@@ -500,7 +500,9 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
   finalizes paths and metadata transactionally. Its strict frontend adapter and
   UI reconciliation are implemented with verified metadata rendering, browser
   fallback retention, success-only link hiding, and stale-result race guards.
-- `sidecars/roadwatcher-cv/` - Python CV sidecar placeholder.
+- `sidecars/roadwatcher-cv/` - real bounded YOLO-style ONNX/video scanner with
+  ONNX Runtime CPU, OpenCV headless, locked dependencies, and pipeline/CLI tests.
+  Native durable execution is not registered yet.
 - `sidecars/roadwatcher-gpstitch/` - GPStitch fork slot.
 - `docs/rewrite-manifest.md` - active roadmap and handoff checklist.
 
@@ -520,9 +522,17 @@ intentionally ignored; this frontend-only state boundary did not alter Rust.
 The suite used a short-path temporary Cargo target to avoid the known Windows
 build-script problem with the workspace path's space.
 
-1. Implement real local CV scanning with a durable job/output boundary.
-2. Add GDAL/PostGIS import for production GIS containers and arbitrary CRSs.
-3. Implement the GPStitch integration boundary.
+The first local-CV slice is complete. Four Python tests prove request limits,
+label validation, confidence/bounds filtering, deterministic ordering, bounded
+camel-case finding JSON, status CLI behavior, and a real NumPy/OpenCV parse of a
+synthetic transposed YOLOv8 tensor. The locked Python 3.14 environment installs
+and imports ONNX Runtime 1.27, NumPy 2.5.1, and OpenCV headless 5.0. A real
+model/video smoke remains conditional on compatible user-supplied weights.
+
+1. Add schema-v7 durable CV jobs/findings and asynchronous sidecar execution.
+2. Reconcile polled findings into explicit reviewer decisions and exports.
+3. Add GDAL/PostGIS import for production GIS containers and arbitrary CRSs.
+4. Implement the GPStitch integration boundary.
 
 ## Boundaries To Preserve
 

@@ -170,6 +170,11 @@ no fabricated evidence; validated browser/native snapshots hydrate over that
 state, while the former dataset is available only through an explicit demo/test
 seed factory. Empty media, route, timeline, job, and GIS regions are actionable,
 and packet export stays disabled until media and a clip exist.
+The local CV sidecar now has a real bounded YOLO-style ONNX/video scan command
+using ONNX Runtime CPU and OpenCV headless. It emits time/bounding-box/model
+provenance as conservative findings and has a locked Python environment. Durable
+Rust execution and reviewer reconciliation remain the next CV slices;
+`cv_scan` is not yet a registered native command.
 
 ## Slots You Need To Fill
 

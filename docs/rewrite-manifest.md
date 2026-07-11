@@ -396,8 +396,9 @@ network/DNS access.
   local tiles/profiles and live-service smoke evidence are not present yet.
 - Shapefile/GeoPackage/FileGDB and arbitrary CRS normalization are not implemented;
   the native GeoJSON EPSG:4326/EPSG:3857 workflow is implemented.
-- CV scan only has a configuration sidecar stub and a browser-fallback audit
-  probe; no real ONNX model loading or frame scanning is implemented yet.
+- The CV sidecar implements bounded YOLO-style ONNX Runtime/OpenCV frame
+  scanning and conservative finding JSON. Durable Rust execution, polling, and
+  reviewer reconciliation are not implemented yet; browser fallback remains.
 - RoadWatch browser automation remains deferred.
 
 ## User-Filled Slots
@@ -410,11 +411,12 @@ network/DNS access.
 | OSRM Match fallback | Simpler GPX matching fallback | Editable optional UI slot |
 | Official GIS layers | Stop signs/lights/bike lanes projection | Editable UI slot |
 | FFmpeg/ffprobe | Proxy generation and metadata probing | Editable UI slot + proxy jobs |
-| ONNX model + labels | Local vehicle/CV scan | Editable UI slot + `roadwatcher-cv --model --labels` |
+| ONNX model + labels | Local vehicle/CV scan | Editable UI slot + `roadwatcher-cv scan --model --labels --source` |
 
 ## Next Agent Checklist
 
-1. Implement durable local CV scanning. Production empty-project hydration is
+1. Implement schema-v7 durable CV job execution for the real Python scanner.
+   Production empty-project hydration is
    complete: no implicit demo evidence, explicit fixture injection, actionable
    empty regions, and real export readiness. Verification passed 157 frontend
    tests and the production build; the Rust baseline remains 52 passing tests
