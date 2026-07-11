@@ -742,6 +742,7 @@ describe("RoadWatcher workstation", () => {
     });
     expect(screen.getByText(/gpx_match: invoked/)).toBeInTheDocument();
     expect(screen.getByText(/Route matched with Valhalla/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Matched route map")).toHaveTextContent("Valhalla matched");
   });
 
   it("records browser GIS projection fallbacks in drafts and export packets", async () => {

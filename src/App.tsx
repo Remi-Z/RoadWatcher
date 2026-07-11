@@ -165,6 +165,12 @@ export function App({
 
   const selectedClip = clips.find((clip) => clip.id === selectedClipId) ?? clips[0];
   const primaryMedia = media[0];
+  const completedRouteJob = jobs.find((job) => job.type === "valhalla" && job.status === "complete");
+  const routeMatchSummary = completedRouteJob
+    ? completedRouteJob.detail.includes("OSRM")
+      ? "OSRM matched"
+      : "Valhalla matched"
+    : "Valhalla/OSRM pending";
   const totalDuration = timelineDurationSeconds(clips);
   const latestProjectArtifact = useMemo(
     () => (latestProjectSnapshot ? createProjectSnapshotArtifact(latestProjectSnapshot) : null),
@@ -1115,7 +1121,7 @@ export function App({
 
         <section className="map-panel panel" aria-label="Matched route map">
           <PanelHeader icon={<MapPinned size={18} />} title="Matched route map" meta="MapLibre slot · Valhalla first" />
-          <RouteMap route={route} projectedFeatures={projectedRoadFeatures} />
+          <RouteMap route={route} projectedFeatures={projectedRoadFeatures} matchSummary={routeMatchSummary} />
         </section>
 
         <aside className="inspector-panel panel">
@@ -1550,7 +1556,15 @@ function SortableClip({
   );
 }
 
-function RouteMap({ route, projectedFeatures }: { route: TimedRoutePoint[]; projectedFeatures: ProjectedRoadFeature[] }) {
+function RouteMap({
+  route,
+  projectedFeatures,
+  matchSummary
+}: {
+  route: TimedRoutePoint[];
+  projectedFeatures: ProjectedRoadFeature[];
+  matchSummary: string;
+}) {
   const routePath = useMemo(
     () =>
       route
@@ -1586,7 +1600,7 @@ function RouteMap({ route, projectedFeatures }: { route: TimedRoutePoint[]; proj
         </span>
         <span>
           <Route size={14} />
-          Valhalla/OSRM pending
+          {matchSummary}
         </span>
         <span>
           <CircleDot size={14} />
