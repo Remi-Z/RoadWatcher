@@ -224,6 +224,10 @@ pub fn environment_ready(environment: &Path, marker: &str) -> bool {
         && environment.join(entrypoint_relative_path(marker)).is_file()
 }
 
+pub fn environment_python(environment: &Path) -> PathBuf {
+    environment.join(python_relative_path())
+}
+
 fn python_relative_path() -> PathBuf {
     if cfg!(windows) {
         PathBuf::from("Scripts/python.exe")

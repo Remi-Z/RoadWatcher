@@ -1,5 +1,5 @@
 use crate::bounded_process::run_bounded_process;
-use crate::managed_runtime::environment_ready;
+use crate::managed_runtime::{environment_python, environment_ready};
 use crate::project_store::{
     claim_gpstitch_render, complete_gpstitch_render, fail_gpstitch_render, queue_gpstitch_render,
     ClaimedGpstitchRender, GpstitchRenderRequest, ProjectStoreError,
@@ -68,20 +68,18 @@ impl GpstitchExecutor for ProcessGpstitchExecutor {
         staging_output: &Path,
     ) -> Result<(), GpstitchWorkerError> {
         validate_sidecar(request)?;
-        let mut command = Command::new(&request.uv_executable);
+        // Invoke the installed module through the managed interpreter. On
+        // Windows, uv's generated command launcher embeds the pre-promotion
+        // staging path and cannot be used after the environment is renamed.
+        let mut command = Command::new(environment_python(&request.environment_directory));
         command
-            .arg("run")
-            .arg("--locked")
-            .arg("--offline")
-            .arg("--project")
-            .arg(&request.sidecar_directory)
-            .arg("gpstitch-dashboard")
+            .arg("-m")
+            .arg("gpstitch.scripts.gopro_dashboard_wrapper")
             .arg(input_path)
             .arg(staging_output)
             .arg("--use-gpx-only")
             .arg("--gpx")
-            .arg(&claimed.route_path)
-            .env("UV_PROJECT_ENVIRONMENT", &request.environment_directory);
+            .arg(&claimed.route_path);
         if claimed.alignment != "gpx_timestamps" {
             command.arg("--video-time-start").arg("file-modified");
         }

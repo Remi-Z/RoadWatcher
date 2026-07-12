@@ -1,5 +1,5 @@
 use crate::bounded_process::{run_bounded_process, BoundedProcessError};
-use crate::managed_runtime::environment_ready;
+use crate::managed_runtime::{environment_python, environment_ready};
 use crate::project_store::{
     claim_cv_scan, complete_cv_scan, fail_cv_scan, queue_cv_scan, CvFinding, CvScanRequest,
     ProjectStoreError,
@@ -70,14 +70,13 @@ impl CvExecutor for ProcessCvExecutor {
                     .to_string(),
             ));
         }
-        let mut command = Command::new(&request.uv_executable);
+        // uv's Windows script launchers retain the absolute staging path after a
+        // managed environment is atomically promoted. The environment's Python
+        // interpreter is relocatable and avoids that stale launcher boundary.
+        let mut command = Command::new(environment_python(&request.environment_directory));
         command
-            .arg("run")
-            .arg("--locked")
-            .arg("--offline")
-            .arg("--project")
-            .arg(&request.sidecar_directory)
-            .arg("roadwatcher-cv")
+            .arg("-m")
+            .arg("roadwatcher_cv.cli")
             .arg("scan")
             .arg("--source")
             .arg(source_path)
@@ -90,8 +89,7 @@ impl CvExecutor for ProcessCvExecutor {
             .arg("--interval-seconds")
             .arg(request.store.sample_interval_seconds.to_string())
             .arg("--max-findings")
-            .arg(request.store.max_findings.to_string())
-            .env("UV_PROJECT_ENVIRONMENT", &request.environment_directory);
+            .arg(request.store.max_findings.to_string());
         let output = run_bounded_process(&mut command, MAX_SCAN_DURATION, MAX_SIDECAR_OUTPUT_BYTES)
             .map_err(map_process_error)?;
         if !output.status.success() {
@@ -182,9 +180,9 @@ fn run_cv_scan(request: &CvWorkerRequest, executor: &dyn CvExecutor) -> Result<(
     let parsed: SidecarResult = serde_json::from_str(&output)
         .map_err(|error| CvWorkerError::InvalidOutput(format!("JSON: {error}")))?;
     if parsed.status != "complete"
-        || parsed.source_path != path_string(&source_path)
-        || parsed.model_path != path_string(&model_path)
-        || parsed.labels_path != path_string(&labels_path)
+        || !same_canonical_path(&parsed.source_path, &source_path)
+        || !same_canonical_path(&parsed.model_path, &model_path)
+        || !same_canonical_path(&parsed.labels_path, &labels_path)
         || parsed.finding_count != parsed.findings.len() as i64
         || parsed.review_required != !parsed.findings.is_empty()
     {
@@ -200,6 +198,10 @@ fn run_cv_scan(request: &CvWorkerRequest, executor: &dyn CvExecutor) -> Result<(
         .collect::<Vec<_>>();
     complete_cv_scan(&request.store, &parsed.engine, &output, &findings)?;
     Ok(())
+}
+
+fn same_canonical_path(value: &str, expected: &Path) -> bool {
+    std::fs::canonicalize(value).is_ok_and(|path| path == expected)
 }
 
 #[derive(Debug, Deserialize)]
@@ -246,10 +248,6 @@ impl SidecarFinding {
             review_note: String::new(),
         }
     }
-}
-
-fn path_string(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
 }
 
 fn bounded_text(bytes: &[u8]) -> String {

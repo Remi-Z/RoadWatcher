@@ -190,9 +190,10 @@ unbounded child-process capture.
 versioned RoadWatcher-owned environments below Tauri's app-local data directory.
 Each environment is built in a unique staging directory, validated for its
 Python and sidecar entrypoints, marked as RoadWatcher-owned, and atomically
-published. Unknown/unmarked directories are never overwritten. CV and GPStitch
-set `UV_PROJECT_ENVIRONMENT` to these writable locations while retaining
-`--locked --offline` execution after preparation.
+published. Unknown/unmarked directories are never overwritten. After locked
+preparation, CV and GPStitch invoke their installed modules through the managed
+Python interpreter. This keeps execution offline and avoids uv's non-relocatable
+Windows command launchers after the staging directory is atomically promoted.
 The Windows packaging boundary now resolves repository-relative sidecar names to
 Tauri's packaged resource directory while still permitting explicit absolute
 development paths. `src-tauri/resources/runtime-manifest.json` is validated by

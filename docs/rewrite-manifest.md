@@ -259,9 +259,13 @@ real HTTP/durable route-match smoke with monotonic persisted timing.
 `runtime_prepare` now uses external uv to build both locked environments in
 parallel under versioned app-local paths. Unique staging directories, explicit
 ownership markers, entrypoint validation, and atomic renames prevent partial or
-foreign environment replacement. CV/GPStitch execution uses those writable
-environments with locked/offline runtime commands. A real ignored Rust smoke
-prepared and validated both environments successfully.
+foreign environment replacement. CV/GPStitch execution uses the Python
+interpreter inside those prepared writable environments; this avoids stale
+absolute paths in uv's Windows command launchers after atomic promotion. A real
+ignored Rust smoke prepared and validated both environments successfully. A
+second opt-in system smoke uses a private 128 MB ride sample plus 4,484-point
+GPX track and passes proxy generation, ONNX CV, and GPStitch rendering without
+modifying the source dataset.
 
 ```powershell
 pnpm test

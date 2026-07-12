@@ -634,6 +634,35 @@ The final App-only rerun passes all 68 integration tests without the former
 React asynchronous-update warnings; affected tests now await the native export
 fallback they intentionally trigger.
 
+The supplied private ride dataset has now been exercised through a dedicated
+opt-in Rust system test in `src-tauri/src/real_ride_smoke.rs`. It recursively
+selects the smallest LRV, copies that file to an isolated temporary `.mp4`, and
+leaves OneDrive untouched. The verified run imported the 128,353,932-byte,
+roughly 145-second HEVC/AAC clip, generated its review proxy, imported all 4,484
+strictly timed `Ride.gpx` points, produced 79 conservative findings from the
+external YOLO11n model at a 10-second interval, and completed a 51,717,157-byte
+GPStitch `speed-awareness` render (SHA-256
+`39502D393A71535CDB8517C6951EF0672CC9D6CE3CAB6F786FFE9220BD240D32`).
+The final refactored run completed in about 49 seconds.
+
+That run found and fixed two genuine Windows integration issues. Atomic uv
+environment promotion invalidated uv's absolute-path command trampolines, so CV
+and GPStitch now execute their installed modules using the managed environment's
+Python interpreter. Python and Rust also spell canonical Windows paths
+differently (`C:\...` versus `\\?\C:\...`); CV now canonicalizes the sidecar's
+returned source/model/labels paths and compares filesystem identities without
+weakening the mismatch guard. Default verification is now 70 passing Rust tests
+and five ignored real smokes.
+
+To rerun this evidence without modifying the dataset:
+
+```powershell
+$env:ROADWATCHER_RIDE_DATASET='<ride dataset directory>'
+$env:ROADWATCHER_CV_MODEL='<approved ONNX model>'
+$env:ROADWATCHER_CV_LABELS='<matching labels file>'
+cargo test real_ride_dataset_exercises_ingest_proxy_cv_and_gpstitch -- --ignored --nocapture
+```
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

@@ -27,6 +27,8 @@ mod managed_runtime;
 mod native_export;
 mod project_store;
 mod proxy_worker;
+#[cfg(test)]
+mod real_ride_smoke;
 mod route_import;
 mod route_matcher;
 mod runtime_paths;

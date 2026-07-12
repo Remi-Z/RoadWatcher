@@ -39,8 +39,16 @@ replaced with mocks or toy files in final release evidence.
 
 - Frontend: 27 files / 173 tests pass.
 - App integration: 68 tests pass without React asynchronous-update warnings.
-- Rust: 70 default tests pass; managed-uv, installed-FFmpeg, installed-GDAL, and
-  live-OSRM real smokes also pass when enabled separately.
+- Rust: 70 default tests pass; five real smokes are ignored by default. The
+  managed-uv, installed-FFmpeg, installed-GDAL, live-OSRM, and private ride
+  dataset smokes pass when enabled separately.
+- The private ride smoke copies only the smallest 128,353,932-byte LRV into an
+  isolated temporary project, imports all 4,484 timed `Ride.gpx` points, creates
+  a 145.00-second proxy, records 79 conservative CV findings at a 10-second
+  sample interval, and publishes a 51,717,157-byte GPStitch telemetry render
+  with SHA-256
+  `39502D393A71535CDB8517C6951EF0672CC9D6CE3CAB6F786FFE9220BD240D32`.
+  The source dataset remains read-only.
 - A real locked/offline CV scan used the 10,720,228-byte AGPL-3.0 YOLO11n ONNX
   artifact (SHA-256
   `7D8FD1717D9D5BBAB6986CD134AFB620649C7A394303D55B1E09FC00804CC5C1`)
@@ -61,6 +69,13 @@ replaced with mocks or toy files in final release evidence.
   `614118F7677A4B6B96DED2DBB67CCDADC63D51134985F13C76454E8785F37F88`.
 - Archive inspection contains the `0.1.0` executable, release/runtime manifests,
   notices, GPL text, and audited sidecar resources.
+
+The real ride run exposed two Windows-only integration defects that are now
+fixed. Workers execute installed modules through the managed environment's
+Python interpreter because uv-generated command launchers retain the temporary
+staging path after atomic environment promotion. CV source/model/labels identity
+validation canonicalizes both returned and claimed files before comparison, so
+equivalent `C:\...` and `\\?\C:\...` paths remain strict but no longer conflict.
 
 ## Required External Gates
 
