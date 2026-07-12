@@ -575,6 +575,10 @@ The release-governance slice additionally passed `npm run verify:release`
 PowerShell syntax parsing, and `cargo check` with the Rust release gate enabled.
 The strict signature script was also exercised against the current development
 installer: it rejected `NotSigned` as required and wrote no evidence file.
+The positive path then passed against temporary signed copies with exact signer
+matching and DigiCert SHA-256 timestamp certificates on both installer and
+executable. The disposable signer/trust entries and signed copies were removed
+in `finally`; an independent store/filesystem check confirmed no residue.
 A fresh debug NSIS package built after that change is 3,987,099 bytes with
 SHA-256 `614118F7677A4B6B96DED2DBB67CCDADC63D51134985F13C76454E8785F37F88`.
 Archive inspection confirms the `0.1.0` executable, 693-byte release manifest,

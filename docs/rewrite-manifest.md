@@ -235,6 +235,9 @@ version drift, hidden updater configuration, unsigned candidate/stable states,
 or inconsistent public-ready claims. The clean-Windows signature audit requires
 valid exact-certificate signatures on both installer and installed executable;
 the startup smoke captures executable hash, product version, OS, and survival evidence.
+Both signature-audit directions are exercised: unsigned development artifacts
+are rejected without evidence, while disposable exact-signer/timestamped copies
+pass and leave no certificate, trust-store, or artifact residue after cleanup.
 A post-change debug NSIS build passed and archive inspection found the 693-byte
 release manifest, runtime manifest, notices, GPL text, and `0.1.0` executable.
 The 3,987,099-byte installer hashes to

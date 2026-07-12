@@ -51,7 +51,12 @@ replaced with mocks or toy files in final release evidence.
   NSIS build pass.
 - The signature audit correctly rejects the unsigned development installer with
   `NotSigned`, emits no false evidence, and requires a valid exact thumbprint for
-  both installer and installed executable before candidate/stable evidence can pass.
+  both installer and installed executable plus trusted timestamp certificates
+  before candidate/stable evidence can pass.
+- Its positive path also passed on disposable artifact copies: both signatures
+  validated against the exact temporary signer, both carried DigiCert SHA-256
+  timestamp certificates, evidence was emitted, and independent cleanup proved
+  the temporary signer/trust/artifact state was removed.
 - The current debug installer is 3,987,099 bytes with SHA-256
   `614118F7677A4B6B96DED2DBB67CCDADC63D51134985F13C76454E8785F37F88`.
 - Archive inspection contains the `0.1.0` executable, release/runtime manifests,

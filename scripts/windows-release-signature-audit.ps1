@@ -46,13 +46,16 @@ function Get-VerifiedSignature([string]$Path, [string]$ExpectedThumbprint) {
     if ($observedThumbprint -ne $ExpectedThumbprint) {
         throw "Signer thumbprint '$observedThumbprint' does not match '$ExpectedThumbprint' for '$Path'."
     }
+    if ($null -eq $signature.TimeStamperCertificate) {
+        throw "Authenticode signature has no trusted timestamp certificate for '$Path'."
+    }
     return [ordered]@{
         status = $signature.Status.ToString()
         signerSubject = $signature.SignerCertificate.Subject
         signerThumbprint = $observedThumbprint
         certificateNotBeforeUtc = $signature.SignerCertificate.NotBefore.ToUniversalTime().ToString('O')
         certificateNotAfterUtc = $signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('O')
-        timestampSubject = if ($null -eq $signature.TimeStamperCertificate) { $null } else { $signature.TimeStamperCertificate.Subject }
+        timestampSubject = $signature.TimeStamperCertificate.Subject
     }
 }
 

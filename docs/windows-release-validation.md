@@ -52,7 +52,8 @@ powershell -ExecutionPolicy Bypass -File .\windows-release-signature-audit.ps1 `
 ```
 
 The command must pass for both files. Preserve its JSON output, then run the
-bounded startup check:
+bounded startup check. Both signatures must use a trusted timestamp service;
+the audit rejects otherwise-valid signatures without timestamp certificates.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\windows-installed-startup-smoke.ps1 `
@@ -97,3 +98,12 @@ The executable SHA-256 was
 `F565F30EBE1DCBAE04E612E28E90576EB01F8CE0F48CAD9EAF97D87ED48E84E5`.
 This is smoke-tool evidence only. It is deliberately not recorded as a passed
 clean-machine gate because the executable ran from the development build host.
+
+The signature audit was separately exercised in both directions. The current
+unsigned installer was rejected as `NotSigned` without an evidence file.
+Temporary copies were then signed by a disposable CurrentUser test identity and
+timestamped through DigiCert; installer and executable both validated as
+`Valid`, exact thumbprint matching passed, and JSON evidence was produced. The
+test removed its personal/trusted-root certificate entries and signed copies in
+`finally`, and an independent follow-up check confirmed no residue. This proves
+the audit tool, not possession of a trusted public release identity.

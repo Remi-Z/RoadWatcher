@@ -37,9 +37,9 @@ core metadata gate by omitting the Node release command.
 
 The Windows signature audit accepts the installer, installed executable,
 expected version, and exact signer thumbprint. It requires Authenticode `Valid`
-for both files, rejects certificate mismatch, hashes both artifacts, records
-certificate validity/timestamp subject, and writes JSON only after every gate
-passes.
+for both files, rejects certificate mismatch or a missing trusted timestamp,
+hashes both artifacts, records certificate validity/timestamp subject, and
+writes JSON only after every gate passes.
 
 The Windows startup smoke accepts an exact installed executable and expected
 version. It validates the PE product version, launches the app, proves the same
@@ -52,3 +52,9 @@ must verify signatures, installer UX, external prerequisites, media/GIS/matcher
 choices, project persistence, exports, and uninstall data retention. A future
 CI signing environment may automate more of that workflow, but may not weaken
 the stable + signed + passed aggregate.
+
+Development verification covers both Authenticode branches: unsigned artifacts
+must fail without evidence, while exact-signer copies with trusted DigiCert
+timestamps must pass. The positive test uses disposable copies and a temporary
+CurrentUser trust anchor, removes all signer/trust/artifact state in `finally`,
+and independently verifies cleanup.
