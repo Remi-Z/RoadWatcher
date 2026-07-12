@@ -36,8 +36,9 @@ The runnable app today is the React/Vite evidence workstation:
   Cargo.lock, Tauri, and that manifest; verifies the manual-update policy; and
   rejects unsigned candidate/stable or inconsistent public-ready claims. The
   current artifact state is explicitly unsigned and development-only. A scoped
-  PowerShell startup smoke emits installed executable hash/version/OS evidence
-  for the required clean-Windows release gate.
+  PowerShell Authenticode audit requires valid installer/executable signatures
+  from the exact expected certificate, while the startup smoke emits installed
+  executable hash/version/OS evidence for the required clean-Windows release gate.
 - `runtime_preflight` now checks packaged GPStitch/CV sources plus uv, Python,
   FFmpeg, ffprobe, ogrinfo, and ogr2ogr. Independent no-shell probes run in
   parallel with 10-second/64-KiB bounds; strict frontend validation and the
@@ -572,13 +573,15 @@ build-script problem with the workspace path's space.
 The release-governance slice additionally passed `npm run verify:release`
 (runtime audit, three positive/negative metadata tests, and repository audit),
 PowerShell syntax parsing, and `cargo check` with the Rust release gate enabled.
-A fresh debug NSIS package built after that change is 3,985,023 bytes with
-SHA-256 `C401819BC524819D65621E78F7C9CE6671ADCFED3E0834B856C1D96F0C68B4BB`.
-Archive inspection confirms the `0.1.0` executable, 624-byte release manifest,
+The strict signature script was also exercised against the current development
+installer: it rejected `NotSigned` as required and wrote no evidence file.
+A fresh debug NSIS package built after that change is 3,987,099 bytes with
+SHA-256 `614118F7677A4B6B96DED2DBB67CCDADC63D51134985F13C76454E8785F37F88`.
+Archive inspection confirms the `0.1.0` executable, 693-byte release manifest,
 runtime manifest, notices, and GPL text are present. Running the installed-startup
 script against the freshly built development executable proved it stayed alive
 for five seconds and recorded executable SHA-256
-`E99E97AA99725704B078EF8699CD455DCF5E48A9A431089DABC00D52FBAA47D5`.
+`F565F30EBE1DCBAE04E612E28E90576EB01F8CE0F48CAD9EAF97D87ED48E84E5`.
 This validates the smoke tool on the development host; it does not replace the
 still-required clean-VM run for a public release.
 The packaging slice additionally passed `pnpm verify:runtime`, two focused Rust

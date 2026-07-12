@@ -204,8 +204,8 @@ one synchronized version across Node, Cargo, Cargo.lock, Tauri, and the release
 manifest; rejects unsigned candidate/stable claims; and confirms that automatic
 updates remain disabled under the documented manual-download policy. Current
 `0.1.0` artifacts are unsigned development builds, not public-release-ready.
-The clean-Windows startup smoke and full release procedure are documented in
-`docs/windows-release-validation.md`.
+The clean-Windows signature audit, startup smoke, and full release procedure are
+documented in `docs/windows-release-validation.md`.
 A live installed-tool check now passes the real FFmpeg proxy/thumbnail smoke and
 a locked/offline GPStitch render of the upstream five-second fixture. The latter
 exposed and fixed an upstream Windows default-font failure by passing an existing

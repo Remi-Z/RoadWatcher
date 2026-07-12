@@ -38,7 +38,21 @@ unless both the installer and installed executable validate with
 Use a supported Windows VM with no RoadWatcher install, no repository checkout,
 and no inherited user PATH customization. Verify the installer signature before
 launch for a candidate/stable release, install it, locate the installed
-`RoadWatcher.exe`, then copy only the startup smoke script into the VM and run:
+`RoadWatcher.exe`, then copy the two release-audit scripts into the VM. First run
+the exact Authenticode gate with the release certificate's 40-character SHA-1
+thumbprint:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows-release-signature-audit.ps1 `
+  -InstallerPath '.\RoadWatcher_0.1.0_x64-setup.exe' `
+  -InstalledExecutable 'C:\path\to\RoadWatcher.exe' `
+  -ExpectedVersion '0.1.0' `
+  -ExpectedSignerThumbprint '0123456789ABCDEF0123456789ABCDEF01234567' `
+  -EvidencePath '.\roadwatcher-signature-evidence.json'
+```
+
+The command must pass for both files. Preserve its JSON output, then run the
+bounded startup check:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\windows-installed-startup-smoke.ps1 `
@@ -80,6 +94,6 @@ On 2026-07-11, the startup script passed against the freshly rebuilt debug
 `RoadWatcher.exe` version `0.1.0`, proving that the spawned process remained
 alive for five seconds and that JSON evidence generation/targeted shutdown work.
 The executable SHA-256 was
-`E99E97AA99725704B078EF8699CD455DCF5E48A9A431089DABC00D52FBAA47D5`.
+`F565F30EBE1DCBAE04E612E28E90576EB01F8CE0F48CAD9EAF97D87ED48E84E5`.
 This is smoke-tool evidence only. It is deliberately not recorded as a passed
 clean-machine gate because the executable ran from the development build host.

@@ -31,7 +31,7 @@ replaced with mocks or toy files in final release evidence.
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
 | Installed runtime preparation and preflight | Ten-component strict preflight, managed-environment tests, explicitly enabled real uv smoke | Proven complete for external-runtime model |
 | Windows source/license packaging | Runtime verifier, Rust build gate, fresh NSIS archive inspection | Proven complete |
-| Version/signing/update/release policy | Bundled release manifest, Rust build gate, three Node positive/negative verifier tests | Proven complete as development policy |
+| Version/signing/update/release policy | Bundled release manifest, Rust build gate, three Node verifier tests, strict installer/executable Authenticode evidence script | Proven complete as development policy |
 | Installed app startup evidence | Fresh debug NSIS build and development-host startup JSON evidence | Tool proven; clean-VM evidence missing |
 | Public Windows release | Stable + signed + clean-machine-passed aggregate required by verifier | Not achieved |
 
@@ -49,8 +49,11 @@ replaced with mocks or toy files in final release evidence.
   `reviewRequired: true`.
 - `npm run build`, `npm run verify:release`, `cargo check`, and the fresh debug
   NSIS build pass.
-- The current debug installer is 3,985,023 bytes with SHA-256
-  `C401819BC524819D65621E78F7C9CE6671ADCFED3E0834B856C1D96F0C68B4BB`.
+- The signature audit correctly rejects the unsigned development installer with
+  `NotSigned`, emits no false evidence, and requires a valid exact thumbprint for
+  both installer and installed executable before candidate/stable evidence can pass.
+- The current debug installer is 3,987,099 bytes with SHA-256
+  `614118F7677A4B6B96DED2DBB67CCDADC63D51134985F13C76454E8785F37F88`.
 - Archive inspection contains the `0.1.0` executable, release/runtime manifests,
   notices, GPL text, and audited sidecar resources.
 

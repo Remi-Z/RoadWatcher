@@ -13,7 +13,10 @@ const files = [
   "src-tauri/Cargo.toml",
   "src-tauri/Cargo.lock",
   "src-tauri/resources/runtime-manifest.json",
-  "src-tauri/resources/release-manifest.json"
+  "src-tauri/resources/release-manifest.json",
+  "scripts/windows-release-signature-audit.ps1",
+  "scripts/windows-installed-startup-smoke.ps1",
+  "docs/windows-release-validation.md"
 ];
 
 test("accepts synchronized development release metadata", () => {

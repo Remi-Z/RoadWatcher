@@ -15,6 +15,7 @@
   },
   "cleanMachineValidation": {
     "status": "required-before-public-release",
+    "signatureAudit": "scripts/windows-release-signature-audit.ps1",
     "startupSmoke": "scripts/windows-installed-startup-smoke.ps1",
     "procedure": "docs/windows-release-validation.md"
   },

@@ -232,12 +232,13 @@ release manifest declares synchronized version/channel, unsigned-development
 signing state, manual-download updates, and a required clean-machine gate.
 `pnpm verify:release` includes three focused positive/negative checks and rejects
 version drift, hidden updater configuration, unsigned candidate/stable states,
-or inconsistent public-ready claims. The clean-Windows procedure and startup
-smoke capture executable hash, product version, OS, and survival evidence.
-A post-change debug NSIS build passed and archive inspection found the 624-byte
+or inconsistent public-ready claims. The clean-Windows signature audit requires
+valid exact-certificate signatures on both installer and installed executable;
+the startup smoke captures executable hash, product version, OS, and survival evidence.
+A post-change debug NSIS build passed and archive inspection found the 693-byte
 release manifest, runtime manifest, notices, GPL text, and `0.1.0` executable.
-The 3,985,023-byte installer hashes to
-`C401819BC524819D65621E78F7C9CE6671ADCFED3E0834B856C1D96F0C68B4BB`.
+The 3,987,099-byte installer hashes to
+`614118F7677A4B6B96DED2DBB67CCDADC63D51134985F13C76454E8785F37F88`.
 The startup smoke also passed against that fresh development executable and
 emitted bounded JSON evidence. Clean-VM and signed-artifact gates remain open.
 

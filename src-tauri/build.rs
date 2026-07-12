@@ -65,6 +65,7 @@ struct ReleaseUpdates {
 #[serde(rename_all = "camelCase")]
 struct CleanMachineValidation {
     status: String,
+    signature_audit: String,
     startup_smoke: String,
     procedure: String,
 }
@@ -193,6 +194,10 @@ fn validate_release_manifest(runtime_distribution_mode: &str) {
         release.clean_machine_validation.status.as_str(),
         "required-before-public-release" | "passed"
     ));
+    assert_eq!(
+        release.clean_machine_validation.signature_audit,
+        "scripts/windows-release-signature-audit.ps1"
+    );
     assert_eq!(
         release.clean_machine_validation.startup_smoke,
         "scripts/windows-installed-startup-smoke.ps1"

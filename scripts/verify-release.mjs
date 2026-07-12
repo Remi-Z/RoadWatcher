@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = process.argv[2] ? resolve(process.argv[2]) : resolve(import.meta.dirname, "..");
@@ -27,8 +27,12 @@ assert(release.updates?.automatic === false && release.updates?.feed === null, "
 assert(!tauri.plugins?.updater, "Tauri updater configuration contradicts the manual update policy");
 assert(!packageManifest.dependencies?.["@tauri-apps/plugin-updater"], "Tauri updater dependency contradicts the manual update policy");
 assert(["required-before-public-release", "passed"].includes(release.cleanMachineValidation?.status), "unsupported clean-machine validation state");
+assert(release.cleanMachineValidation?.signatureAudit === "scripts/windows-release-signature-audit.ps1", "release signature audit path changed unexpectedly");
 assert(release.cleanMachineValidation?.startupSmoke === "scripts/windows-installed-startup-smoke.ps1", "installed startup smoke path changed unexpectedly");
 assert(release.cleanMachineValidation?.procedure === "docs/windows-release-validation.md", "release validation procedure path changed unexpectedly");
+for (const required of [release.cleanMachineValidation.signatureAudit, release.cleanMachineValidation.startupSmoke, release.cleanMachineValidation.procedure]) {
+  assert(existsSync(resolve(root, required)), `release validation resource is missing: ${required}`);
+}
 
 const publicReady = release.releaseChannel === "stable"
   && release.signing.artifactState === "signed"

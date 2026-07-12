@@ -35,6 +35,12 @@ core metadata gate by omitting the Node release command.
 
 ## Installed Evidence
 
+The Windows signature audit accepts the installer, installed executable,
+expected version, and exact signer thumbprint. It requires Authenticode `Valid`
+for both files, rejects certificate mismatch, hashes both artifacts, records
+certificate validity/timestamp subject, and writes JSON only after every gate
+passes.
+
 The Windows startup smoke accepts an exact installed executable and expected
 version. It validates the PE product version, launches the app, proves the same
 process survives a bounded startup period, hashes the executable, writes JSON
