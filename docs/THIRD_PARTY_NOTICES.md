@@ -49,3 +49,11 @@ Development smoke evidence on 2026-07-11 used the external
 declared AGPL-3.0 license. The temporary model and COCO labels are not committed,
 bundled, or redistributed by RoadWatcher. A deployment operator must select and
 license its own model/labels.
+
+The installed-GDAL smoke used the temporary GISInternals MSVC 2022 x64 GDAL
+3.12 package listed by the official GDAL download documentation. The downloaded
+61,735,748-byte archive had SHA-256
+`B0FC7620B965FA6A176C4B9F2110564233A58A4EBBEEC8E37C1F69443E24C048`.
+It and its optional plugins are not committed, bundled, or redistributed; a
+deployment operator must inventory the exact selected GDAL build and plugin
+licenses.

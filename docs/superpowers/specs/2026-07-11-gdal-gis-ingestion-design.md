@@ -47,8 +47,8 @@ point to the binary directory, otherwise PATH resolution is used.
 - Inspector JSON is capped at 2 MiB and converted GeoJSON at 64 MiB.
 - Feature count remains capped at 250,000 and properties at 64 KiB per feature.
 - Process stdout/stderr are read concurrently and bounded.
-- PostGIS loading, spatial indexing, topology repair, and live installed-GDAL
-  smoke coverage remain separate deployment work.
+- PostGIS loading, spatial indexing, and topology repair remain conditional
+  deployment work. The opt-in real Windows adapter smoke passes with GDAL 3.12.4.
 
 ## Verification
 

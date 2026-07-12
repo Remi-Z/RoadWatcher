@@ -338,10 +338,11 @@ fn bounded_detail(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_with_executor, GdalAdapterError, GdalExecutor, GdalNormalizeRequest,
-        ProcessResult,
+        normalize_with_executor, normalize_with_gdal, GdalAdapterError, GdalExecutor,
+        GdalNormalizeRequest, ProcessResult,
     };
     use std::ffi::OsString;
+    use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
 
@@ -416,6 +417,42 @@ mod tests {
             .windows(2)
             .any(|pair| pair == ["-s_srs", "EPSG:32188"]));
         assert_eq!(calls[1].1.last().map(String::as_str), Some("lanes"));
+    }
+
+    #[test]
+    #[ignore = "requires an installed GDAL/OGR binary directory in ROADWATCHER_GDAL_BIN"]
+    fn real_gdal_normalizes_projected_data_to_wgs84() {
+        let binary_directory = std::env::var("ROADWATCHER_GDAL_BIN")
+            .expect("ROADWATCHER_GDAL_BIN must identify the directory containing ogrinfo/ogr2ogr");
+        let root =
+            std::env::temp_dir().join(format!("roadwatcher-real-gdal-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("signals.geojson");
+        fs::write(
+            &source,
+            r#"{"type":"FeatureCollection","name":"signals","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::26917"}},"features":[{"type":"Feature","properties":{"kind":"traffic_signal"},"geometry":{"type":"Point","coordinates":[630000,4860000]}}]}"#,
+        )
+        .unwrap();
+
+        let result = normalize_with_gdal(&GdalNormalizeRequest {
+            source_path: source,
+            source_crs: "AUTO".to_string(),
+            layer_name: String::new(),
+            binary_directory,
+        })
+        .unwrap();
+        let geojson: serde_json::Value = serde_json::from_str(&result.geojson).unwrap();
+        let coordinates = geojson["features"][0]["geometry"]["coordinates"]
+            .as_array()
+            .unwrap();
+        let longitude = coordinates[0].as_f64().unwrap();
+        let latitude = coordinates[1].as_f64().unwrap();
+        assert_eq!(result.source_crs, "EPSG:26917");
+        assert_eq!(result.layer_name, "signals");
+        assert!((-80.0..=-78.0).contains(&longitude));
+        assert!((43.0..=45.0).contains(&latitude));
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn request(source_crs: &str, layer_name: &str) -> GdalNormalizeRequest {

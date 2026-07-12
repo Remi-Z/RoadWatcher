@@ -209,7 +209,9 @@ The clean-Windows startup smoke and full release procedure are documented in
 A live installed-tool check now passes the real FFmpeg proxy/thumbnail smoke and
 a locked/offline GPStitch render of the upstream five-second fixture. The latter
 exposed and fixed an upstream Windows default-font failure by passing an existing
-system TrueType font explicitly. GDAL/OGR remains unavailable on this machine.
+system TrueType font explicitly. GDAL/OGR is not persistently installed on this
+machine, but the opt-in real adapter smoke passes with a temporary GDAL 3.12.4
+Windows distribution.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,

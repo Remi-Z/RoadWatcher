@@ -41,8 +41,9 @@ in Rust rather than a frontend request waterfall.
 
 ## Live Evidence
 
-This machine has uv, FFmpeg, and ffprobe but not GDAL/OGR. The real FFmpeg worker
-smoke passes. A locked/offline GPStitch render initially found the upstream
+This machine has uv, FFmpeg, and ffprobe but no persistent GDAL/OGR installation.
+The real FFmpeg worker and opt-in temporary GDAL 3.12.4 adapter smokes pass. A
+locked/offline GPStitch render initially found the upstream
 missing-default-font failure; the worker now selects Arial or Segoe UI on Windows
 (with cross-platform fallbacks), and the rerun produced a valid 5.08-second
 H.264/AAC overlay.

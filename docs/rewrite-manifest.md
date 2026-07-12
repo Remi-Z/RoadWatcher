@@ -213,8 +213,8 @@ Build a Windows-first, local-first evidence workstation:
 
 Latest module verification on 2026-07-11: 173 frontend tests across 27 files,
 TypeScript compilation, production Vite build, and 70 default Rust tests passed.
-The ignored managed-uv and installed-FFmpeg smokes also pass when explicitly
-enabled. Release-governance verification passes the runtime audit, three
+The ignored managed-uv, installed-FFmpeg, and installed-GDAL smokes also pass
+when explicitly enabled. Release-governance verification passes the runtime audit, three
 positive/negative release metadata tests, the repository release audit,
 PowerShell smoke-script syntax parsing, and `cargo check` with the Rust build
 gate enabled.
@@ -247,8 +247,9 @@ parallel bounded probes. A real locked/offline GPStitch render of the upstream
 five-second fixture produced a verified H.264/AAC output after RoadWatcher added
 explicit Windows system-font selection. A hash-verified AGPL-3.0 YOLO11n ONNX
 model also completed locked/offline inference against a real GoPro fixture with
-six bounded reviewer-required findings. Installed GDAL and live matcher smokes
-remain.
+six bounded reviewer-required findings. A temporary GDAL 3.12.4 Windows package
+also passed the real bounded adapter smoke from EPSG:26917 to WGS84. The live
+matcher smoke remains.
 
 `runtime_prepare` now uses external uv to build both locked environments in
 parallel under versioned app-local paths. Unique staging directories, explicit
@@ -448,7 +449,7 @@ network/DNS access.
   local tiles/profiles and live-service smoke evidence are not present yet.
 - Shapefile, GeoPackage, FlatGeobuf, FileGDB, and arbitrary CRS normalization
   are implemented through configured/PATH GDAL/OGR tools. A live installed-GDAL
-  smoke is not present on this machine.
+  3.12.4 Windows adapter smoke now passes; deployment binaries remain external.
 - The CV sidecar implements bounded YOLO-style ONNX Runtime/OpenCV frame
   scanning and conservative finding JSON. Durable Rust execution, strict
   polling, reviewer reconciliation, SQLite decision persistence, portable
@@ -477,7 +478,8 @@ network/DNS access.
    source and notice delivery for GPStitch is implemented. Production GIS container
    normalization, local CV, and GPStitch reconciliation are complete:
    verification passes 173 frontend tests, 70 default Rust tests plus the
-   explicitly enabled managed-uv and installed-FFmpeg smokes, four locked/offline Python tests, and the
+   explicitly enabled managed-uv, installed-FFmpeg, and installed-GDAL smokes,
+   four locked/offline Python tests, and the
    production build.
 2. Verify toolchain:
    - `node --version`
@@ -501,9 +503,9 @@ network/DNS access.
 8. Before a candidate/stable release, follow `docs/windows-release-validation.md`,
    retain signing plus startup-smoke evidence, and change release metadata only
    in the evidence-bearing release commit.
-8. Configure local Valhalla/OSRM data and add an optional live matcher smoke.
-9. Add PostGIS/spatial indexing only if production dataset scale requires it.
-10. Define FFmpeg/ffprobe bundling, update, and licensing policy for deployment.
+9. Configure local Valhalla/OSRM data and add an optional live matcher smoke.
+10. Add PostGIS/spatial indexing only if production dataset scale requires it.
+11. Define FFmpeg/ffprobe bundling, update, and licensing policy for deployment.
 
 ## Design Guardrails
 

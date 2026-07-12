@@ -563,8 +563,8 @@ unrelated processes.
 
 Final verification on 2026-07-11 passed 173 frontend tests across 27 files, the
 production Vite build, TypeScript project compilation, four locked/offline
-Python sidecar tests, and 70 default Rust tests with the installed-FFmpeg and
-managed-uv smokes ignored by default. Rust verification uses `C:\tmp\roadwatcher-target` to
+Python sidecar tests, and 70 default Rust tests with the installed-FFmpeg,
+managed-uv, and installed-GDAL smokes ignored by default. Rust verification uses `C:\tmp\roadwatcher-target` to
 avoid a Rust 1.96 dependency-probe failure under the workspace path containing
 a space.
 The suite used a short-path temporary Cargo target to avoid the known Windows
@@ -597,8 +597,8 @@ The CV sidecar and durable schema foundation are complete. Four Python tests pro
 label validation, confidence/bounds filtering, deterministic ordering, bounded
 camel-case finding JSON, status CLI behavior, and a real NumPy/OpenCV parse of a
 synthetic transposed YOLOv8 tensor. The locked Python 3.14 environment installs
-and imports ONNX Runtime 1.27, NumPy 2.5.1, and OpenCV headless 5.0. A real
-The real model/video smoke now passes with a temporary, non-bundled AGPL-3.0
+and imports ONNX Runtime 1.27, NumPy 2.5.1, and OpenCV headless 5.0. The real
+model/video smoke now passes with a temporary, non-bundled AGPL-3.0
 YOLO11n ONNX model. Its published 10,720,228-byte artifact hash is
 `7D8FD1717D9D5BBAB6986CD134AFB620649C7A394303D55B1E09FC00804CC5C1`.
 Locked/offline inference over the 2.44-second 3840×2160 GoPro fixture sampled
@@ -611,8 +611,12 @@ atomic finding publication, invalid-output rollback, and interrupted-job recover
 The asynchronous manager queues before returning, invokes locked/offline `uv`
 without a shell, canonicalizes source/model/label identities, caps process output,
 rejects mismatched aggregates, and records terminal blocked/failed states. Full
-default Rust verification passes 70 tests; the managed-uv and installed-FFmpeg
-smokes also pass when explicitly enabled.
+default Rust verification passes 70 tests; the managed-uv, installed-FFmpeg,
+and installed-GDAL smokes also pass when explicitly enabled. The GDAL smoke
+used the 61,735,748-byte GISInternals MSVC 2022 x64 package (download SHA-256
+`B0FC7620B965FA6A176C4B9F2110564233A58A4EBBEEC8E37C1F69443E24C048`),
+invoked GDAL 3.12.4 through RoadWatcher's bounded adapter, detected EPSG:26917,
+and verified Toronto-area WGS84 output. The binaries remain temporary/external.
 The final App-only rerun passes all 68 integration tests without the former
 React asynchronous-update warnings; affected tests now await the native export
 fallback they intentionally trigger.
@@ -625,8 +629,8 @@ fallback they intentionally trigger.
    still-external `uv`/Python and FFmpeg/ffprobe executables, or retain the
    implemented user-triggered preparation/preflight model. Source/license
    bundling and writable managed environments are complete.
-3. Add live matcher and installed-GDAL coverage when their external services and
-   binaries/data are available. The real CV model/video smoke is complete.
+3. Add a live matcher smoke when its external service/data are available. Real
+   CV model/video and Windows GDAL adapter smokes are complete.
 4. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
    representative-feature model insufficient.
 

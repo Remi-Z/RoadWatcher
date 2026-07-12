@@ -25,7 +25,7 @@ replaced with mocks or toy files in final release evidence.
 | Durable local project storage | SQLite schema/migration/store tests; create/save/load command integration | Proven complete |
 | Referenced media, proxy, thumbnails, progress, cancellation, recovery | Native media/proxy code and Rust tests; explicitly enabled real FFmpeg smoke | Proven complete |
 | GPX import and Valhalla/OSRM matching behavior | Real GPX parse/import test; transport/fallback/identity Rust tests; strict frontend polling | Adapter complete; live local-service evidence missing |
-| Production GIS containers, CRS normalization, projection, review | GDAL boundary tests, durable import/projection tests, frontend reconciliation | Adapter complete; installed-GDAL evidence missing |
+| Production GIS containers, CRS normalization, projection, review | GDAL boundary tests, durable import/projection tests, frontend reconciliation, real GDAL 3.12.4 Windows adapter smoke | Proven complete |
 | Local conservative CV scanning and reviewer decisions | Locked sidecar tests, durable CV Rust/frontend tests, hash-verified YOLO11n/real GoPro video smoke | Proven complete |
 | GPStitch telemetry render and provenance | Pinned v0.18.0 source/license, durable worker tests, real locked/offline fixture render | Proven complete |
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
@@ -39,8 +39,8 @@ replaced with mocks or toy files in final release evidence.
 
 - Frontend: 27 files / 173 tests pass.
 - App integration: 68 tests pass without React asynchronous-update warnings.
-- Rust: 70 default tests pass; managed-uv and installed-FFmpeg real smokes also
-  pass when enabled separately.
+- Rust: 70 default tests pass; managed-uv, installed-FFmpeg, and installed-GDAL
+  real smokes also pass when enabled separately.
 - A real locked/offline CV scan used the 10,720,228-byte AGPL-3.0 YOLO11n ONNX
   artifact (SHA-256
   `7D8FD1717D9D5BBAB6986CD134AFB620649C7A394303D55B1E09FC00804CC5C1`)
@@ -63,8 +63,9 @@ replaced with mocks or toy files in final release evidence.
 3. Select/provide approved deployment CV weights and labels if CV is included
    operationally. The real development smoke is complete; weights remain
    external and are not redistributed.
-4. Supply approved GDAL/OGR binaries and representative non-GeoJSON datasets;
-   retain installed normalization/import evidence.
+4. Select and license approved deployment GDAL/OGR binaries if non-GeoJSON or
+   arbitrary-CRS ingestion is in operational scope. Real Windows adapter
+   normalization evidence is complete; binaries remain external.
 5. Supply the intended York/GTA Valhalla data/service or approved OSRM service;
    retain a live route-match result and fallback evidence if in release scope.
 
