@@ -458,7 +458,7 @@ impl<T: MatcherTransport> RouteMatcherManager<T> {
 mod tests {
     use super::{
         execute_route_match, MatcherTransport, RouteMatcherError, RouteMatcherManager,
-        RouteMatcherRequest,
+        RouteMatcherRequest, SystemLocalHttpTransport,
     };
     use crate::project_store::{
         create_project_at, import_route_at, ProjectCreateRequest, RouteImportRequest,
@@ -501,6 +501,28 @@ mod tests {
         .unwrap();
         assert_eq!(status.matcher_used, "OSRM");
         assert_eq!(status.route.len(), 2);
+    }
+
+    #[test]
+    #[ignore = "requires a live loopback OSRM service in ROADWATCHER_OSRM_ENDPOINT"]
+    fn real_osrm_service_completes_durable_route_match() {
+        let endpoint = std::env::var("ROADWATCHER_OSRM_ENDPOINT")
+            .expect("ROADWATCHER_OSRM_ENDPOINT must identify a loopback OSRM service");
+        let fixture = Fixture::new();
+        let status = execute_route_match(
+            &SystemLocalHttpTransport,
+            &fixture.request("OSRM", "", &endpoint),
+        )
+        .unwrap();
+        assert_eq!(status.status, "complete");
+        assert_eq!(status.matcher_used, "OSRM");
+        assert_eq!(status.route.first().unwrap().time_seconds, 0.0);
+        assert_eq!(status.route.last().unwrap().time_seconds, 10.0);
+        assert!(status.route.len() >= 3);
+        assert!(status
+            .route
+            .windows(2)
+            .all(|pair| pair[0].time_seconds < pair[1].time_seconds));
     }
 
     #[test]

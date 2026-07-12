@@ -213,8 +213,8 @@ Build a Windows-first, local-first evidence workstation:
 
 Latest module verification on 2026-07-11: 173 frontend tests across 27 files,
 TypeScript compilation, production Vite build, and 70 default Rust tests passed.
-The ignored managed-uv, installed-FFmpeg, and installed-GDAL smokes also pass
-when explicitly enabled. Release-governance verification passes the runtime audit, three
+The ignored managed-uv, installed-FFmpeg, installed-GDAL, and live-OSRM smokes
+also pass when explicitly enabled. Release-governance verification passes the runtime audit, three
 positive/negative release metadata tests, the repository release audit,
 PowerShell smoke-script syntax parsing, and `cargo check` with the Rust build
 gate enabled.
@@ -248,8 +248,9 @@ five-second fixture produced a verified H.264/AAC output after RoadWatcher added
 explicit Windows system-font selection. A hash-verified AGPL-3.0 YOLO11n ONNX
 model also completed locked/offline inference against a real GoPro fixture with
 six bounded reviewer-required findings. A temporary GDAL 3.12.4 Windows package
-also passed the real bounded adapter smoke from EPSG:26917 to WGS84. The live
-matcher smoke remains.
+also passed the real bounded adapter smoke from EPSG:26917 to WGS84. An official
+OSRM v5.27.1 loopback service over a disposable three-node road graph passed the
+real HTTP/durable route-match smoke with monotonic persisted timing.
 
 `runtime_prepare` now uses external uv to build both locked environments in
 parallel under versioned app-local paths. Unique staging directories, explicit
@@ -446,7 +447,8 @@ network/DNS access.
   Distribution must retain its GPL-3.0-or-later notices; a real installed-tool
   render smoke passes.
 - Valhalla/OSRM adapters are implemented for configured loopback HTTP services;
-  local tiles/profiles and live-service smoke evidence are not present yet.
+  live OSRM service evidence now passes. Production York/GTA tiles/profiles
+  remain deployment inputs.
 - Shapefile, GeoPackage, FlatGeobuf, FileGDB, and arbitrary CRS normalization
   are implemented through configured/PATH GDAL/OGR tools. A live installed-GDAL
   3.12.4 Windows adapter smoke now passes; deployment binaries remain external.
@@ -478,7 +480,8 @@ network/DNS access.
    source and notice delivery for GPStitch is implemented. Production GIS container
    normalization, local CV, and GPStitch reconciliation are complete:
    verification passes 173 frontend tests, 70 default Rust tests plus the
-   explicitly enabled managed-uv, installed-FFmpeg, and installed-GDAL smokes,
+   explicitly enabled managed-uv, installed-FFmpeg, installed-GDAL, and
+   live-OSRM smokes,
    four locked/offline Python tests, and the
    production build.
 2. Verify toolchain:
@@ -503,7 +506,8 @@ network/DNS access.
 8. Before a candidate/stable release, follow `docs/windows-release-validation.md`,
    retain signing plus startup-smoke evidence, and change release metadata only
    in the evidence-bearing release commit.
-9. Configure local Valhalla/OSRM data and add an optional live matcher smoke.
+9. Configure and validate the selected York/GTA Valhalla/OSRM production data;
+   the disposable live integration smoke is complete.
 10. Add PostGIS/spatial indexing only if production dataset scale requires it.
 11. Define FFmpeg/ffprobe bundling, update, and licensing policy for deployment.
 

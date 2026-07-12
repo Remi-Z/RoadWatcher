@@ -57,3 +57,10 @@ The installed-GDAL smoke used the temporary GISInternals MSVC 2022 x64 GDAL
 It and its optional plugins are not committed, bundled, or redistributed; a
 deployment operator must inventory the exact selected GDAL build and plugin
 licenses.
+
+The live matcher smoke used the official Project OSRM backend v5.27.1 container
+image at digest
+`sha256:855614a38f464b0558a2ad6eaa7cb8c139f39887da9b38b485ce453c6e6e6124`
+with a temporary synthetic three-node OSM graph. Neither the image nor map data
+is committed, bundled, or redistributed by RoadWatcher. Deployment map data and
+services remain operator-selected external inputs.

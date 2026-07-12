@@ -564,7 +564,7 @@ unrelated processes.
 Final verification on 2026-07-11 passed 173 frontend tests across 27 files, the
 production Vite build, TypeScript project compilation, four locked/offline
 Python sidecar tests, and 70 default Rust tests with the installed-FFmpeg,
-managed-uv, and installed-GDAL smokes ignored by default. Rust verification uses `C:\tmp\roadwatcher-target` to
+managed-uv, installed-GDAL, and live-OSRM smokes ignored by default. Rust verification uses `C:\tmp\roadwatcher-target` to
 avoid a Rust 1.96 dependency-probe failure under the workspace path containing
 a space.
 The suite used a short-path temporary Cargo target to avoid the known Windows
@@ -617,6 +617,12 @@ used the 61,735,748-byte GISInternals MSVC 2022 x64 package (download SHA-256
 `B0FC7620B965FA6A176C4B9F2110564233A58A4EBBEEC8E37C1F69443E24C048`),
 invoked GDAL 3.12.4 through RoadWatcher's bounded adapter, detected EPSG:26917,
 and verified Toronto-area WGS84 output. The binaries remain temporary/external.
+The live matcher smoke used the official OSRM backend v5.27.1 image pinned at
+digest `sha256:855614a38f464b0558a2ad6eaa7cb8c139f39887da9b38b485ce453c6e6e6124`.
+Its disposable three-node road graph produced an `Ok` match with 0.980132268
+confidence; RoadWatcher's real loopback HTTP transport then persisted a complete
+three-point OSRM route with monotonic 0–10 second interpolation. The service was
+stopped afterward and no image/map artifact is packaged.
 The final App-only rerun passes all 68 integration tests without the former
 React asynchronous-update warnings; affected tests now await the native export
 fallback they intentionally trigger.
@@ -629,8 +635,9 @@ fallback they intentionally trigger.
    still-external `uv`/Python and FFmpeg/ffprobe executables, or retain the
    implemented user-triggered preparation/preflight model. Source/license
    bundling and writable managed environments are complete.
-3. Add a live matcher smoke when its external service/data are available. Real
-   CV model/video and Windows GDAL adapter smokes are complete.
+3. Validate the selected York/GTA production matcher data during deployment.
+   Live OSRM integration, real CV model/video, and Windows GDAL adapter smokes
+   are complete.
 4. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
    representative-feature model insufficient.
 

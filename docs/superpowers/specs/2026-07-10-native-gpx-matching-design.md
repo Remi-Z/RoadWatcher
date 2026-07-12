@@ -103,5 +103,6 @@ review-state boundary.
 Focused Rust tests use fixture GPX and injected match transports. Frontend tests
 cover native refusal, import/reconciliation, fallback audit, polling cleanup,
 and project switching. Full frontend tests/build and Rust all-target tests run at
-module handoff. A real local matcher smoke is conditional on a configured
-Valhalla or OSRM endpoint and is documented separately from deterministic CI.
+module handoff. The opt-in real local OSRM smoke now passes against an official
+v5.27.1 loopback container and disposable three-node graph; production York/GTA
+data remains a deployment input and the smoke stays separate from deterministic CI.
