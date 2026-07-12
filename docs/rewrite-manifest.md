@@ -245,8 +245,10 @@ The native `runtime_preflight` command and strict React adapter now expose
 packaged-source, uv/Python, FFmpeg/ffprobe, and optional GDAL/OGR status through
 parallel bounded probes. A real locked/offline GPStitch render of the upstream
 five-second fixture produced a verified H.264/AAC output after RoadWatcher added
-explicit Windows system-font selection. Installed GDAL, real CV model/video, and
-live matcher smokes remain.
+explicit Windows system-font selection. A hash-verified AGPL-3.0 YOLO11n ONNX
+model also completed locked/offline inference against a real GoPro fixture with
+six bounded reviewer-required findings. Installed GDAL and live matcher smokes
+remain.
 
 `runtime_prepare` now uses external uv to build both locked environments in
 parallel under versioned app-local paths. Unique staging directories, explicit

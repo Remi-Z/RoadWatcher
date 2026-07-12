@@ -43,3 +43,9 @@ these environments must add an exact package/license inventory here.
 If a future installer embeds any of these tools or a prepared Python environment,
 its release process must inventory the exact binaries/packages, retain their
 license notices, and update this document before publication.
+
+Development smoke evidence on 2026-07-11 used the external
+[webnn/yolo11n ONNX artifact](https://huggingface.co/webnn/yolo11n) under its
+declared AGPL-3.0 license. The temporary model and COCO labels are not committed,
+bundled, or redistributed by RoadWatcher. A deployment operator must select and
+license its own model/labels.

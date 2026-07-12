@@ -598,7 +598,13 @@ label validation, confidence/bounds filtering, deterministic ordering, bounded
 camel-case finding JSON, status CLI behavior, and a real NumPy/OpenCV parse of a
 synthetic transposed YOLOv8 tensor. The locked Python 3.14 environment installs
 and imports ONNX Runtime 1.27, NumPy 2.5.1, and OpenCV headless 5.0. A real
-model/video smoke remains conditional on compatible user-supplied weights.
+The real model/video smoke now passes with a temporary, non-bundled AGPL-3.0
+YOLO11n ONNX model. Its published 10,720,228-byte artifact hash is
+`7D8FD1717D9D5BBAB6986CD134AFB620649C7A394303D55B1E09FC00804CC5C1`.
+Locked/offline inference over the 2.44-second 3840×2160 GoPro fixture sampled
+every 0.5 seconds and returned six bounded reviewer-required findings (person,
+motorcycle, and parking meter). Deployment weights/labels remain user-selected
+external inputs and are not packaged.
 All 23 focused project-store tests pass for schema v7, including v6 migration,
 queued/running/complete/failed transitions, exact source/model/label provenance,
 atomic finding publication, invalid-output rollback, and interrupted-job recovery.
@@ -619,8 +625,8 @@ fallback they intentionally trigger.
    still-external `uv`/Python and FFmpeg/ffprobe executables, or retain the
    implemented user-triggered preparation/preflight model. Source/license
    bundling and writable managed environments are complete.
-3. Add a real-model/video CV smoke, live matcher, and installed-GDAL coverage at
-   the end of the implementation cycle.
+3. Add live matcher and installed-GDAL coverage when their external services and
+   binaries/data are available. The real CV model/video smoke is complete.
 4. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
    representative-feature model insufficient.
 

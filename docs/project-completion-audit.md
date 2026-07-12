@@ -2,7 +2,7 @@
 
 Date: 2026-07-11
 Audited branch: `dev`
-Audited through: `00cb649`
+Audited implementation baseline: `67e8c93`
 
 ## Result
 
@@ -26,7 +26,7 @@ replaced with mocks or toy files in final release evidence.
 | Referenced media, proxy, thumbnails, progress, cancellation, recovery | Native media/proxy code and Rust tests; explicitly enabled real FFmpeg smoke | Proven complete |
 | GPX import and Valhalla/OSRM matching behavior | Real GPX parse/import test; transport/fallback/identity Rust tests; strict frontend polling | Adapter complete; live local-service evidence missing |
 | Production GIS containers, CRS normalization, projection, review | GDAL boundary tests, durable import/projection tests, frontend reconciliation | Adapter complete; installed-GDAL evidence missing |
-| Local conservative CV scanning and reviewer decisions | Locked sidecar tests, synthetic tensor/OpenCV coverage, durable CV Rust/frontend tests | Pipeline complete; compatible real detector/video evidence missing |
+| Local conservative CV scanning and reviewer decisions | Locked sidecar tests, durable CV Rust/frontend tests, hash-verified YOLO11n/real GoPro video smoke | Proven complete |
 | GPStitch telemetry render and provenance | Pinned v0.18.0 source/license, durable worker tests, real locked/offline fixture render | Proven complete |
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
 | Installed runtime preparation and preflight | Ten-component strict preflight, managed-environment tests, explicitly enabled real uv smoke | Proven complete for external-runtime model |
@@ -41,6 +41,12 @@ replaced with mocks or toy files in final release evidence.
 - App integration: 68 tests pass without React asynchronous-update warnings.
 - Rust: 70 default tests pass; managed-uv and installed-FFmpeg real smokes also
   pass when enabled separately.
+- A real locked/offline CV scan used the 10,720,228-byte AGPL-3.0 YOLO11n ONNX
+  artifact (SHA-256
+  `7D8FD1717D9D5BBAB6986CD134AFB620649C7A394303D55B1E09FC00804CC5C1`)
+  against the 2.44-second 3840×2160 GoPro fixture. At a 0.20 threshold and
+  0.5-second interval it completed with six bounded findings and
+  `reviewRequired: true`.
 - `npm run build`, `npm run verify:release`, `cargo check`, and the fresh debug
   NSIS build pass.
 - The current debug installer is 3,985,023 bytes with SHA-256
@@ -54,8 +60,9 @@ replaced with mocks or toy files in final release evidence.
 2. Build the exact candidate/stable artifact, validate both installer and
    installed executable signatures, and run `docs/windows-release-validation.md`
    on a clean supported Windows VM.
-3. Supply a compatible licensed YOLO-style ONNX detector, labels, and
-   representative video; retain a real end-to-end CV result.
+3. Select/provide approved deployment CV weights and labels if CV is included
+   operationally. The real development smoke is complete; weights remain
+   external and are not redistributed.
 4. Supply approved GDAL/OGR binaries and representative non-GeoJSON datasets;
    retain installed normalization/import evidence.
 5. Supply the intended York/GTA Valhalla data/service or approved OSRM service;

@@ -57,5 +57,6 @@ sources, and locks, with no Python cache artifacts.
   release gate. Synchronized release versioning, explicit manual-update policy,
   unsigned/stable claim rejection, and the installed startup-smoke tool are now
   implemented.
-- Run real CV model/video, installed-GDAL, and live matcher smokes; real
-  GPStitch and FFmpeg smokes now pass.
+- Run installed-GDAL and live matcher smokes. Real CV model/video, GPStitch, and
+  FFmpeg smokes now pass; the temporary CV weights remain external and are not
+  packaged.
