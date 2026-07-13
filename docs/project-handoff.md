@@ -758,9 +758,14 @@ region, returned one actionable Refresh status, and logged no console errors.
 
 Tradeoffs and external review requests for this slice:
 
-- HTTP Range/ETag resume is not implemented yet. Interrupted transfers restart
-  inside a new confined staging directory; this is slower but preserves the
-  integrity boundary until stable range semantics are tested.
+- HTTP Range/ETag resume is now implemented for an interruption within an
+  active staged download. It is permitted only after the initial response
+  advertises byte ranges with a strong ETag and the resumed response proves the
+  same ETag, HTTP 206, and the exact Content-Range offset/bounds. Weak, missing,
+  malformed, or drifting identity discards partial bytes and restarts once from
+  zero in the same confined staging area. Cross-application-restart partial-byte
+  reuse remains intentionally absent; restart recovery removes unpublished
+  staging rather than trusting stale network state.
 - Catalog artifacts remain non-installable placeholders rather than unreviewed
   binaries. The owner must approve exact sources/licenses and publish the
   versioned Valhalla/ONNX assets before URLs and SHA-256 values can be promoted.

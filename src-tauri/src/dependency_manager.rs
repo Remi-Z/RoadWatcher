@@ -698,6 +698,63 @@ fn validate_download_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
+struct DownloadResponse {
+    status: u16,
+    etag: Option<String>,
+    accepts_ranges: bool,
+    content_range: Option<String>,
+    reader: Box<dyn Read>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ResumeRequest {
+    offset: u64,
+    etag: String,
+}
+
+trait DownloadClient {
+    fn get(&self, url: &str, resume: Option<&ResumeRequest>) -> Result<DownloadResponse, String>;
+}
+
+struct UreqDownloadClient;
+
+impl DownloadClient for UreqDownloadClient {
+    fn get(&self, url: &str, resume: Option<&ResumeRequest>) -> Result<DownloadResponse, String> {
+        let mut request = ureq::get(url);
+        if let Some(resume) = resume {
+            request = request
+                .header("Range", &format!("bytes={}-", resume.offset))
+                .header("If-Range", &resume.etag);
+        }
+        let response = request
+            .call()
+            .map_err(|error| format!("dependency download failed: {error}"))?;
+        let status = response.status().as_u16();
+        let etag = response
+            .headers()
+            .get("etag")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        let accepts_ranges = response
+            .headers()
+            .get("accept-ranges")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.eq_ignore_ascii_case("bytes"));
+        let content_range = response
+            .headers()
+            .get("content-range")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        Ok(DownloadResponse {
+            status,
+            etag,
+            accepts_ranges,
+            content_range,
+            reader: Box::new(response.into_body().into_reader()),
+        })
+    }
+}
+
 fn download_verified(
     url: &str,
     destination: &Path,
@@ -706,21 +763,77 @@ fn download_verified(
     cancelled: impl Fn() -> bool,
 ) -> Result<(), String> {
     validate_download_url(url)?;
-    let response = ureq::get(url)
-        .call()
-        .map_err(|error| format!("dependency download failed: {error}"))?;
-    let mut reader = response.into_body().into_reader();
+    download_verified_with_client(
+        &UreqDownloadClient,
+        url,
+        destination,
+        max_bytes,
+        expected_sha256,
+        cancelled,
+    )
+}
+
+fn download_verified_with_client(
+    client: &impl DownloadClient,
+    url: &str,
+    destination: &Path,
+    max_bytes: u64,
+    expected_sha256: &str,
+    cancelled: impl Fn() -> bool,
+) -> Result<(), String> {
+    let mut response = client.get(url, None)?;
+    validate_initial_response(&response)?;
+    let mut stable_etag = strong_etag(response.etag.as_deref())
+        .filter(|_| response.accepts_ranges)
+        .map(str::to_string);
     let mut output = File::create(destination).map_err(|error| error.to_string())?;
     let mut hash = Sha256::new();
     let mut total = 0_u64;
     let mut buffer = [0_u8; 64 * 1024];
+    let mut resume_attempts = 0_u8;
+    let mut restart_attempts = 0_u8;
     loop {
         if cancelled() {
             return Err("dependency download cancelled".to_string());
         }
-        let read = reader
-            .read(&mut buffer)
-            .map_err(|error| error.to_string())?;
+        let read = match response.reader.read(&mut buffer) {
+            Ok(value) => value,
+            Err(error) => {
+                if let Some(etag) = stable_etag
+                    .clone()
+                    .filter(|_| total > 0 && resume_attempts < 2)
+                {
+                    resume_attempts += 1;
+                    let request = ResumeRequest {
+                        offset: total,
+                        etag,
+                    };
+                    if let Ok(candidate) = client.get(url, Some(&request)) {
+                        if validate_resume_response(&candidate, &request).is_ok() {
+                            response = candidate;
+                            continue;
+                        }
+                    }
+                }
+                if restart_attempts == 0 {
+                    restart_attempts += 1;
+                    response = client.get(url, None)?;
+                    validate_initial_response(&response)?;
+                    stable_etag = strong_etag(response.etag.as_deref())
+                        .filter(|_| response.accepts_ranges)
+                        .map(str::to_string);
+                    output =
+                        File::create(destination).map_err(|write_error| write_error.to_string())?;
+                    hash = Sha256::new();
+                    total = 0;
+                    resume_attempts = 0;
+                    continue;
+                }
+                return Err(format!(
+                    "dependency download stream failed after safe retry: {error}"
+                ));
+            }
+        };
         if read == 0 {
             break;
         }
@@ -743,6 +856,63 @@ fn download_verified(
         ));
     }
     Ok(())
+}
+
+fn validate_initial_response(response: &DownloadResponse) -> Result<(), String> {
+    if response.status != 200 {
+        return Err(format!(
+            "dependency download returned HTTP {} instead of 200",
+            response.status
+        ));
+    }
+    Ok(())
+}
+
+fn validate_resume_response(
+    response: &DownloadResponse,
+    request: &ResumeRequest,
+) -> Result<(), String> {
+    if response.status != 206 {
+        return Err(format!(
+            "dependency resume returned HTTP {} instead of 206",
+            response.status
+        ));
+    }
+    if strong_etag(response.etag.as_deref()) != Some(request.etag.as_str()) {
+        return Err("dependency resume ETag changed".to_string());
+    }
+    let content_range = response
+        .content_range
+        .as_deref()
+        .ok_or_else(|| "dependency resume omitted Content-Range".to_string())?;
+    let (range, total_length) = content_range
+        .strip_prefix("bytes ")
+        .and_then(|value| value.split_once('/'))
+        .ok_or_else(|| "dependency resume Content-Range is invalid".to_string())?;
+    let (start, end) = range
+        .split_once('-')
+        .and_then(|(start, end)| Some((start.parse::<u64>().ok()?, end.parse::<u64>().ok()?)))
+        .ok_or_else(|| "dependency resume Content-Range is invalid".to_string())?;
+    let total_length = total_length
+        .parse::<u64>()
+        .map_err(|_| "dependency resume Content-Range total is invalid".to_string())?;
+    if start != request.offset {
+        return Err("dependency resume Content-Range starts at the wrong offset".to_string());
+    }
+    if end < start || total_length <= end {
+        return Err("dependency resume Content-Range bounds are invalid".to_string());
+    }
+    Ok(())
+}
+
+fn strong_etag(value: Option<&str>) -> Option<&str> {
+    value.filter(|etag| {
+        etag.len() >= 2
+            && etag.starts_with('"')
+            && etag.ends_with('"')
+            && !etag.starts_with("W/")
+            && !etag.contains(['\r', '\n'])
+    })
 }
 
 fn extract_zip(
@@ -864,6 +1034,8 @@ fn lock_error<T>(_: std::sync::PoisonError<T>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
+    use std::io::{Cursor, ErrorKind};
 
     fn catalog() -> DependencyCatalog {
         DependencyCatalog {
@@ -982,5 +1154,209 @@ mod tests {
         assert!(!recovered.root.join(".staging-interrupted").exists());
         assert!(recovered.root.join("unowned-user-directory").is_dir());
         fs::remove_dir_all(app_data).unwrap();
+    }
+
+    #[test]
+    fn resumes_only_with_matching_strong_etag_and_content_range() {
+        let payload = b"abcdefghij";
+        let client = FakeDownloadClient::new(vec![
+            Ok(download_response(
+                200,
+                Some("\"artifact-v1\""),
+                true,
+                None,
+                Box::new(InterruptAfterData::new(&payload[..4])),
+            )),
+            Ok(download_response(
+                206,
+                Some("\"artifact-v1\""),
+                true,
+                Some("bytes 4-9/10"),
+                Box::new(Cursor::new(payload[4..].to_vec())),
+            )),
+        ]);
+        let destination = temporary_download_path("resume");
+        download_verified_with_client(
+            &client,
+            "https://github.com/example/tool.zip",
+            &destination,
+            100,
+            &hex::encode(Sha256::digest(payload)),
+            || false,
+        )
+        .unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), payload);
+        assert_eq!(
+            client.requests(),
+            vec![
+                None,
+                Some(ResumeRequest {
+                    offset: 4,
+                    etag: "\"artifact-v1\"".to_string(),
+                })
+            ]
+        );
+        fs::remove_file(destination).unwrap();
+    }
+
+    #[test]
+    fn weak_or_changed_etag_restarts_the_staged_download_from_zero() {
+        let payload = b"abcdefghij";
+        let client = FakeDownloadClient::new(vec![
+            Ok(download_response(
+                200,
+                Some("W/\"artifact-v1\""),
+                true,
+                None,
+                Box::new(InterruptAfterData::new(&payload[..4])),
+            )),
+            Ok(download_response(
+                200,
+                Some("\"artifact-v2\""),
+                true,
+                None,
+                Box::new(Cursor::new(payload.to_vec())),
+            )),
+        ]);
+        let destination = temporary_download_path("restart");
+        download_verified_with_client(
+            &client,
+            "https://github.com/example/tool.zip",
+            &destination,
+            100,
+            &hex::encode(Sha256::digest(payload)),
+            || false,
+        )
+        .unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), payload);
+        assert_eq!(client.requests(), vec![None, None]);
+        fs::remove_file(destination).unwrap();
+    }
+
+    #[test]
+    fn resume_identity_drift_is_rejected_before_a_safe_restart() {
+        let payload = b"abcdefghij";
+        let client = FakeDownloadClient::new(vec![
+            Ok(download_response(
+                200,
+                Some("\"artifact-v1\""),
+                true,
+                None,
+                Box::new(InterruptAfterData::new(&payload[..4])),
+            )),
+            Ok(download_response(
+                206,
+                Some("\"artifact-v2\""),
+                true,
+                Some("bytes 4-9/10"),
+                Box::new(Cursor::new(payload[4..].to_vec())),
+            )),
+            Ok(download_response(
+                200,
+                Some("\"artifact-v2\""),
+                true,
+                None,
+                Box::new(Cursor::new(payload.to_vec())),
+            )),
+        ]);
+        let destination = temporary_download_path("identity-drift");
+        download_verified_with_client(
+            &client,
+            "https://github.com/example/tool.zip",
+            &destination,
+            100,
+            &hex::encode(Sha256::digest(payload)),
+            || false,
+        )
+        .unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), payload);
+        assert_eq!(client.requests().len(), 3);
+        assert!(client.requests()[1].is_some());
+        assert!(client.requests()[2].is_none());
+        fs::remove_file(destination).unwrap();
+    }
+
+    fn temporary_download_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("roadwatcher-download-{label}-{}", Uuid::new_v4()))
+    }
+
+    fn download_response(
+        status: u16,
+        etag: Option<&str>,
+        accepts_ranges: bool,
+        content_range: Option<&str>,
+        reader: Box<dyn Read>,
+    ) -> DownloadResponse {
+        DownloadResponse {
+            status,
+            etag: etag.map(str::to_string),
+            accepts_ranges,
+            content_range: content_range.map(str::to_string),
+            reader,
+        }
+    }
+
+    struct InterruptAfterData {
+        data: Cursor<Vec<u8>>,
+        interrupted: bool,
+    }
+
+    impl InterruptAfterData {
+        fn new(data: &[u8]) -> Self {
+            Self {
+                data: Cursor::new(data.to_vec()),
+                interrupted: false,
+            }
+        }
+    }
+
+    impl Read for InterruptAfterData {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let read = self.data.read(buffer)?;
+            if read > 0 {
+                return Ok(read);
+            }
+            if !self.interrupted {
+                self.interrupted = true;
+                return Err(io::Error::new(
+                    ErrorKind::ConnectionReset,
+                    "simulated interruption",
+                ));
+            }
+            Ok(0)
+        }
+    }
+
+    struct FakeDownloadClient {
+        responses: Mutex<VecDeque<Result<DownloadResponse, String>>>,
+        requests: Mutex<Vec<Option<ResumeRequest>>>,
+    }
+
+    impl FakeDownloadClient {
+        fn new(responses: Vec<Result<DownloadResponse, String>>) -> Self {
+            Self {
+                responses: Mutex::new(responses.into()),
+                requests: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn requests(&self) -> Vec<Option<ResumeRequest>> {
+            self.requests.lock().unwrap().clone()
+        }
+    }
+
+    impl DownloadClient for FakeDownloadClient {
+        fn get(
+            &self,
+            _url: &str,
+            resume: Option<&ResumeRequest>,
+        ) -> Result<DownloadResponse, String> {
+            self.requests.lock().unwrap().push(resume.cloned());
+            self.responses
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("fake download response")
+        }
     }
 }

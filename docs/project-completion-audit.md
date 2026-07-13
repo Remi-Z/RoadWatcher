@@ -11,7 +11,7 @@ configuration, but it is not yet complete for the new internal-release roadmap
 in root `TODO.md`. The managed catalog, installer boundary, Setup Center,
 feature-level view split, and one-shot managed Valhalla adapter are implemented.
 Exact installable component artifacts, reproducible tile/model builders,
-managed GIS project handoff, resumable stable transfers, and clean-Windows pilot
+managed GIS project handoff, and clean-Windows pilot
 evidence remain incomplete or user-gated.
 
 It is also not a signed, validated public Windows release.
@@ -32,7 +32,7 @@ unpublished hashes in final evidence.
 | GPStitch telemetry render and provenance | Pinned v0.18.0 source/license, durable worker tests, real locked/offline fixture render | Proven complete |
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
 | Installed runtime preparation and preflight | Ten-component strict preflight, managed-environment tests, explicitly enabled real uv smoke | Proven complete for external-runtime model |
-| Managed dependency command/security boundary | Build-validated catalog, strict ID/license-only commands, ownership/staging/recovery tests, Setup Center contract tests | Proven complete; exact artifacts intentionally unavailable |
+| Managed dependency command/security boundary | Build-validated catalog, strict ID/license-only commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, Setup Center contract tests | Proven complete; exact artifacts intentionally unavailable |
 | Managed one-shot Valhalla adapter | Rust path resolution, bounded process/request/result files, HTTP/OSRM fallback tests, durable provenance | Implementation complete; production York tile artifact missing |
 | Reproducible York/ONNX release-asset production | Root TODO and catalog placeholders | Not achieved |
 | Managed GIS install-to-project handoff | Root TODO; existing manual/native GIS import only | Not achieved |

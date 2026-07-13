@@ -62,7 +62,7 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Resolve prerequisites in explicit-override, managed-install,
   then PATH order.
 - [x] `[AGENT]` Keep downloads user-triggered; add no background network check.
-- [ ] `[AGENT]` Add HTTP Range/ETag resume only for servers that prove stable
+- [x] `[AGENT]` Add HTTP Range/ETag resume only for servers that prove stable
   range semantics; otherwise retain the current safe staged restart behavior.
 
 ### Initial managed components
@@ -175,6 +175,10 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   `publicReleaseReady: false`.
 - [x] `[AGENT]` Browser fallback rendered the Setup Center as one accessible
   region, exposed one Refresh action/status, and logged no console errors.
+- [x] `[AGENT]` Dependency downloads resume after interruption only when the
+  initial response advertises byte ranges with a strong ETag and the resumed
+  response proves the same ETag, HTTP 206, and exact Content-Range offset;
+  weak/drifting identity safely restarts staged bytes from zero.
 - [ ] `[USER-CONTEXT]` Decide whether internal qualification may exclude
   GPStitch's upstream browser suite or whether RoadWatcher should carry a
   reviewed GPStitch Windows-test patch and the separate Playwright browser.
