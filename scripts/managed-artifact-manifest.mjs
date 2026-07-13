@@ -97,6 +97,8 @@ function normalizedSource(source) {
   const publisherSha256 = source.publisherSha256 === null || source.publisherSha256 === undefined
     ? null
     : hash(source.publisherSha256, "publisher source SHA-256");
+  const sizeBytes = source.sizeBytes;
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) throw new Error("source sizeBytes is invalid");
   const result = {
     id: id(source.id, "source id"),
     url,
@@ -104,7 +106,8 @@ function normalizedSource(source) {
     license: normalizedLicense(source.license),
     downloadedSha256,
     publisherSha256,
-    retrievedAt: validIso(source.retrievedAt, "source retrievedAt")
+    retrievedAt: validIso(source.retrievedAt, "source retrievedAt"),
+    sizeBytes
   };
   if (source.etag !== undefined && source.etag !== null) result.etag = boundedText(source.etag, "source ETag", 512);
   if (source.lastModified !== undefined && source.lastModified !== null) result.lastModified = boundedText(source.lastModified, "source Last-Modified", 512);
@@ -178,11 +181,15 @@ function safeFileName(value) {
 function record(value) { return Boolean(value && typeof value === "object" && !Array.isArray(value)); }
 
 async function main(args) {
-  const [command, manifestOrDefinitionPath, artifactPath, outputPath] = args;
+  const [command, manifestOrDefinitionPath, artifactPath, outputPath, generatedAtOption, ...unexpected] = args;
   if (command === "build") {
     if (!outputPath) throw new Error("usage: managed-artifact-manifest.mjs build <definition.json> <artifact> <manifest.json>");
+    if (unexpected.length || (generatedAtOption !== undefined && !generatedAtOption.startsWith("--generated-at="))) {
+      throw new Error("build accepts only an optional --generated-at=<ISO-UTC> argument");
+    }
+    const generatedAt = generatedAtOption === undefined ? undefined : generatedAtOption.slice("--generated-at=".length);
     const definition = JSON.parse(readFileSync(resolve(manifestOrDefinitionPath), "utf8"));
-    const manifest = await buildManagedArtifactManifest({ definition, artifactPath });
+    const manifest = await buildManagedArtifactManifest({ definition, artifactPath, generatedAt });
     writeFileSync(resolve(outputPath), `${JSON.stringify(manifest, null, 2)}\n`, { flag: "wx" });
     process.stdout.write(`Managed artifact manifest created: ${manifest.id} ${manifest.version} ${manifest.artifact.sha256}\n`);
     return;

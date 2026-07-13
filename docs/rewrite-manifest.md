@@ -471,8 +471,9 @@ network/DNS access.
   their approved inputs/publication remain deployment gates.
 - Shapefile, GeoPackage, FlatGeobuf, FileGDB, and arbitrary CRS normalization
   work through an explicit/PATH GDAL/OGR override. Managed GDAL layout and
-  child-process containment are implemented, but no immutable managed archive
-  exists yet. A live external GDAL 3.12.4 Windows adapter smoke passes.
+  child-process containment are implemented; a source-only fixed-profile asset
+  builder is fake-tool qualified, but no immutable managed archive exists yet.
+  A live external GDAL 3.12.4 Windows adapter smoke passes.
 - The CV sidecar implements bounded YOLO-style ONNX Runtime/OpenCV frame
   scanning and conservative finding JSON. Durable Rust execution, strict
   polling, reviewer reconciliation, SQLite decision persistence, portable
@@ -490,13 +491,15 @@ network/DNS access.
 | Valhalla York/GTA data | Local map matching | Managed matcher/builder implemented; real approved inputs and published tile asset blocked |
 | OSRM Match fallback | Simpler GPX matching fallback | Configured optional HTTP fallback |
 | Official GIS layers | Stop signs/lights/bike lanes projection | User-approved source/layer selection and explicit project import required |
-| GDAL/OGR | Production GIS containers and CRS normalization | Explicit/PATH override works; managed layout/containment implemented, source package absent |
+| GDAL/OGR | Production GIS containers and CRS normalization | Explicit/PATH override works; managed layout/containment and source-only fixed-profile builder implemented, but a real package/artifact remains absent |
 | FFmpeg/ffprobe | Proxy generation and metadata probing | Owner-approved exact managed 8.1.1 build; explicit override and PATH remain fallbacks |
 | ONNX model + labels | Local vehicle/CV scan | Builder implemented; approved weights/labels/consent and hosted asset absent |
 
 ## Next Agent Checklist
 
-1. Select/build the immutable minimal open-driver GDAL package. Managed uv
+1. Produce the immutable minimal open-driver GDAL package from the existing
+   source-only builder, then compare it with a second clean Windows MSVC/vcpkg
+   build before publication. Managed uv
    0.11.23, CPython 3.12.13, pyvalhalla 3.7.0, and FFmpeg 8.1.1 are implemented
    and real-smoke qualified; GPL
    source and notice delivery for GPStitch is implemented. Production GIS container

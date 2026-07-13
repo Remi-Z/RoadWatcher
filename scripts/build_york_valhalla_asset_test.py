@@ -99,6 +99,8 @@ class YorkValhallaAssetBuilderTests(unittest.TestCase):
         manifest = json.loads((output / f"{base}.manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["artifact"]["sha256"], result["sha256"])
         self.assertEqual(manifest["build"]["parameters"]["bufferKm"], 10)
+        self.assertEqual(manifest["generatedAt"], self.recipe["sourceDateEpoch"])
+        self.assertTrue(all(source["sizeBytes"] > 0 for source in manifest["sources"]))
 
     def test_rejects_insufficient_coverage_and_source_drift(self) -> None:
         insufficient = copy.deepcopy(self.recipe)

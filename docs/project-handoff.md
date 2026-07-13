@@ -772,8 +772,9 @@ Tradeoffs and external review requests for this slice:
 Artifact provenance now has a checked-in strict generator and verifier at
 `scripts/managed-artifact-manifest.mjs`, documented in
 `docs/managed-artifact-manifests.md`. It records final file name/size/SHA-256,
-source URLs and retrieval identity, licenses, tool versions, recipe/version,
-sorted scalar parameters, platform, and UTC generation time. Definitions lacking
+source URLs, byte sizes and retrieval identity, licenses, tool versions,
+recipe/version, sorted scalar parameters, platform, and UTC generation time.
+Definitions lacking
 a publisher hash must carry ETag or Last-Modified evidence plus the downloaded
 hash; unsafe IDs/URLs, duplicate tools, nested parameters, and artifact drift are
 rejected. Three Node tests cover valid creation/verification and the rejection
@@ -1162,6 +1163,40 @@ drivers, pass a PE dependency audit with no plugins/curl/database clients, and
 be compared against a second clean Windows MSVC/vcpkg build before release
 publication. Deterministic ZIP packaging proves the locked package tree, not
 independent PE byte reproducibility.
+
+### Source-only GDAL asset builder (unpublished)
+
+`scripts/build_gdal_asset.py` now supplies the missing source-build boundary,
+but it deliberately does not promote `gdal`. A recipe can contain only three
+local, hash-locked non-link trees (GDAL source, dependency prefix, complete
+notice bundle) and pinned local CMake, Ninja, MSVC `cl`/`link`, `dumpbin`, and
+Node tools. It requires the pinned GDAL 3.12.4 commit declaration, canonical
+tree identities, explicit notice-file coverage, fixed CMake arguments, and
+validated `/Brepro` cache flags. It clears injected GIS, CMake/vcpkg, and
+pkg-config settings before the fixed commands run. Owner-provided URL/publisher
+hash/retrieval fields are recorded but are not independent archive verification
+until the original immutable source archive accompanies the real recipe.
+
+The builder publishes only a staged four-file test output: deterministic ZIP,
+package lock, normalized definition, and re-verified manifest. The package can
+contain only root `bin` executables/declared reachable DLLs plus `share/gdal`,
+`share/proj`, and `licenses`; it rejects links, case-colliding paths, extra
+binaries, unsupported drivers, an inaccurate explicit EPSG:26917 conversion,
+and undeclared or unused PE imports. Manifest source records now include positive
+byte sizes and use `sourceDateEpoch` for a deterministic generation time. GDAL's
+non-disableable built-ins still require a real-build exact driver inventory; the
+staging check proves required drivers and a forbidden risk set, not a final
+closed-world driver allowlist. Five fake-tool tests pass and `pnpm test:artifacts`
+runs them with the York/ONNX and shared manifest suites.
+
+This does not remove the external gate. No real recipe, dependency-prefix lock,
+complete notice bundle, source archive identity, PE asset, release URL, catalog
+strategy, or managed install smoke exists. The current tool hashes and `/Brepro`
+are not a claim that the ambient Windows SDK/include/lib environment is fully
+hermetic or that CMake cannot select an unreviewed static dependency; actual
+link-input review, the exact driver inventory, and the second clean Windows
+MSVC/vcpkg comparison remain required before any release asset or catalog
+promotion.
 
 1. Qualify a reproducible minimal open-driver GDAL package; keep its runtime
    consent and complete notice inventory.

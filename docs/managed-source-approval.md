@@ -128,7 +128,7 @@ The approved safe path is a source rebuild pinned to the proven GDAL 3.12.4
 commit `f2ff911fee59d4b647dd7b2c030c389c9c062d8c`, with only the required ESRI
 Shapefile, GeoPackage, FlatGeobuf, OpenFileGDB, SQLite, PROJ, and necessary
 open-codec support enabled. Its build definition must pin every source/dependency
-and license, emit a complete tree manifest, and prove the four required OGR
+and license, emit a complete tree manifest, and prove the approved OGR
 drivers plus EPSG:26917-to-WGS84 normalization before an asset is publishable.
 
 Catalog `2026.07.13-internal.8` reserves the expected source-build layout as
@@ -144,3 +144,17 @@ Before publishing a native asset, retain the full GDAL/PROJ/SQLite/EPSG notice
 closure and compare the locked output from a second clean Windows MSVC/vcpkg
 builder. A deterministic archive makes the declared package reproducible, but
 does not alone prove separately compiled PE binaries are byte-identical.
+
+`scripts/build_gdal_asset.py` now provides a fake-tool-qualified source-only
+staging boundary: it accepts only local hash-locked GDAL/dependency/notice trees,
+requires explicit notice coverage and pinned CMake/Ninja/MSVC/dumpbin/Node
+identities, produces the reserved `bin`/`share/gdal`/`share/proj` layout, and
+checks the approved driver surface, exact CRS fixture, and PE import closure.
+It does not independently verify an upstream source archive, prove that CMake
+selected no ambient SDK libraries, or establish the full driver inventory from a
+real build. Retaining and checking the original archive, reviewing actual link
+inputs, and recording that inventory remain release gates.
+This records an implementation capability only. A real immutable upstream source
+archive identity, reviewed dependency-prefix lock, complete notice bundle, output
+asset, independently re-hashed release URL, and second clean-builder comparison
+remain required before `gdal` can leave `pendingApproval`.

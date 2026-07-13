@@ -97,6 +97,18 @@ later agent does not mistake an intentional boundary for an unfinished feature.
     RoadWatcher's OGR children; clear inherited GDAL/PROJ/plugin configuration,
     disable PROJ networking and VRT Python/raw bands, and leave user overrides
     unchanged.
+  - [x] `[AGENT]` Add a source-only, fixed-profile GDAL asset builder. It accepts
+    only hash-locked local source/prefix/notice trees and pinned local
+    CMake/Ninja/MSVC/dumpbin/Node tools; validates notice coverage, cache flags,
+    exact package layout, required drivers, an EPSG:26917 conversion, and the PE
+    dependency closure before deterministic archive/manifest publication. Five
+    fake-tool tests pass; no production recipe, binary, URL, or catalog promotion
+    was created.
+  - [ ] `[BLOCKED-ON-USER]` Provide the immutable GDAL source-archive evidence,
+    reviewed dependency-prefix/toolchain lock, complete notice bundle, and exact
+    approved driver inventory for a real build. The staging builder verifies
+    canonical local tree content, but it cannot independently prove remote
+    publisher metadata or that an ambient Windows SDK/library was not selected.
   - [ ] `[AGENT]` Produce and qualify the owner-approved minimal open-driver
     package from pinned source with unused database/proprietary drivers disabled;
     do not use the mutable daily bundle or its license-gated plugins.
@@ -121,8 +133,8 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Add a deterministic, content-locked ZIP foundation that rejects
   undeclared files, hash drift, unsafe paths, links/reparse points, and output
   replacement before York/ONNX-specific build recipes are approved.
-- [x] `[AGENT]` Add reproducible York-buffered OSM/Valhalla tile and ONNX
-  artifact builders.
+- [x] `[AGENT]` Add reproducible York-buffered OSM/Valhalla tile, ONNX, and
+  source-only GDAL artifact builders.
   - [x] `[AGENT]` Add the source-locked York/Valhalla builder with verified
     York-boundary-plus-10-km coverage, fixed commands, bounded execution,
     deterministic packaging, and atomic output publication.
@@ -132,6 +144,9 @@ later agent does not mistake an intentional boundary for an unfinished feature.
     definition, and package lock before publishing any output set.
   - [x] `[AGENT]` Export, structurally validate, package, emit, and re-verify the
     complete YOLO11n-compatible ONNX model/labels output set.
+  - [x] `[AGENT]` Emit deterministic source-size provenance and
+    `sourceDateEpoch` generation time for every managed artifact manifest; GDAL
+    source-tree sizes are canonical regular-file totals.
 - [x] `[AGENT]` Add bounded one-shot managed Valhalla matching without Docker or
   a persistent service.
 - [x] `[AGENT]` Preserve configured HTTP Valhalla and OSRM fallbacks.
@@ -223,7 +238,10 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   with the release build. A deterministic ZIP proves the package inputs and
   layout, but does not by itself prove independently compiled binaries are
   byte-identical.
-- [x] `[AGENT]` Keep managed GDAL constrained to the four requested open vector
+- [ ] `[USER-CONTEXT]` Retain the original immutable GDAL source archive and its
+  publisher hash alongside the reviewed recipe. A local extracted-tree hash is a
+  build-input lock, not independent proof of remote source provenance.
+- [x] `[AGENT]` Keep managed GDAL constrained to the approved local open-vector
   formats and local CRS resources. This intentionally excludes optional
   database, proprietary, network, plugin, Python-VRT, and remote-grid features
   rather than shipping a broad third-party GIS runtime.
@@ -266,6 +284,11 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Four ONNX builder tests cover locked exporter identity, static
   scanner-compatible tensors, labels/opset/source rejection, and complete
   archive/lock/definition/manifest publication with a fake export worker.
+- [x] `[AGENT]` Five GDAL builder tests cover locked source/tool/notice inputs,
+  CMake profile and reproducibility-flag drift, runtime containment, exact CRS
+  conversion, PE dependency closure/reachability, forbidden layout injection,
+  and deterministic four-file publication. They do not substitute for a real
+  Windows source build or second-builder comparison.
 - [ ] `[USER-CONTEXT]` Decide whether internal qualification may exclude
   GPStitch's upstream browser suite or whether RoadWatcher should carry a
   reviewed GPStitch Windows-test patch and the separate Playwright browser.

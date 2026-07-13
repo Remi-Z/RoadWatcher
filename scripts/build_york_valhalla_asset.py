@@ -146,11 +146,13 @@ def build_york_stage(
     tiles.mkdir(parents=True)
 
     sources = {source["role"]: source for source in recipe["sources"]}
+    source_sizes: dict[str, int] = {}
     for source in sources.values():
         local_path = _safe_local_file(source["localPath"], f"{source['role']} source")
         actual = _sha256_file(local_path)
         if actual != source["downloadedSha256"]:
             raise RecipeError(f"{source['role']} SHA-256 does not match its approved recipe")
+        source_sizes[source["role"]] = local_path.stat().st_size
 
     boundary_path = Path(sources["yorkBoundary"]["localPath"]).resolve(strict=True)
     boundary_bounds = _geojson_bounds(boundary_path)
@@ -215,7 +217,7 @@ def build_york_stage(
         "platform": recipe["platform"],
         "artifactLicense": recipe["artifactLicense"],
         "sources": [
-            _manifest_source(source)
+            _manifest_source(source, source_sizes[source["role"]])
             for source in sorted(recipe["sources"], key=lambda item: item["role"])
         ],
         "tools": [
@@ -270,7 +272,7 @@ def build_release_asset(
             raise RecipeError("Node.js is required to emit the managed artifact manifest")
         manifest_tool = Path(__file__).with_name("managed-artifact-manifest.mjs").resolve(strict=True)
         _run_bounded(
-            [node, str(manifest_tool), "build", str(definition_path), str(archive), str(manifest)],
+            [node, str(manifest_tool), "build", str(definition_path), str(archive), str(manifest), f"--generated-at={recipe['sourceDateEpoch']}"],
             staging,
             120,
             1024 * 1024,
@@ -342,8 +344,9 @@ def _license(value: object, label: str) -> None:
     _https(value["url"], f"{label} URL")
 
 
-def _manifest_source(source: dict[str, object]) -> dict[str, object]:
+def _manifest_source(source: dict[str, object], size_bytes: int) -> dict[str, object]:
     result = {key: value for key, value in source.items() if key not in {"role", "localPath"}}
+    result["sizeBytes"] = size_bytes
     return result
 
 

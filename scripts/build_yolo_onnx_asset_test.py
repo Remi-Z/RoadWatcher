@@ -87,6 +87,8 @@ class YoloOnnxAssetBuilderTests(unittest.TestCase):
         manifest = json.loads((output / f"{base}.manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["artifact"]["sha256"], result["sha256"])
         self.assertEqual(manifest["build"]["parameters"]["labelCount"], 2)
+        self.assertEqual(manifest["generatedAt"], self.recipe["sourceDateEpoch"])
+        self.assertTrue(all(source["sizeBytes"] > 0 for source in manifest["sources"]))
 
     def test_rejects_dynamic_wrong_class_or_wrong_opset_contracts(self) -> None:
         contract = self._contract()

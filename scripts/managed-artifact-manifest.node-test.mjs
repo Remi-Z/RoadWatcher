@@ -19,7 +19,8 @@ function definition() {
       license: { id: "odbl-1-0", name: "ODbL 1.0", url: "https://www.openstreetmap.org/copyright" },
       downloadedSha256: "a".repeat(64),
       publisherSha256: "a".repeat(64),
-      retrievedAt: "2026-07-13T12:00:00.000Z"
+      retrievedAt: "2026-07-13T12:00:00.000Z",
+      sizeBytes: 123
     }],
     tools: [{ name: "valhalla", version: "3.7.0" }, { name: "osmium", version: "1.18.0" }],
     build: { recipe: "scripts/build-york-valhalla.mjs", recipeVersion: "1", parameters: { bufferMeters: 10000 } }
@@ -74,4 +75,7 @@ test("rejects unsafe identity, URLs, duplicate tools, and non-scalar parameters"
   const nested = definition();
   nested.build.parameters = { nested: { unsafe: true } };
   assert.throws(() => validateDefinition(nested), /must be scalar/);
+  const noSourceSize = definition();
+  noSourceSize.sources[0].sizeBytes = 0;
+  assert.throws(() => validateDefinition(noSourceSize), /source sizeBytes/);
 });

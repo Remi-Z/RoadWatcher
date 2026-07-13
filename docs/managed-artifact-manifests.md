@@ -9,8 +9,9 @@ The generator refuses incomplete definitions. Each definition must identify:
 - a lowercase artifact ID, artifact kind, exact version, and
   `windows-x86_64` platform;
 - the artifact's license;
-- every source endpoint, source version, license, downloaded SHA-256, retrieval
-  time, and either a publisher SHA-256 or HTTP ETag/Last-Modified identity;
+- every source endpoint, source version, positive byte size, license, downloaded
+  SHA-256, retrieval time, and either a publisher SHA-256 or HTTP
+  ETag/Last-Modified identity;
 - every build tool and exact version;
 - the checked-in recipe/version and scalar build parameters.
 
@@ -20,7 +21,8 @@ Create a manifest only after a builder has produced its final immutable file:
 node scripts/managed-artifact-manifest.mjs build `
   artifacts/definitions/york-valhalla-tiles.json `
   artifacts/output/york-valhalla-tiles.zip `
-  artifacts/output/york-valhalla-tiles.manifest.json
+  artifacts/output/york-valhalla-tiles.manifest.json `
+  --generated-at=2026-07-13T12:00:00Z
 ```
 
 Verify the file again before publishing or catalog promotion:
@@ -31,9 +33,11 @@ node scripts/managed-artifact-manifest.mjs verify `
   artifacts/output/york-valhalla-tiles.zip
 ```
 
-The manifest records final file name, byte size, SHA-256, source/license
-provenance, tool versions, recipe identity, sorted parameters, and UTC generation
-time. Verification rejects file-name, size, or hash drift.
+The manifest records final file name, byte size, SHA-256, source byte sizes and
+license provenance, tool versions, recipe identity, sorted parameters, and UTC
+generation time. Verification rejects file-name, size, or hash drift. The three
+release builders pass their whole-second `sourceDateEpoch` as `--generated-at`,
+so a repeat with the same inputs does not acquire a wall-clock manifest change.
 
 The generator does not approve licenses, choose sources, publish GitHub assets,
 or make an artifact installable. Those remain explicit owner gates. Definitions
@@ -189,3 +193,48 @@ current raw YOLO output parser; it does not measure detector quality, accuracy,
 or dataset suitability. Those require the owner-approved weights and a separate
 representative-video review. The real exporter run is intentionally deferred
 until the model/license-consent gate is complete.
+
+## Minimal GDAL/OGR release builder
+
+`scripts/build_gdal_asset.py` is a source-only Windows x64 builder for the
+pending managed GDAL component. It does not download files, accept command
+templates, or accept an output path from a recipe. A real recipe must name only
+three locally available, hash-locked regular-file trees: the pinned GDAL 3.12.4
+source checkout, a dependency prefix, and a complete notice bundle. Every tree
+has a canonical content-tree SHA-256 and explicit notice-file coverage. The
+recipe records owner-supplied URL/version/license/publisher/retrieval evidence,
+but this staging builder verifies the local tree identity rather than an original
+upstream download. The source checkout must declare
+commit `f2ff911fee59d4b647dd7b2c030c389c9c062d8c`; its local content-tree hash
+is the build-input identity, while `publisherSha256` remains a reviewed recipe
+assertion until the original immutable source archive is retained and checked.
+
+The recipe also locks local hashes and declared versions for CMake, Ninja, MSVC
+`cl`/`link`, `dumpbin`, and Node. The script uses only its fixed CMake vector:
+shared release apps; static MSVC runtime; optional drivers, plugins, CURL,
+network/proprietary/database clients, Python bindings, and raw VRT bands off;
+it requires Shapefile, GeoPackage, SQLite, FlatGeobuf, OpenFileGDB, PROJ, and
+GeoJSON support. GDAL also has non-disableable built-ins, so the exact complete
+driver list must be captured and approved from a real build before release. It
+clears injected CMake/vcpkg/pkg-config and GIS network configuration, validates
+the generated cache and `/Brepro` flags, and runs no recipe-supplied command or
+argument list.
+
+The staged payload is exactly `bin/gdal.dll`, `bin/ogrinfo.exe`,
+`bin/ogr2ogr.exe`, declared reachable runtime DLLs, `share/gdal`, `share/proj`,
+and `licenses`. Qualification requires the requested driver list, an explicit
+EPSG:26917-to-WGS84 fixture conversion, and a `dumpbin` import closure with no
+undeclared, plugin, database, network, or proprietary dependency. Binaries
+outside the root `bin` directory, case-colliding paths, links/reparse points,
+and incomplete notices fail closed. Its manifest records canonical tree-content
+byte totals for the three source trees; that is a reproducible build-input record,
+not an assertion that the values are original downloaded-archive byte counts.
+
+This is build infrastructure, not a GDAL release asset. No real source recipe,
+toolchain/prefix lock, license bundle, generated archive, GitHub URL, installer
+strategy, or catalog hash is present. `/Brepro`, pinned executable hashes, and
+deterministic packaging make a reviewed build repeatable, but do not establish a
+fully hermetic Windows SDK/MSVC environment, prove CMake avoided all ambient
+libraries, or prove independently compiled PE bytes identical. The original
+source archive, actual link-input review, exact driver inventory, and second
+clean Windows builder comparison remain explicit owner gates before publication.
