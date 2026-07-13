@@ -966,6 +966,24 @@ scripts currently keep their security and publication helpers self-contained;
 a later refactor may share those helpers after the real recipes prove whether
 their policies remain identical.
 
+The remaining source and license gate is now normalized in
+`docs/managed-source-approval.md`. It is intentionally a proposal, not an
+approval record. It separates fully identified artifacts (the official uv
+0.11.23 archive and the locked pyvalhalla wheel) from binaries that passed real
+smokes but whose source archives were not retained (Gyan FFmpeg 8.1.1 and
+GISInternals GDAL 3.12.4). It also presents explicit owner choices for the
+FFmpeg version, Valhalla environment delivery, immutable Ontario/York inputs,
+the reproducible YOLO weights path versus a prebuilt ONNX, and each municipal
+GIS layer.
+
+This closes the agent-side decision-discovery task without weakening the gate:
+catalog entries remain `pendingApproval`/`blockedOnUser`, license digests remain
+placeholders, and no archive URL was inferred from an executable hash. Once a
+row is approved, the next modular implementation must bind the exact URL, size,
+SHA-256, notices, layout, and approval evidence and then rerun focused
+install/validation/removal qualification. Generated GitHub assets still require
+owner publication or explicit workflow authorization before catalog promotion.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

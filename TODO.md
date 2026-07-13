@@ -67,6 +67,9 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 
 ### Initial managed components
 
+- [x] `[AGENT]` Preserve an evidence-backed managed-source approval matrix that
+  distinguishes locally proven executables from fully identified distributable
+  archives and leaves every owner approval explicitly unchecked.
 - [ ] `[AGENT]` Bootstrap pinned uv and isolated uv-managed Python 3.12.
 - [x] `[AGENT]` Reuse runtime preparation for locked GPStitch and CV
   environments.
@@ -135,7 +138,7 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 
 - [ ] `[USER-CONTEXT]` Approve the exact executable, data, and model sources and
   their license/redistribution terms before the catalog is promoted beyond an
-  internal build.
+  internal build. Use `docs/managed-source-approval.md` as the decision record.
 - [ ] `[USER-CONTEXT]` Review and approve the CV license-consent copy.
 - [ ] `[USER-CONTEXT]` Validate the municipal open-data terms and intended layer
   selection for every curated GIS entry.

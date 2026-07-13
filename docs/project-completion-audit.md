@@ -38,6 +38,7 @@ unpublished hashes in final evidence.
 | Managed artifact provenance manifests | Strict generator/verifier, three Node tests, release-audit integration, manifest documentation | Proven complete |
 | Deterministic release-asset packaging | Exact-tree/SHA lock, normalized stored ZIPs, atomic no-overwrite publication, three Python tests | Proven complete as shared packaging foundation; York/ONNX recipes missing |
 | Reproducible York/ONNX release-asset production | Strict York boundary/OSM/config/tool recipe and strict weights/labels/exporter ONNX recipe; coverage/tensor validation, fixed bounded commands, deterministic archives and verified manifest publication; catalog placeholders | Both builders proven with fake tools/workers; real approved recipes/assets remain owner-gated |
+| Managed source approval evidence | Exact proposal matrix for uv/Python, Valhalla, FFmpeg, GDAL, York OSM/boundary, YOLO, and municipal GIS; preserves source gaps and owner-only decisions | Agent discovery complete; every approval and real catalog promotion remains owner-gated |
 | Managed GIS install-to-project handoff | Catalog/build/runtime validation, ownership-confined backend resolution, strict frontend parsing, explicit Setup Center action, existing native import command | Contract and UI proven; production datasets remain owner-gated |
 | Windows source/license packaging | Runtime verifier, Rust build gate, fresh NSIS archive inspection | Proven complete |
 | Version/signing/update/release policy | Bundled release manifest, Rust build gate, three Node verifier tests, strict installer/executable Authenticode evidence script | Proven complete as development policy |
@@ -109,17 +110,19 @@ than a false global failure.
 
 ## Required External Gates
 
-1. Acquire and configure the intended Windows code-signing identity.
-2. Build the exact candidate/stable artifact, validate both installer and
+1. Complete the owner-only decisions in `docs/managed-source-approval.md`; do
+   not treat local smoke executable hashes as distributable archive identities.
+2. Acquire and configure the intended Windows code-signing identity.
+3. Build the exact candidate/stable artifact, validate both installer and
    installed executable signatures, and run `docs/windows-release-validation.md`
    on a clean supported Windows VM.
-3. Select/provide approved deployment CV weights and labels if CV is included
+4. Select/provide approved deployment CV weights and labels if CV is included
    operationally. The real development smoke is complete; weights remain
    external and are not redistributed.
-4. Select and license approved deployment GDAL/OGR binaries if non-GeoJSON or
+5. Select and license approved deployment GDAL/OGR binaries if non-GeoJSON or
    arbitrary-CRS ingestion is in operational scope. Real Windows adapter
    normalization evidence is complete; binaries remain external.
-5. Supply and validate the intended York/GTA Valhalla/OSRM data for deployment.
+6. Supply and validate the intended York/GTA Valhalla/OSRM data for deployment.
    The live loopback integration smoke is complete; the temporary three-node
    graph is not production map data.
 
