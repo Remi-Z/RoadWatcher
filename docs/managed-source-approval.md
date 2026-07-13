@@ -114,3 +114,19 @@ the server changed the bytes after the smoke while retaining the same URL. A
 catalog hash would reject the new bytes safely, but every fresh install would
 then fail. The owner has approved the recommended minimal open-driver path; the
 remaining work is to produce or select an immutable package and qualify it.
+
+The 2026-07-13 dependency-closure audit also rules out “minimalizing” that daily
+archive by deleting plugin folders. `dumpbin /dependents` over `ogrinfo.exe`,
+`ogr2ogr.exe`, `gdal.dll`, and their local recursive dependencies found 27 local
+runtime files. `gdal.dll` directly imports PostgreSQL, MySQL, SpatiaLite,
+OpenSSL, curl, XML, SQLite, PROJ, GEOS, image-codec, and runtime libraries. The
+archive's top-level notices cover only a subset of that linked closure. Removing
+those DLLs would break process loading; retaining them would not meet the chosen
+minimal-driver goal or complete the notice inventory.
+
+The approved safe path is a source rebuild pinned to the proven GDAL 3.12.4
+commit `f2ff911fee59d4b647dd7b2c030c389c9c062d8c`, with only the required ESRI
+Shapefile, GeoPackage, FlatGeobuf, OpenFileGDB, SQLite, PROJ, and necessary
+open-codec support enabled. Its build definition must pin every source/dependency
+and license, emit a complete tree manifest, and prove the four required OGR
+drivers plus EPSG:26917-to-WGS84 normalization before an asset is publishable.

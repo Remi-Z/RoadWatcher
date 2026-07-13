@@ -1059,6 +1059,16 @@ The recommended owner choice is a newly qualified minimal open-driver package;
 the alternative is to freeze and publish the exact retained package only after
 reviewing every included term. Neither distribution was promoted.
 
+A subsequent recursive PE dependency audit proves the retained binary cannot be
+safely reduced by copying only the OGR executables and obvious DLLs. The closure
+contains 27 local runtime files, and `gdal.dll` directly imports PostgreSQL,
+MySQL, SpatiaLite, OpenSSL, curl, XML, SQLite, PROJ, GEOS, and codec libraries.
+The archive does not provide a complete notice set for that closure. Therefore
+the next implementation must rebuild pinned GDAL commit
+`f2ff911fee59d4b647dd7b2c030c389c9c062d8c` with unused database/proprietary
+drivers disabled and a complete source/license lock. Pruning the mutable daily
+ZIP is explicitly rejected because it would be broken or legally incomplete.
+
 The owner-run internal milestone now has a separate qualification contract in
 `docs/internal-pilot-validation.md` and a machine-checkable evidence verifier at
 `scripts/verify-internal-pilot.mjs`. The verifier requires every planned flow,

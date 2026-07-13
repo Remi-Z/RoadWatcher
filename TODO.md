@@ -89,8 +89,12 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   - [x] `[AGENT]` Recover the exact proven GISInternals package name, URL,
     retained hash, version, plugin tree, and notice inventory; prove that its
     daily publisher URL mutates in place.
+  - [x] `[AGENT]` Reject binary-tree pruning as the minimal-package strategy:
+    the proven `gdal.dll` directly links database/client libraries and the
+    archive does not carry a complete license set for that dependency closure.
   - [ ] `[AGENT]` Produce and qualify the owner-approved minimal open-driver
-    package; do not use the mutable daily bundle or its license-gated plugins.
+    package from pinned source with unused database/proprietary drivers disabled;
+    do not use the mutable daily bundle or its license-gated plugins.
 - [x] `[AGENT]` Add a locked `pyvalhalla==3.7.0` environment.
   - [x] `[AGENT]` Bundle and release-audit the exact Python 3.12 lock definition
     and Windows x64 wheel hash without redistributing the unapproved wheel.
