@@ -967,22 +967,36 @@ scripts currently keep their security and publication helpers self-contained;
 a later refactor may share those helpers after the real recipes prove whether
 their policies remain identical.
 
-The remaining source and license gate is now normalized in
-`docs/managed-source-approval.md`. It is intentionally a proposal, not an
-approval record. It separates fully identified artifacts (the official uv
-0.11.23 archive and the locked pyvalhalla wheel) from binaries that passed real
-smokes but whose source archives were not retained (Gyan FFmpeg 8.1.1 and
-GISInternals GDAL 3.12.4). It also presents explicit owner choices for the
-FFmpeg version, Valhalla environment delivery, immutable Ontario/York inputs,
-the reproducible YOLO weights path versus a prebuilt ONNX, and each municipal
-GIS layer.
+The remaining source and license gate is normalized in
+`docs/managed-source-approval.md`. It records the approved uv/Python identities,
+fully identified but unapproved pyvalhalla and FFmpeg candidates, the mutable
+GDAL daily-build problem, and the open Ontario/York, YOLO, and municipal-data
+choices. Unapproved catalog entries remain `pendingApproval` or
+`blockedOnUser`; their consent digests remain placeholders. Generated GitHub
+assets still require owner publication or explicit workflow authorization
+before catalog promotion.
 
-This closed the initial agent-side decision-discovery task without weakening the
-gate: unapproved catalog entries remain `pendingApproval`/`blockedOnUser`, their
-license digests remain placeholders, and no archive URL was inferred from an
-executable hash. The subsequently approved uv/Python row now binds its exact
-identities and qualification below. Generated GitHub assets still require owner
-publication or explicit workflow authorization before catalog promotion.
+The proven Gyan FFmpeg package has now been recovered as the immutable 8.1.1
+full-build GitHub Release ZIP: 252,194,496 bytes, SHA-256
+`49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552`.
+Gyan's release metadata and Microsoft's WinGet manifest agree on that identity;
+the local executable hashes, source commit, GPLv3 license, and static build
+configuration match. Managed promotion remains owner-blocked because the full
+build's large linked-library inventory creates redistribution/source obligations
+that an agent cannot accept.
+
+The GDAL smoke used GISInternals'
+`release-1944-x64-gdal-3-12-mapserver-8-6.zip` daily stable-branch package. The
+retained 61,735,748 bytes still hash to
+`B0FC7620B965FA6A176C4B9F2110564233A58A4EBBEEC8E37C1F69443E24C048`,
+and the bounded OGR tools report GDAL 3.12.4. The archive includes twelve
+library/distributor RTF notices plus optional ECW, MrSID, Oracle, FileGDB, and
+MSSQL plugin trees. Crucially, GISInternals mutates this daily URL in place: on
+2026-07-13 it served 61,735,876 bytes under the same URL. Pinning the old hash
+against that endpoint would make clean installs fail safely but permanently.
+The recommended owner choice is a newly qualified minimal open-driver package;
+the alternative is to freeze and publish the exact retained package only after
+reviewing every included term. Neither distribution was promoted.
 
 The owner-run internal milestone now has a separate qualification contract in
 `docs/internal-pilot-validation.md` and a machine-checkable evidence verifier at

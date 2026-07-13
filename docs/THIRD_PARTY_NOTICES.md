@@ -80,13 +80,28 @@ declared AGPL-3.0 license. The temporary model and COCO labels are not committed
 bundled, or redistributed by RoadWatcher. A deployment operator must select and
 license its own model/labels.
 
-The installed-GDAL smoke used the temporary GISInternals MSVC 2022 x64 GDAL
-3.12 package listed by the official GDAL download documentation. The downloaded
-61,735,748-byte archive had SHA-256
-`B0FC7620B965FA6A176C4B9F2110564233A58A4EBBEEC8E37C1F69443E24C048`.
-It and its optional plugins are not committed, bundled, or redistributed; a
-deployment operator must inventory the exact selected GDAL build and plugin
-licenses.
+The installed-GDAL smoke used the temporary GISInternals MSVC 2022 x64 daily
+stable-branch package
+`release-1944-x64-gdal-3-12-mapserver-8-6.zip`. The downloaded 61,735,748-byte
+archive had SHA-256
+`B0FC7620B965FA6A176C4B9F2110564233A58A4EBBEEC8E37C1F69443E24C048`
+and its OGR tools reported GDAL 3.12.4. It contains the distributor/GDAL notices
+plus ECW, FileGDB, FITS, HDF4, HDF5, MrSID, NetCDF, OCI, and SZIP notices and
+optional/plugin trees. It is not committed, bundled, or redistributed.
+
+The publisher reuses the same daily URL for changing bytes: its content length
+had changed to 61,735,876 bytes by 2026-07-13. RoadWatcher must not present that
+mutable URL as an immutable managed artifact. An owner-approved frozen package
+or newly qualified minimal open-driver build, with its complete notices, is
+required before managed GDAL can be promoted.
+
+The proven FFmpeg smoke maps to Gyan's immutable
+`ffmpeg-8.1.1-full_build.zip`, 252,194,496 bytes, SHA-256
+`49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552`.
+The package retains its GPLv3 `LICENSE` and `README.txt` with source commit and
+static linked-library configuration. It remains external and unavailable in
+the managed catalog until the owner approves the exact GPLv3 distribution and
+its full source/notice obligations.
 
 The live matcher smoke used the official Project OSRM backend v5.27.1 container
 image at digest

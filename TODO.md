@@ -80,7 +80,17 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Reuse runtime preparation for locked GPStitch and CV
   environments.
 - [ ] `[AGENT]` Install and validate the audited FFmpeg/ffprobe distribution.
+  - [x] `[AGENT]` Recover and verify the exact proven Gyan 8.1.1 archive URL,
+    size, publisher/WinGet hash, executable hashes, source identity, and
+    aggregate GPLv3 notice.
+  - [ ] `[BLOCKED-ON-USER]` Promote FFmpeg only after the owner accepts the
+    full static-build redistribution/source obligations.
 - [ ] `[AGENT]` Install and validate the audited GDAL/OGR distribution.
+  - [x] `[AGENT]` Recover the exact proven GISInternals package name, URL,
+    retained hash, version, plugin tree, and notice inventory; prove that its
+    daily publisher URL mutates in place.
+  - [ ] `[BLOCKED-ON-USER]` Select a reviewed frozen package or a minimal
+    open-driver build before promoting GDAL.
 - [x] `[AGENT]` Add a locked `pyvalhalla==3.7.0` environment.
   - [x] `[AGENT]` Bundle and release-audit the exact Python 3.12 lock definition
     and Windows x64 wheel hash without redistributing the unapproved wheel.
