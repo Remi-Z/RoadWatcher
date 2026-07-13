@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "platform": "windows-x86_64",
-  "catalogVersion": "2026.07.13-internal.3",
+  "catalogVersion": "2026.07.13-internal.4",
   "components": [
     {
       "id": "uv-python",
@@ -84,7 +84,8 @@
       "artifact": null,
       "dependencies": ["managed-valhalla"],
       "references": [
-        { "id": "config", "path": "valhalla.json", "kind": "file" }
+        { "id": "config", "path": "valhalla.json", "kind": "file" },
+        { "id": "tiles", "path": "tiles", "kind": "directory" }
       ],
       "projectImports": []
     },

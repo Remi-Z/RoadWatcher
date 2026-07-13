@@ -309,9 +309,15 @@ impl DependencyManager {
         find_named_file(&root, file_name, 4)
     }
 
-    pub fn managed_named_file(&self, component_id: &str, file_name: &str) -> Option<PathBuf> {
-        let root = self.managed_component_path(component_id)?;
-        find_named_file(&root, file_name, 6)
+    pub fn managed_reference(&self, component_id: &str, reference_id: &str) -> Option<PathBuf> {
+        let component = self.component(component_id).ok()?;
+        if !self.is_ready(component_id) {
+            return None;
+        }
+        self.resolve_references(component)
+            .ok()?
+            .remove(reference_id)
+            .map(PathBuf::from)
     }
 
     pub fn managed_identity(&self, component_id: &str) -> Option<ManagedComponentIdentity> {
@@ -1411,6 +1417,10 @@ mod tests {
             .managed_references
             .get("executable")
             .is_some_and(|path| path.ends_with("tool.exe")));
+        assert!(manager
+            .managed_reference("tool", "executable")
+            .is_some_and(|path| path.ends_with("tool.exe")));
+        assert!(manager.managed_reference("tool", "undeclared").is_none());
         assert_eq!(ready.managed_project_imports.len(), 1);
         assert!(ready.managed_project_imports[0]
             .source_path
@@ -1420,6 +1430,7 @@ mod tests {
         let invalid = manager.catalog().components.remove(0);
         assert_eq!(invalid.state, "invalid");
         assert!(invalid.managed_references.is_empty());
+        assert!(manager.managed_reference("tool", "executable").is_none());
         fs::remove_dir_all(root).unwrap();
     }
 

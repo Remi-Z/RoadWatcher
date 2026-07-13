@@ -462,10 +462,11 @@ fn gpx_match(
                     .unwrap_or_default(),
             )
         };
-        let config = dependencies.managed_named_file("york-valhalla-tiles", "valhalla.json");
+        let config = dependencies.managed_reference("york-valhalla-tiles", "config");
+        let tile_directory = dependencies.managed_reference("york-valhalla-tiles", "tiles");
         let tile_identity = dependencies.managed_identity("york-valhalla-tiles");
-        match (executable, config, tile_identity) {
-            (Some(executable), Some(config), Some(tile_identity))
+        match (executable, config, tile_directory, tile_identity) {
+            (Some(executable), Some(config), Some(tile_directory), Some(tile_identity))
                 if !matcher_version.is_empty() =>
             {
                 let config_bytes = fs::read(&config).map_err(|error| {
@@ -477,6 +478,7 @@ fn gpx_match(
                 Some(ManagedValhallaRequest {
                     executable,
                     config,
+                    tile_directory,
                     work_root: app
                         .path()
                         .app_local_data_dir()

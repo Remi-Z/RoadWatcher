@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -18,6 +18,8 @@ use uuid::Uuid;
 
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_MATCHED_POINTS: usize = 1_000_000;
+const MAX_CONFIG_BYTES: usize = 4 * 1024 * 1024;
+const MANAGED_TILE_DIRECTORY_TOKEN: &str = "${ROADWATCHER_TILE_DIR}";
 
 #[derive(Clone, Debug)]
 pub struct RouteMatcherRequest {
@@ -32,6 +34,7 @@ pub struct RouteMatcherRequest {
 pub struct ManagedValhallaRequest {
     pub executable: PathBuf,
     pub config: PathBuf,
+    pub tile_directory: PathBuf,
     pub work_root: PathBuf,
     pub matcher_version: String,
     pub tile_version: String,
@@ -294,9 +297,12 @@ fn attempt_managed_valhalla(
     managed: &ManagedValhallaRequest,
     raw: &[RoutePoint],
 ) -> Result<Vec<(f64, f64)>, RouteMatcherError> {
-    if !managed.executable.is_file() || !managed.config.is_file() {
+    if !managed.executable.is_file()
+        || !managed.config.is_file()
+        || !managed.tile_directory.is_dir()
+    {
         return Err(RouteMatcherError::Blocked(
-            "managed Valhalla executable or configuration is missing".to_string(),
+            "managed Valhalla executable, configuration, or tile directory is missing".to_string(),
         ));
     }
     fs::create_dir_all(&managed.work_root)
@@ -306,6 +312,12 @@ fn attempt_managed_valhalla(
     let result = (|| {
         let request_path = work.join("trace-attributes-request.json");
         let result_path = work.join("trace-attributes-result.json");
+        let runtime_config_path = work.join("valhalla.runtime.json");
+        materialize_managed_valhalla_config(
+            &managed.config,
+            &managed.tile_directory,
+            &runtime_config_path,
+        )?;
         let locations: Vec<Value> = raw
             .iter()
             .map(|point| json!({ "lat": point.latitude, "lon": point.longitude, "time": point.time_seconds }))
@@ -323,7 +335,7 @@ fn attempt_managed_valhalla(
             .map_err(|error| RouteMatcherError::Transport(error.to_string()))?;
         let output = run_bounded_process(
             Command::new(&managed.executable)
-                .arg(&managed.config)
+                .arg(&runtime_config_path)
                 .arg("trace_attributes")
                 .arg(&request_path),
             Duration::from_secs(90),
@@ -346,6 +358,65 @@ fn attempt_managed_valhalla(
     })();
     let _ = fs::remove_dir_all(work);
     result
+}
+
+fn materialize_managed_valhalla_config(
+    template_path: &Path,
+    tile_directory: &Path,
+    output_path: &Path,
+) -> Result<(), RouteMatcherError> {
+    let template =
+        fs::read(template_path).map_err(|error| RouteMatcherError::Transport(error.to_string()))?;
+    if template.len() > MAX_CONFIG_BYTES {
+        return Err(RouteMatcherError::InvalidResponse(
+            "managed Valhalla configuration exceeds 4 MiB".to_string(),
+        ));
+    }
+    let mut document: Value = serde_json::from_slice(&template)
+        .map_err(|error| RouteMatcherError::InvalidResponse(error.to_string()))?;
+    let mjolnir = document
+        .get_mut("mjolnir")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| {
+            RouteMatcherError::InvalidResponse(
+                "managed Valhalla configuration is missing mjolnir".to_string(),
+            )
+        })?;
+    if mjolnir.get("tile_dir").and_then(Value::as_str) != Some(MANAGED_TILE_DIRECTORY_TOKEN) {
+        return Err(RouteMatcherError::InvalidResponse(
+            "managed Valhalla tile_dir is not the portable RoadWatcher token".to_string(),
+        ));
+    }
+    if mjolnir
+        .get("tile_extract")
+        .is_some_and(|value| !value.is_null() && value.as_str() != Some(""))
+    {
+        return Err(RouteMatcherError::InvalidResponse(
+            "managed Valhalla configuration cannot select a separate tile_extract".to_string(),
+        ));
+    }
+    mjolnir.remove("tile_extract");
+    let canonical_tiles = tile_directory
+        .canonicalize()
+        .map_err(|error| RouteMatcherError::Transport(error.to_string()))?;
+    if !canonical_tiles.is_dir() {
+        return Err(RouteMatcherError::Blocked(
+            "managed Valhalla tile directory is missing".to_string(),
+        ));
+    }
+    mjolnir.insert(
+        "tile_dir".to_string(),
+        Value::String(canonical_tiles.to_string_lossy().into_owned()),
+    );
+    let materialized = serde_json::to_vec(&document)
+        .map_err(|error| RouteMatcherError::InvalidResponse(error.to_string()))?;
+    if materialized.len() > MAX_CONFIG_BYTES {
+        return Err(RouteMatcherError::InvalidResponse(
+            "materialized Valhalla configuration exceeds 4 MiB".to_string(),
+        ));
+    }
+    fs::write(output_path, materialized)
+        .map_err(|error| RouteMatcherError::Transport(error.to_string()))
 }
 
 fn attempt_osrm<T: MatcherTransport>(
@@ -550,13 +621,14 @@ impl<T: MatcherTransport> RouteMatcherManager<T> {
 #[cfg(test)]
 mod tests {
     use super::{
-        execute_route_match, MatcherTransport, RouteMatcherError, RouteMatcherManager,
-        RouteMatcherRequest, SystemLocalHttpTransport,
+        execute_route_match, materialize_managed_valhalla_config, MatcherTransport,
+        RouteMatcherError, RouteMatcherManager, RouteMatcherRequest, SystemLocalHttpTransport,
     };
     use crate::project_store::{
         create_project_at, import_route_at, ProjectCreateRequest, RouteImportRequest,
         RouteMatchRequest, RoutePoint,
     };
+    use serde_json::Value;
     use std::collections::VecDeque;
     use std::fs;
     use std::path::PathBuf;
@@ -654,6 +726,47 @@ mod tests {
             Err(RouteMatcherError::InvalidResponse(_))
         ));
         assert_eq!(malformed.status().status, "failed");
+    }
+
+    #[test]
+    fn materializes_only_the_portable_managed_tile_directory() {
+        let root =
+            std::env::temp_dir().join(format!("roadwatcher-valhalla-config-{}", Uuid::new_v4()));
+        let tiles = root.join("tiles");
+        fs::create_dir_all(&tiles).unwrap();
+        let template = root.join("valhalla.json");
+        let output = root.join("runtime.json");
+        fs::write(
+            &template,
+            br#"{"mjolnir":{"tile_dir":"${ROADWATCHER_TILE_DIR}"},"service_limits":{}}"#,
+        )
+        .unwrap();
+        materialize_managed_valhalla_config(&template, &tiles, &output).unwrap();
+        let document: Value = serde_json::from_slice(&fs::read(&output).unwrap()).unwrap();
+        let expected_tiles = tiles.canonicalize().unwrap().to_string_lossy().into_owned();
+        assert_eq!(
+            document
+                .pointer("/mjolnir/tile_dir")
+                .and_then(Value::as_str),
+            Some(expected_tiles.as_str())
+        );
+
+        fs::write(&template, br#"{"mjolnir":{"tile_dir":"C:/untrusted"}}"#).unwrap();
+        assert!(matches!(
+            materialize_managed_valhalla_config(&template, &tiles, &output),
+            Err(RouteMatcherError::InvalidResponse(detail)) if detail.contains("portable")
+        ));
+
+        fs::write(
+            &template,
+            br#"{"mjolnir":{"tile_dir":"${ROADWATCHER_TILE_DIR}","tile_extract":"other.tar"}}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            materialize_managed_valhalla_config(&template, &tiles, &output),
+            Err(RouteMatcherError::InvalidResponse(detail)) if detail.contains("tile_extract")
+        ));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

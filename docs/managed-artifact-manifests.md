@@ -85,3 +85,25 @@ This packager does not download inputs, run Valhalla, export ONNX, decide which
 files belong in an artifact, or approve a source/license. York and ONNX recipe
 scripts must produce their isolated staging trees and package locks only after
 the adjacent owner approval gates in `TODO.md` are satisfied.
+
+## Portable York Valhalla layout
+
+The York tile archive must contain both `valhalla.json` and a `tiles` directory.
+The catalog declares these as separate, typed managed references. The hosted
+configuration is a portable template and must contain exactly this value:
+
+```json
+{
+  "mjolnir": {
+    "tile_dir": "${ROADWATCHER_TILE_DIR}"
+  }
+}
+```
+
+It must not select a non-empty `mjolnir.tile_extract`. Immediately before a
+one-shot match, Rust validates the bounded template, canonicalizes the
+ownership-confined catalog `tiles` reference, writes a job-local runtime config,
+and deletes it with the request/result workspace. The provenance
+`configSha256` remains the SHA-256 of the immutable portable template, not the
+machine-specific materialized copy. This keeps the artifact byte-reproducible
+and prevents a build-machine path from becoming an installation dependency.

@@ -115,6 +115,13 @@ function verifyDependencyCatalog(catalog) {
       assert(byId.has(dependency), `${component.id} depends on unknown component ${dependency}`);
     }
   }
+  const yorkTiles = byId.get("york-valhalla-tiles");
+  assert(yorkTiles, "managed York Valhalla tile component is missing");
+  const yorkReferences = new Map(yorkTiles.references.map((reference) => [reference.id, reference]));
+  assert(yorkReferences.get("config")?.path === "valhalla.json" && yorkReferences.get("config")?.kind === "file",
+    "managed York Valhalla config reference is invalid");
+  assert(yorkReferences.get("tiles")?.path === "tiles" && yorkReferences.get("tiles")?.kind === "directory",
+    "managed York Valhalla tile-directory reference is invalid");
   const visited = new Set();
   const visiting = new Set();
   const visit = (id) => {

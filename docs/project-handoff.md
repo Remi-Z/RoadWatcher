@@ -908,6 +908,18 @@ qualification rows are complete independently of the aggregate internal pilot;
 the aggregate remains open because the GPStitch test boundary and clean-Windows
 owner run are unresolved.
 
+Managed Valhalla configuration is now portable across app-local installations.
+The York component contract requires typed `config` and `tiles` references.
+Rust obtains both through ownership-checked, canonical backend resolution and
+accepts only a bounded JSON template whose `mjolnir.tile_dir` is the exact
+`${ROADWATCHER_TILE_DIR}` token and whose `tile_extract` is absent or empty. Each
+one-shot job writes a confined runtime copy with the canonical installed tile
+directory, invokes the service with that copy, and removes the work directory.
+Route provenance continues to hash the immutable template, so machine-specific
+paths do not change artifact identity. A focused matcher test covers successful
+materialization plus rejection of baked-in paths and competing tile extracts;
+the runtime audit pins the required archive layout.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

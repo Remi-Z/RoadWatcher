@@ -99,6 +99,9 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Preserve configured HTTP Valhalla and OSRM fallbacks.
 - [x] `[AGENT]` Persist managed matcher, tile, configuration, and fallback
   provenance.
+- [x] `[AGENT]` Materialize the app-local Valhalla tile directory in Rust from
+  a portable, hash-identified configuration template; never bake a workstation
+  path into the hosted artifact.
 
 ### Setup Center
 
