@@ -36,7 +36,7 @@ unpublished hashes in final evidence.
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
 | Installed runtime preparation and preflight | Owner-approved uv 0.11.23 and CPython 3.12.13 exact artifacts, app-local Python/cache roots, locked GPStitch/CV sync, exact managed Python resolver root, rollback/probe tests, real full manager smoke | Proven complete for managed uv/Python and external-override models |
 | Managed dependency command/security boundary | Build-validated catalog, strict ID/license commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, manual allowlisted redirects, backend-resolved reference contracts, manifest-bound release archive contract, Setup Center dependency-order tests | Proven complete; uv/Python, pyvalhalla, and FFmpeg are available while data/model artifacts stay gated |
-| Managed one-shot Valhalla adapter | Exact Python 3.12/pyvalhalla 3.7.0 wheel, offline uv environment install, exact package/Python/service probe, ownership-resolved config/tile references, bounded process/request/result files, HTTP/OSRM fallback tests, durable provenance | Managed runtime complete; production York tile artifact missing |
+| Managed one-shot Valhalla adapter | Exact Python 3.12/pyvalhalla 3.7.0 wheel, offline uv environment install, exact package/Python/service probe, declared `service-executable` reference plus marker identity, shared portable-config validation, bounded process/request/result files, HTTP/OSRM fallback tests, durable provenance | Managed runtime complete; production York tile artifact missing |
 | Managed artifact provenance manifests | Strict generator/verifier, manifest-bound installer verification, focused Rust contract tests, release-audit integration, manifest documentation | Proven complete; every source carries a positive byte size, release builders use `sourceDateEpoch`, and a future hosted archive cannot be promoted without its separately hash-verified matching manifest |
 | Deterministic release-asset packaging | Exact-tree/SHA lock, normalized stored ZIPs, atomic no-overwrite publication, three Python tests | Proven complete as shared packaging foundation; York/ONNX/GDAL builders are fake-tool qualified, while real owner-approved input recipes and resulting assets remain absent |
 | Reproducible York/ONNX release-asset production | Strict York boundary/OSM/config/tool recipe and strict weights/labels/exporter ONNX recipe; coverage/tensor validation, fixed bounded commands, deterministic archives and verified manifest publication; catalog placeholders | Both builders proven with fake tools/workers; real approved recipes/assets remain owner-gated |
@@ -54,7 +54,7 @@ unpublished hashes in final evidence.
 - Frontend: 30 files / 186 tests pass, including the managed installer and Setup
   Center flows; the production build passes.
 - App integration: 68 tests pass without React asynchronous-update warnings.
-- Rust: 101 default tests pass; eight external real smokes are ignored by default.
+- Rust: 108 default tests pass; eight external real smokes are ignored by default.
   They cover the approved uv/Python/pyvalhalla and FFmpeg manager install paths, locked environment sync,
   installed FFmpeg, installed GDAL, live OSRM, and the private ride dataset.
   Both complete networked managed-manager smokes passed separately with the
@@ -69,6 +69,12 @@ unpublished hashes in final evidence.
   CV/York payload layouts, portable Valhalla configuration, and bounded ZIP
   extraction. The entries remain blocked until owner-approved data/model assets
   are built and published.
+- Managed Valhalla execution boundary: focused Rust tests prove that only the
+  ready catalog-declared service reference is selected in the presence of legacy
+  and nested decoy executables, that a failed probe of the declared environment
+  is skipped, and that the shared runtime/installer validator rejects every
+  nonportable `mjolnir` path setting. The York fake-tool builder suite mirrors
+  all eight path rejections.
 - The private ride smoke copies only the smallest 128,353,932-byte LRV into an
   isolated temporary project, imports all 4,484 timed `Ride.gpx` points, creates
   a 145.00-second proxy, records 79 conservative CV findings at a 10-second

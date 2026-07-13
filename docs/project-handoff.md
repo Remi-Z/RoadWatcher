@@ -52,12 +52,13 @@ The runnable app today is the React/Vite evidence workstation:
   progress, safe cancellation, retry, validation, update, removal, and disk-space
   guidance. Runtime preflight resolves explicit overrides first, valid managed
   uv/FFmpeg/GDAL paths second, and PATH last.
-- Local route matching can now resolve an app-owned `valhalla_service.exe` and
-  York tile configuration without accepting frontend filesystem paths. It invokes
-  Valhalla in bounded one-shot `trace_attributes` mode, removes bounded
-  request/result staging, preserves configured HTTP Valhalla and OSRM fallback,
-  and stores matcher/tile/config identities plus fallback reason in durable route
-  job provenance.
+- Local route matching can now resolve only the ready app-owned
+  `managed-valhalla` `service-executable` reference and York tile configuration,
+  without accepting frontend filesystem paths or probing legacy sidecar paths.
+  It invokes Valhalla in bounded one-shot `trace_attributes` mode, removes
+  bounded request/result staging, preserves configured HTTP Valhalla and OSRM
+  fallback, and stores matcher/tile/config identities plus fallback reason in
+  durable route job provenance.
 - `App.tsx` was reduced from 3,091 to 2,267 lines by moving readiness, route-map,
   timeline, inspector, job, projected-feature, CV-review, and component-slot
   views into `src/features/workstation/`. App retains repositories, polling,
@@ -1226,6 +1227,33 @@ mismatched manifests, invalid source metadata, unexpected payload entries,
 portable-config rejection, and bounded extraction. The current catalog stays
 blocked: no data/model source, license decision, generated release asset, or
 publication authority was inferred from this work.
+
+### Exact managed Valhalla execution boundary (2026-07-13)
+
+Route matching now resolves the native service exclusively through the ready
+`managed-valhalla` component's catalog-declared `service-executable` reference,
+paired with that component's ownership-marker identity and an exact
+Python/package/service health probe of the same component root. It no longer
+probes the legacy `sidecar-environments/pyvalhalla-3.7.0` directory and never
+recursively searches a component tree for a matching executable name. A staged
+real-catalog test places both legacy and nested decoy services beside the
+declared one, proves that only `Scripts/valhalla_service.exe` is eligible, and
+proves that a failed declared-environment probe falls back safely. An explicit
+HTTP Valhalla endpoint still overrides local matching; absent managed components
+continue through the existing HTTP/OSRM fallback behavior.
+
+Portable `valhalla.json` validation is now a shared Rust contract used both by
+the release-payload installer and the runtime materializer. It requires the
+RoadWatcher tile token and rejects nonempty `tile_extract`, `admin`, `admins`,
+`incident_dir`, `timezones`, `timezone`, `traffic_extract`, and `transit_dir`
+fields. The York builder continues to mirror that exact deny-list, with a
+five-test fake-tool suite covering every prohibited setting. This hardens the
+runtime against a malformed future artifact, but it does not approve, build, or
+publish York tiles.
+
+The current complete Rust suite passes 108 tests with eight deliberately gated
+external/native smokes ignored. `pnpm verify:release` also passes, including the
+five York fake-tool builder tests and the full managed-artifact/release audit.
 
 ### GitHub Actions CI/CD (awaiting first remote run)
 

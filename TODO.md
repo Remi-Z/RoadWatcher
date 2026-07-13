@@ -161,12 +161,21 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   catalog component was promoted by this implementation.
 - [x] `[AGENT]` Add bounded one-shot managed Valhalla matching without Docker or
   a persistent service.
+  - [x] `[AGENT]` Resolve the native service only from the ready
+    `managed-valhalla` component's declared `service-executable` reference and
+    matching ownership-marker identity, after probing that same component root
+    for the exact Python/package/service health. Legacy sidecar-environment
+    probing and recursive executable discovery are not eligible for route
+    matching.
 - [x] `[AGENT]` Preserve configured HTTP Valhalla and OSRM fallbacks.
 - [x] `[AGENT]` Persist managed matcher, tile, configuration, and fallback
   provenance.
 - [x] `[AGENT]` Materialize the app-local Valhalla tile directory in Rust from
   a portable, hash-identified configuration template; never bake a workstation
-  path into the hosted artifact.
+  path into the hosted artifact. The installer, runtime materializer, and York
+  builder reject separate tile extracts and all other external `mjolnir` path
+  settings (`admin`, timezones, traffic, and transit) under the same portable
+  contract.
 
 ### Setup Center
 
@@ -271,7 +280,7 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 
 - [x] `[AGENT]` Frontend: 186 tests passed across 30 files, including Setup
   Center dependency ordering and managed GPStitch FFmpeg command contracts.
-- [x] `[AGENT]` Rust: 101 tests passed; eight explicit real/native smokes remain
+- [x] `[AGENT]` Rust: 108 tests passed; eight explicit real/native smokes remain
   ignored by default because they use network downloads, installed tools, a live
   service, or private evidence.
 - [x] `[AGENT]` CV sidecar: four tests passed in the locked environment with a
@@ -296,10 +305,13 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Approved managed Valhalla qualification passed the complete
   uv/CPython/pyvalhalla download, offline install, probe, reference, and removal
   smoke.
+- [x] `[AGENT]` Managed Valhalla reference hardening passed the exact-reference
+  decoy test, shared portable-config table tests, and the complete Rust suite;
+  no legacy sidecar executable can be selected by route matching.
 - [x] `[AGENT]` Approved managed FFmpeg qualification passed the exact 252 MB
   archive download/install/probe/reference/removal smoke, the native proxy
   smoke, and a locked GPStitch fixture render using child-only PATH injection.
-- [x] `[AGENT]` Four York builder tests cover a portable staged tile tree,
+- [x] `[AGENT]` Five York builder tests cover a portable staged tile tree,
   boundary/hash/config rejection, strict recipe fields, and complete
   archive/lock/definition/manifest publication with fake fixed-command tools.
 - [x] `[AGENT]` Four ONNX builder tests cover locked exporter identity, static

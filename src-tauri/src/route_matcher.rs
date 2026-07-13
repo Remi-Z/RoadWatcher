@@ -1,4 +1,5 @@
 use crate::bounded_process::run_bounded_process;
+use crate::managed_valhalla_config::validate_portable_config;
 use crate::project_store::{
     claim_route_match_job, complete_route_match_job, fail_route_match_job, read_route_match_status,
     update_route_match_progress, ProjectStoreError, RouteMatchRequest, RouteMatchStatus,
@@ -19,7 +20,6 @@ use uuid::Uuid;
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_MATCHED_POINTS: usize = 1_000_000;
 const MAX_CONFIG_BYTES: usize = 4 * 1024 * 1024;
-const MANAGED_TILE_DIRECTORY_TOKEN: &str = "${ROADWATCHER_TILE_DIR}";
 
 #[derive(Clone, Debug)]
 pub struct RouteMatcherRequest {
@@ -374,6 +374,7 @@ fn materialize_managed_valhalla_config(
     }
     let mut document: Value = serde_json::from_slice(&template)
         .map_err(|error| RouteMatcherError::InvalidResponse(error.to_string()))?;
+    validate_portable_config(&document).map_err(RouteMatcherError::InvalidResponse)?;
     let mjolnir = document
         .get_mut("mjolnir")
         .and_then(Value::as_object_mut)
@@ -382,19 +383,6 @@ fn materialize_managed_valhalla_config(
                 "managed Valhalla configuration is missing mjolnir".to_string(),
             )
         })?;
-    if mjolnir.get("tile_dir").and_then(Value::as_str) != Some(MANAGED_TILE_DIRECTORY_TOKEN) {
-        return Err(RouteMatcherError::InvalidResponse(
-            "managed Valhalla tile_dir is not the portable RoadWatcher token".to_string(),
-        ));
-    }
-    if mjolnir
-        .get("tile_extract")
-        .is_some_and(|value| !value.is_null() && value.as_str() != Some(""))
-    {
-        return Err(RouteMatcherError::InvalidResponse(
-            "managed Valhalla configuration cannot select a separate tile_extract".to_string(),
-        ));
-    }
     mjolnir.remove("tile_extract");
     let canonical_tiles = tile_directory
         .canonicalize()
@@ -706,6 +694,20 @@ mod tests {
     }
 
     #[test]
+    fn falls_back_to_osrm_when_managed_valhalla_is_unavailable() {
+        let fixture = Fixture::new();
+        let transport = FakeTransport::new([Ok(
+            r#"{"matchings":[{"geometry":{"coordinates":[[-79.2,43.1],[-79.1,43.2]]}}]}"#,
+        )]);
+        let status = execute_route_match(
+            &transport,
+            &fixture.request("Valhalla", "", "http://localhost:5000"),
+        )
+        .unwrap();
+        assert_eq!(status.matcher_used, "OSRM");
+    }
+
+    #[test]
     fn missing_configuration_blocks_and_malformed_response_fails() {
         let blocked = Fixture::new();
         let transport = FakeTransport::new([]);
@@ -765,6 +767,16 @@ mod tests {
         assert!(matches!(
             materialize_managed_valhalla_config(&template, &tiles, &output),
             Err(RouteMatcherError::InvalidResponse(detail)) if detail.contains("tile_extract")
+        ));
+
+        fs::write(
+            &template,
+            br#"{"mjolnir":{"tile_dir":"${ROADWATCHER_TILE_DIR}","timezones":"C:/untrusted"}}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            materialize_managed_valhalla_config(&template, &tiles, &output),
+            Err(RouteMatcherError::InvalidResponse(detail)) if detail.contains("timezones")
         ));
         fs::remove_dir_all(root).unwrap();
     }

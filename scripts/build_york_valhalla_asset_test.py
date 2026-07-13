@@ -127,6 +127,36 @@ class YorkValhallaAssetBuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(RecipeError, "top-level"):
             validate_recipe(unsupported)
 
+    def test_rejects_every_external_mjolnir_path(self) -> None:
+        for path_key in (
+            "tile_extract", "admin", "admins", "incident_dir", "timezones", "timezone",
+            "traffic_extract", "transit_dir",
+        ):
+            with self.subTest(path_key=path_key):
+                self.config.write_text(
+                    json.dumps({
+                        "mjolnir": {
+                            "tile_dir": "${ROADWATCHER_TILE_DIR}",
+                            path_key: "C:/untrusted",
+                        }
+                    }),
+                    encoding="utf-8",
+                )
+                recipe = copy.deepcopy(self.recipe)
+                config_source = next(
+                    source for source in recipe["sources"]
+                    if source["role"] == "valhallaConfigTemplate"
+                )
+                config_source["downloadedSha256"] = self._sha256(self.config)
+                config_source["publisherSha256"] = config_source["downloadedSha256"]
+                with self.assertRaisesRegex(RecipeError, path_key):
+                    build_york_stage(
+                        recipe,
+                        self.root / f"external-{path_key}",
+                        runner=lambda *_: "",
+                        timeout_seconds=60,
+                    )
+
     def _source(self, source_id: str, role: str, path: Path) -> dict[str, object]:
         digest = self._sha256(path)
         return {

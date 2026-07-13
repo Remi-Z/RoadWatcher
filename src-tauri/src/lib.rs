@@ -1,6 +1,7 @@
 use cv_worker::{CvStartResponse, CvWorkerManager, CvWorkerRequest};
 use dependency_manager::{
     DependencyCatalogResponse, DependencyComponentStatus, DependencyInstallJob, DependencyManager,
+    ManagedComponentIdentity,
 };
 use gis_import::{import_gis as store_import_gis, GisImportRequest};
 use gis_projector::GisProjectorManager;
@@ -30,6 +31,7 @@ mod gis_import;
 mod gis_projector;
 mod gpstitch_worker;
 mod managed_runtime;
+mod managed_valhalla_config;
 mod native_export;
 mod project_store;
 mod proxy_worker;
@@ -496,6 +498,60 @@ fn runtime_prepare(
     ))
 }
 
+fn resolve_managed_valhalla_request(
+    dependencies: &DependencyManager,
+    app_local_data: &Path,
+) -> Result<Option<ManagedValhallaRequest>, String> {
+    let Some((executable, matcher_identity)) = managed_valhalla_service(dependencies) else {
+        return Ok(None);
+    };
+    let config = dependencies.managed_reference("york-valhalla-tiles", "config");
+    let tile_directory = dependencies.managed_reference("york-valhalla-tiles", "tiles");
+    let tile_identity = dependencies.managed_identity("york-valhalla-tiles");
+    match (config, tile_directory, tile_identity) {
+        (Some(config), Some(tile_directory), Some(tile_identity)) => {
+            let config_bytes = fs::read(&config).map_err(|error| {
+                format!("could not read managed Valhalla configuration: {error}")
+            })?;
+            if config_bytes.len() > 4 * 1024 * 1024 {
+                return Err("managed Valhalla configuration exceeds 4 MiB".to_string());
+            }
+            Ok(Some(ManagedValhallaRequest {
+                executable,
+                config,
+                tile_directory,
+                work_root: app_local_data.join("matcher-jobs"),
+                matcher_version: matcher_identity.version,
+                tile_version: tile_identity.version,
+                tile_sha256: tile_identity.artifact_sha256,
+                config_sha256: hex::encode(Sha256::digest(&config_bytes)),
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn managed_valhalla_service(
+    dependencies: &DependencyManager,
+) -> Option<(PathBuf, ManagedComponentIdentity)> {
+    managed_valhalla_service_with_probe(dependencies, |component_root| {
+        managed_runtime::probe_managed_environment(component_root, "pyvalhalla-3.7.0").is_ok()
+    })
+}
+
+fn managed_valhalla_service_with_probe(
+    dependencies: &DependencyManager,
+    probe: impl FnOnce(&Path) -> bool,
+) -> Option<(PathBuf, ManagedComponentIdentity)> {
+    let component_root = dependencies.managed_component_path("managed-valhalla")?;
+    if !probe(&component_root) {
+        return None;
+    }
+    let executable = dependencies.managed_reference("managed-valhalla", "service-executable")?;
+    let identity = dependencies.managed_identity("managed-valhalla")?;
+    (!identity.version.is_empty()).then_some((executable, identity))
+}
+
 #[tauri::command]
 fn gpx_match(
     app: tauri::AppHandle,
@@ -510,52 +566,11 @@ fn gpx_match(
     osrm_endpoint: String,
 ) -> Result<route_matcher::RouteMatchStartResponse, String> {
     let managed_valhalla = if valhalla_endpoint.trim().is_empty() {
-        let environments = managed_environments(&app)?;
-        let prepared_executable =
-            managed_runtime::probe_managed_environment(&environments.valhalla, "pyvalhalla-3.7.0")
-                .ok()
-                .map(|_| managed_runtime::valhalla_service(&environments.valhalla));
-        let installed_identity = dependencies.managed_identity("managed-valhalla");
-        let (executable, matcher_version) = if let Some(executable) = prepared_executable {
-            (Some(executable), "3.7.0".to_string())
-        } else {
-            (
-                dependencies.managed_executable("managed-valhalla", "valhalla_service.exe"),
-                installed_identity
-                    .map(|identity| identity.version)
-                    .unwrap_or_default(),
-            )
-        };
-        let config = dependencies.managed_reference("york-valhalla-tiles", "config");
-        let tile_directory = dependencies.managed_reference("york-valhalla-tiles", "tiles");
-        let tile_identity = dependencies.managed_identity("york-valhalla-tiles");
-        match (executable, config, tile_directory, tile_identity) {
-            (Some(executable), Some(config), Some(tile_directory), Some(tile_identity))
-                if !matcher_version.is_empty() =>
-            {
-                let config_bytes = fs::read(&config).map_err(|error| {
-                    format!("could not read managed Valhalla configuration: {error}")
-                })?;
-                if config_bytes.len() > 4 * 1024 * 1024 {
-                    return Err("managed Valhalla configuration exceeds 4 MiB".to_string());
-                }
-                Some(ManagedValhallaRequest {
-                    executable,
-                    config,
-                    tile_directory,
-                    work_root: app
-                        .path()
-                        .app_local_data_dir()
-                        .map_err(|error| error.to_string())?
-                        .join("matcher-jobs"),
-                    matcher_version,
-                    tile_version: tile_identity.version,
-                    tile_sha256: tile_identity.artifact_sha256,
-                    config_sha256: hex::encode(Sha256::digest(&config_bytes)),
-                })
-            }
-            _ => None,
-        }
+        let app_local_data = app
+            .path()
+            .app_local_data_dir()
+            .map_err(|error| error.to_string())?;
+        resolve_managed_valhalla_request(&dependencies, &app_local_data)?
     } else {
         None
     };
@@ -748,7 +763,14 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{job_status, media_import, project_create, project_load, project_save};
+    use super::{
+        job_status, managed_valhalla_service_with_probe, media_import, project_create,
+        project_load, project_save,
+    };
+    use crate::dependency_manager::DependencyManager;
+    use serde_json::json;
+    use std::fs;
+    use uuid::Uuid;
 
     #[test]
     fn project_create_surfaces_store_validation_errors() {
@@ -785,5 +807,52 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.starts_with("The selected file is not a RoadWatcher SQLite project:"));
+    }
+
+    #[test]
+    fn managed_valhalla_service_requires_a_probed_declared_component() {
+        let root =
+            std::env::temp_dir().join(format!("roadwatcher-managed-valhalla-{}", Uuid::new_v4()));
+        let app_local_data = root.join("app-local-data");
+        let component_root = app_local_data.join("managed-components/managed-valhalla/3.7.0");
+        let declared_service = component_root.join("Scripts/valhalla_service.exe");
+        let legacy_service =
+            root.join("sidecar-environments/pyvalhalla-3.7.0/Scripts/valhalla_service.exe");
+        let decoy_service = component_root.join("tools/valhalla_service.exe");
+        fs::create_dir_all(declared_service.parent().unwrap()).unwrap();
+        fs::create_dir_all(legacy_service.parent().unwrap()).unwrap();
+        fs::create_dir_all(decoy_service.parent().unwrap()).unwrap();
+        fs::write(&declared_service, b"declared").unwrap();
+        fs::write(&legacy_service, b"legacy").unwrap();
+        fs::write(&decoy_service, b"decoy").unwrap();
+        fs::write(
+            component_root.join(".roadwatcher-managed-component.json"),
+            serde_json::to_vec(&json!({
+                "id": "managed-valhalla",
+                "version": "3.7.0",
+                "artifactSha256": "edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef",
+                "sourceUrl": "https://pypi.org/project/pyvalhalla/3.7.0/",
+                "installedAtUnix": 1
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let catalog = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources/dependency-catalog.json");
+        let dependencies = DependencyManager::load(&catalog, &app_local_data).unwrap();
+        let (resolved, identity) =
+            managed_valhalla_service_with_probe(&dependencies, |root| root == component_root)
+                .unwrap();
+        assert_eq!(resolved, declared_service.canonicalize().unwrap());
+        assert_ne!(resolved, legacy_service.canonicalize().unwrap());
+        assert_ne!(resolved, decoy_service.canonicalize().unwrap());
+        assert_eq!(identity.version, "3.7.0");
+        assert_eq!(
+            identity.artifact_sha256,
+            "edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef"
+        );
+        assert!(managed_valhalla_service_with_probe(&dependencies, |_| false).is_none());
+        fs::remove_dir_all(root).unwrap();
     }
 }

@@ -1,5 +1,6 @@
 use crate::bounded_process::run_bounded_process_cancellable;
 use crate::managed_runtime;
+use crate::managed_valhalla_config::validate_portable_config;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -33,7 +34,6 @@ const ROADWATCHER_VALHALLA_CONFIG_MAX_BYTES: u64 = 4 * 1024 * 1024;
 const ROADWATCHER_VALHALLA_TILE_MAX_FILES: usize = 200_000;
 const ROADWATCHER_VALHALLA_TILE_MAX_BYTES: u64 = 24 * 1024 * 1024 * 1024;
 const ROADWATCHER_CV_LABELS_MAX_BYTES: u64 = 2 * 1024 * 1024;
-const ROADWATCHER_TILE_DIRECTORY_TOKEN: &str = "${ROADWATCHER_TILE_DIR}";
 const ALLOWED_DOWNLOAD_HOSTS: &[&str] = &[
     "github.com",
     "objects.githubusercontent.com",
@@ -2491,7 +2491,7 @@ fn validate_york_valhalla_payload(
     )?;
     let config: serde_json::Value = serde_json::from_slice(&config)
         .map_err(|error| format!("RoadWatcher Valhalla configuration is invalid JSON: {error}"))?;
-    validate_portable_valhalla_config(&config)?;
+    validate_portable_config(&config)?;
     let mut file_count = 0_usize;
     let mut total_bytes = 0_u64;
     validate_valhalla_tile_tree(
@@ -2559,39 +2559,6 @@ fn validate_regular_nonempty_file(path: &Path, label: &str) -> Result<(), String
         .map_err(|error| format!("could not inspect {label}: {error}"))?;
     if metadata.file_type().is_symlink() || !metadata.file_type().is_file() || metadata.len() == 0 {
         return Err(format!("{label} is not a non-empty regular file"));
-    }
-    Ok(())
-}
-
-fn validate_portable_valhalla_config(config: &serde_json::Value) -> Result<(), String> {
-    let mjolnir = config
-        .as_object()
-        .and_then(|value| value.get("mjolnir"))
-        .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| "RoadWatcher Valhalla configuration is missing mjolnir".to_string())?;
-    if mjolnir.get("tile_dir").and_then(serde_json::Value::as_str)
-        != Some(ROADWATCHER_TILE_DIRECTORY_TOKEN)
-    {
-        return Err("RoadWatcher Valhalla configuration is not portable".to_string());
-    }
-    for key in [
-        "tile_extract",
-        "admin",
-        "admins",
-        "incident_dir",
-        "timezones",
-        "timezone",
-        "traffic_extract",
-        "transit_dir",
-    ] {
-        if mjolnir
-            .get(key)
-            .is_some_and(|value| !value.is_null() && value.as_str() != Some(""))
-        {
-            return Err(format!(
-                "RoadWatcher Valhalla configuration cannot select mjolnir.{key}"
-            ));
-        }
     }
     Ok(())
 }
