@@ -105,12 +105,14 @@ fn run_with_executor(
             "Managed GPStitch environment",
             &request.gpstitch_environment,
             "gpstitch-0.18.0",
+            true,
         ),
         environment_tool_spec(
             "cv-environment",
             "Managed RoadWatcher CV environment",
             &request.cv_environment,
             "roadwatcher-cv-0.1.0",
+            false,
         ),
         tool_spec(
             "uv",
@@ -197,6 +199,7 @@ fn environment_tool_spec(
     label: &'static str,
     environment: &Path,
     marker: &'static str,
+    required: bool,
 ) -> ToolSpec {
     let executable = if environment_structure_ready(environment, marker) {
         Ok(environment_python(environment))
@@ -209,7 +212,7 @@ fn environment_tool_spec(
     let mut spec = tool_spec(
         id,
         label,
-        true,
+        required,
         executable,
         vec![
             "-c",
@@ -415,17 +418,11 @@ mod tests {
         }
     }
 
-    struct MissingCvModuleExecutor;
-    impl ToolProbeExecutor for MissingCvModuleExecutor {
+    struct MissingModuleExecutor(&'static str);
+    impl ToolProbeExecutor for MissingModuleExecutor {
         fn run(&self, executable: &Path, args: &[&str]) -> Result<String, String> {
-            if executable
-                .to_string_lossy()
-                .contains("roadwatcher-cv-0.1.0")
-                && args
-                    .iter()
-                    .any(|value| value.contains("import roadwatcher_cv"))
-            {
-                Err("No module named roadwatcher_cv".to_string())
+            if args.iter().any(|value| value.contains(self.0)) {
+                Err(format!("No module for probe {}", self.0))
             } else {
                 FakeExecutor.run(executable, args)
             }
@@ -458,8 +455,7 @@ mod tests {
         assert!(response
             .components
             .iter()
-            .filter(|item| !item.required)
-            .all(|item| item.status == "missing"));
+            .any(|item| item.id == "cv-environment" && !item.required && item.status == "ready"));
         assert!(response
             .components
             .iter()
@@ -472,7 +468,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_structurally_present_environment_when_its_module_cannot_import() {
+    fn distinguishes_optional_cv_from_required_gpstitch_module_failures() {
         let root = std::env::temp_dir().join(format!(
             "roadwatcher-preflight-module-{}",
             uuid::Uuid::new_v4()
@@ -483,26 +479,37 @@ mod tests {
         environment(&environments.gpstitch, "gpstitch-0.18.0");
         environment(&environments.cv, "roadwatcher-cv-0.1.0");
 
-        let response = run_with_executor(
-            RuntimePreflightRequest {
-                uv_executable: "uv".to_string(),
-                ffmpeg_binary_directory: String::new(),
-                gdal_binary_directory: String::new(),
-                gpstitch_source: gpstitch,
-                cv_source: cv,
-                gpstitch_environment: environments.gpstitch,
-                cv_environment: environments.cv,
-            },
-            Arc::new(MissingCvModuleExecutor),
+        let request = RuntimePreflightRequest {
+            uv_executable: "uv".to_string(),
+            ffmpeg_binary_directory: String::new(),
+            gdal_binary_directory: String::new(),
+            gpstitch_source: gpstitch,
+            cv_source: cv,
+            gpstitch_environment: environments.gpstitch,
+            cv_environment: environments.cv,
+        };
+        let optional_cv_missing = run_with_executor(
+            request.clone(),
+            Arc::new(MissingModuleExecutor("import roadwatcher_cv")),
         );
-
-        assert_eq!(response.status, "incomplete");
-        assert!(response
+        assert_eq!(optional_cv_missing.status, "ready");
+        assert!(optional_cv_missing
             .components
             .iter()
             .any(|item| item.id == "cv-environment"
+                && !item.required
                 && item.status == "missing"
-                && item.detail.contains("No module named")));
+                && item.detail.contains("No module")));
+
+        let required_gpstitch_missing =
+            run_with_executor(request, Arc::new(MissingModuleExecutor("import gpstitch")));
+        assert_eq!(required_gpstitch_missing.status, "incomplete");
+        assert!(required_gpstitch_missing
+            .components
+            .iter()
+            .any(|item| item.id == "gpstitch-environment"
+                && item.required
+                && item.status == "missing"));
         let _ = fs::remove_dir_all(root);
     }
 

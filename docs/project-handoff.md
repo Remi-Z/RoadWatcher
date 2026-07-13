@@ -45,8 +45,9 @@ The runnable app today is the React/Vite evidence workstation:
   FFmpeg, ffprobe, ogrinfo, and ogr2ogr. Independent no-shell probes run in
   parallel with 10-second/64-KiB bounds; strict frontend validation and the
   readiness UI expose per-component paths, versions, and failures. Prepared
-  managed imports, source, and FFmpeg drive execution readiness; uv/Python are
-  visible preparation-only diagnostics, and GDAL remains optional. CV and
+  GPStitch imports, source, and FFmpeg drive core execution readiness; the CV
+  environment follows optional-CV policy, uv/Python are visible preparation-only
+  diagnostics, and GDAL remains optional. CV and
   GPStitch now share the bounded-process runner, giving CV a four-hour timeout
   and streaming output cap.
 - `runtime_prepare` now creates versioned GPStitch/CV environments below
@@ -696,6 +697,14 @@ rebuild has actionable diagnostics, but they are no longer required components
 once the exact GPStitch/CV environments execute. Rust aggregate logic, the
 strict TypeScript component map, and App evidence agree: missing preparation
 tools do not downgrade an otherwise ready installed runtime.
+
+The optional-CV readiness follow-up applies the same product policy to the CV
+environment itself. Its missing/import-failure evidence stays visible and the
+CV worker still refuses to run without the exact 0.1.0 environment, but core
+installed-runtime readiness now depends on the required GPStitch environment,
+sources, and FFmpeg rather than optional CV capability. Rust tests distinguish
+optional CV failure from required GPStitch failure, while the strict frontend
+map and App evidence enforce the same aggregate.
 
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep

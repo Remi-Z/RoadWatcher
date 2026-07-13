@@ -6,7 +6,7 @@ const config = { uvExecutable: "uv", ffmpegBinaryDirectory: "D:/ffmpeg/bin", gda
 const definitions = [
   ["gpstitch-source", true], ["cv-source", true], ["uv", false], ["python", false],
   ["ffmpeg", true], ["ffprobe", true], ["ogrinfo", false], ["ogr2ogr", false],
-  ["gpstitch-environment", true], ["cv-environment", true]
+  ["gpstitch-environment", true], ["cv-environment", false]
 ] as const;
 
 describe("native runtime preflight repository", () => {

@@ -20,10 +20,12 @@ Tauri resources, then concurrently probes:
 Each command is launched directly without a shell, has a ten-second timeout,
 captures at most 64 KiB per stream, and returns only a bounded first output line.
 Configured FFmpeg/GDAL directories must be existing absolute directories;
-otherwise PATH is used. Required source, exact managed-package environments,
-and FFmpeg components drive the aggregate `ready`/`incomplete` result. uv and
+otherwise PATH is used. Required source, the exact GPStitch environment, and
+FFmpeg components drive the aggregate `ready`/`incomplete` result. The exact CV
+environment follows the product's optional-CV policy: it remains visible and is
+required before a CV job, but does not block the core runtime aggregate. uv and
 its Python resolver remain visible preparation diagnostics but are optional for
-execution after both environments have been prepared. GDAL remains optional.
+execution after preparation. GDAL remains optional.
 
 ## Shared Process Refactor
 

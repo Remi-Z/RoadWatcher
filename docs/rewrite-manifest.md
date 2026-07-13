@@ -268,8 +268,10 @@ second opt-in system smoke uses a private 128 MB ride sample plus 4,484-point
 GPX track and passes proxy generation, ONNX CV, and GPStitch rendering without
 modifying the source dataset.
 Installed-runtime aggregation now treats those exact managed imports as the
-sidecar execution requirement. uv and its Python resolver remain visible
-preparation diagnostics but do not block a prepared runtime if later absent.
+sidecar execution evidence. GPStitch remains required for core readiness; the
+CV environment follows optional-CV policy and blocks only CV use. uv and its
+Python resolver remain visible preparation diagnostics but do not block a
+prepared runtime if later absent.
 
 ```powershell
 pnpm test

@@ -89,6 +89,9 @@ and RoadWatcher CV 0.1.0.
 Because those managed imports are the operational execution evidence, missing
 uv or its Python resolver after successful preparation remains visible but no
 longer makes aggregate runtime preflight incomplete.
+The CV environment now also follows the established optional-CV policy: a
+missing environment is reported and blocks CV jobs themselves, but it does not
+downgrade core runtime readiness. The required GPStitch environment still does.
 
 ## Required External Gates
 

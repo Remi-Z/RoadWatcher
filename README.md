@@ -183,8 +183,10 @@ The installed-runtime preflight resolves both packaged source trees and probes
 no-shell processes. Its strict frontend adapter rejects incomplete identities or
 inconsistent aggregate status, and the readiness panel shows each required or
 optional component with resolved executable and version/error evidence. The
-managed package imports are authoritative for sidecar execution; uv and its
-Python resolver remain visible preparation-only diagnostics after setup. The
+managed package imports are authoritative for sidecar execution; the CV
+environment remains optional until CV is used, while GPStitch remains part of
+core readiness. uv and its Python resolver remain visible preparation-only
+diagnostics after setup. The
 shared bounded-process utility now also gives CV execution a four-hour timeout
 and streaming 16 MiB output limit instead of checking size only after an
 unbounded child-process capture.

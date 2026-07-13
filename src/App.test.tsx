@@ -795,7 +795,7 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("No CV findings saved.");
   });
 
-  it("keeps preparation tools visible without blocking prepared runtime execution", async () => {
+  it("keeps preparation tools and optional CV visible without blocking core runtime execution", async () => {
     const sqlitePath = "D:/RoadWatcherProjects/preflight/project.sqlite";
     const snapshot = createProjectSnapshot({ clips: initialClips, componentSlots: missingSlots, incident: incidentDraft,
       jobs: initialJobs, media: mediaAssets, projectId: "native-preflight-project" as ProjectId, projectedFeatures });
@@ -809,7 +809,7 @@ describe("RoadWatcher workstation", () => {
       ["ogrinfo", "GDAL ogrinfo", false, "missing"],
       ["ogr2ogr", "GDAL ogr2ogr", false, "missing"],
       ["gpstitch-environment", "Managed GPStitch environment", true, "ready"],
-      ["cv-environment", "Managed RoadWatcher CV environment", true, "ready"]
+      ["cv-environment", "Managed RoadWatcher CV environment", false, "missing"]
     ] as const;
     const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
       if (command === "project_load") return { projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion, savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot) };
@@ -831,6 +831,7 @@ describe("RoadWatcher workstation", () => {
     const results = screen.getByLabelText("Installed runtime preflight results");
     expect(results).toHaveTextContent("Installed runtime: ready");
     expect(results).toHaveTextContent("Python resolver through uv");
+    expect(results).toHaveTextContent("Managed RoadWatcher CV environment");
     expect(results).toHaveTextContent("not installed");
     expect(screen.getByText(/runtime_preflight: invoked/)).toBeInTheDocument();
   });
@@ -850,7 +851,7 @@ describe("RoadWatcher workstation", () => {
         { id: "cv-environment", status: "ready", environmentPath: "D:/AppData/roadwatcher-cv-0.1.0", detail: "prepared" }
       ] };
       if (command === "runtime_preflight") return { checkedAtUnix: 1_788_000_001, status: "ready", components: componentIds.map((id) => ({
-        id, label: id, required: !["uv", "python", "ogrinfo", "ogr2ogr"].includes(id), status: "ready",
+        id, label: id, required: !["uv", "python", "cv-environment", "ogrinfo", "ogr2ogr"].includes(id), status: "ready",
         executable: `D:/${id}`, version: id.includes("source") || id.includes("environment") ? "0.1.0" : "1.0", detail: "ready"
       })) };
       throw new Error(`Unexpected command ${command}`);

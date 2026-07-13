@@ -37,7 +37,7 @@ export type NativeRuntimePrepareResult =
 const EXPECTED_COMPONENTS = new Map<string, boolean>([
   ["gpstitch-source", true], ["cv-source", true], ["uv", false], ["python", false],
   ["ffmpeg", true], ["ffprobe", true], ["ogrinfo", false], ["ogr2ogr", false],
-  ["gpstitch-environment", true], ["cv-environment", true]
+  ["gpstitch-environment", true], ["cv-environment", false]
 ]);
 
 export function createNativeRuntimePreflightRepository(
