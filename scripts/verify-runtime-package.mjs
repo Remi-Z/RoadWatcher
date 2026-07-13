@@ -34,7 +34,7 @@ for (const component of manifest.components) {
 }
 
 const valhallaProject = readFileSync(resolve(root, "sidecars/roadwatcher-valhalla/pyproject.toml"), "utf8");
-const valhallaLock = readFileSync(resolve(root, "sidecars/roadwatcher-valhalla/uv.lock"), "utf8");
+const valhallaLock = readFileSync(resolve(root, "sidecars/roadwatcher-valhalla/uv.lock"), "utf8").replace(/\r\n?/g, "\n");
 assert(valhallaProject.includes('requires-python = "==3.12.*"'), "Valhalla environment Python range is not locked to 3.12");
 assert(valhallaProject.includes('"pyvalhalla==3.7.0"'), "Valhalla environment dependency is not exactly pyvalhalla 3.7.0");
 assert(valhallaLock.includes('name = "pyvalhalla"\nversion = "3.7.0"'), "Valhalla lock does not resolve pyvalhalla 3.7.0");
