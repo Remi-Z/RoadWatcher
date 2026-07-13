@@ -941,7 +941,30 @@ Tradeoff/external gate: the builder uses a proven conservative bounding
 rectangle, not an exact buffered polygon, so hosted tiles may be larger. No
 production recipe, source, license approval, artifact, or release URL was
 invented; an owner-approved input set is still required before the real build.
-The ONNX-specific builder remains the next source-independent implementation.
+
+The paired ONNX builder is now `scripts/build_yolo_onnx_asset.py`. Its strict
+recipe locks source weights and labels plus exact Python, Ultralytics, PyTorch,
+ONNX, image-size, and opset identities. Commands are fixed in code: an internal
+probe reports the exact exporter environment, then an internal worker performs a
+static CPU export with simplification and dynamic axes disabled. The worker
+runs full ONNX checking, rejects external tensor files, and proves the exact
+float32 input/output shape contract consumed by `roadwatcher_cv.scanner`,
+including `4 + labelCount` on the class axis and the requested default opset.
+
+Labels are bounded, unique, and normalized without changing order. The model
+and labels then pass through the deterministic packager, definition/manifest
+generator, verification, and rollback-capable four-file publication. Four tests
+cover the compatible path, complete fake-worker publication, dynamic/class/opset
+rejection, source hash drift, duplicate labels, and unsupported recipe fields.
+The release audit runs both York and ONNX builder suites.
+
+Tradeoff/external gate: structural compatibility is not a claim about model
+quality. A real export and representative-video review remain blocked on the
+approved weights, label taxonomy, redistribution terms, and consent copy. No
+model, recipe, placeholder hash, or release asset was added. The two builder
+scripts currently keep their security and publication helpers self-contained;
+a later refactor may share those helpers after the real recipes prove whether
+their policies remain identical.
 
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep

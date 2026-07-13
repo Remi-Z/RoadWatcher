@@ -152,3 +152,40 @@ reduce size without changing the coverage requirement.
 
 No production recipe is checked in yet. Exact OSM/boundary/config endpoints,
 hashes, license evidence, bounds, and executable paths remain owner-gated.
+
+## YOLO11n-compatible ONNX release builder
+
+`scripts/build_yolo_onnx_asset.py` consumes an owner-approved lock for the
+source `.pt` weights, labels file, and an isolated exporter Python. The lock
+pins exact Python, Ultralytics, PyTorch, and ONNX versions along with image size
+and opset. It performs no download and exposes no configurable command string.
+
+```powershell
+python scripts/build_yolo_onnx_asset.py `
+  C:\approved-inputs\yolo11n-onnx-recipe.json `
+  C:\approved-output\RoadWatcher-0.1.0
+```
+
+The approved Python executes only two internal worker actions. The first reports
+the four exact exporter versions. The second calls Ultralytics with fixed
+settings: ONNX format, static batch 1, CPU device, `dynamic=False`,
+`simplify=False`, and the locked image size/opset. The worker loads the result
+without external tensor data, runs full `onnx.checker` validation, and requires:
+
+- exactly one static float32 input shaped `[1, 3, imageSize, imageSize]`;
+- at least one output, with the first output a static float32 rank-3 tensor;
+- batch dimension 1 and a class axis exactly equal to `4 + labelCount`;
+- the exact requested default ONNX opset.
+
+These constraints match the current RoadWatcher CV sidecar parser. The labels
+source is bounded, decoded as UTF-8, de-duplicated, validated against the
+sidecar's count/name limits, and emitted in normalized order-preserving text.
+The resulting `yolo11n.onnx` and `labels.txt` are deterministically packaged,
+manifested, re-verified, and published with the same no-overwrite four-file
+protocol as the York builder.
+
+Tradeoff: compatibility validation is structural and tied to RoadWatcher's
+current raw YOLO output parser; it does not measure detector quality, accuracy,
+or dataset suitability. Those require the owner-approved weights and a separate
+representative-video review. The real exporter run is intentionally deferred
+until the model/license-consent gate is complete.
