@@ -34,7 +34,8 @@ unpublished hashes in final evidence.
 | Installed runtime preparation and preflight | Ten-component strict preflight, managed-environment tests, explicitly enabled real uv smoke | Proven complete for external-runtime model |
 | Managed dependency command/security boundary | Build-validated catalog, strict ID/license-only commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, Setup Center contract tests | Proven complete; exact artifacts intentionally unavailable |
 | Managed one-shot Valhalla adapter | Rust path resolution, bounded process/request/result files, HTTP/OSRM fallback tests, durable provenance | Implementation complete; production York tile artifact missing |
-| Reproducible York/ONNX release-asset production | Root TODO and catalog placeholders | Not achieved |
+| Managed artifact provenance manifests | Strict generator/verifier, three Node tests, release-audit integration, manifest documentation | Proven complete |
+| Reproducible York/ONNX release-asset production | Root TODO and catalog placeholders; provenance generator only | Not achieved |
 | Managed GIS install-to-project handoff | Root TODO; existing manual/native GIS import only | Not achieved |
 | Windows source/license packaging | Runtime verifier, Rust build gate, fresh NSIS archive inspection | Proven complete |
 | Version/signing/update/release policy | Bundled release manifest, Rust build gate, three Node verifier tests, strict installer/executable Authenticode evidence script | Proven complete as development policy |

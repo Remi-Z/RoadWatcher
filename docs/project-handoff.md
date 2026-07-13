@@ -778,6 +778,18 @@ Tradeoffs and external review requests for this slice:
   and final managed component layouts remain the next agent-owned implementation
   slices; they are tracked in root `TODO.md`.
 
+Artifact provenance now has a checked-in strict generator and verifier at
+`scripts/managed-artifact-manifest.mjs`, documented in
+`docs/managed-artifact-manifests.md`. It records final file name/size/SHA-256,
+source URLs and retrieval identity, licenses, tool versions, recipe/version,
+sorted scalar parameters, platform, and UTC generation time. Definitions lacking
+a publisher hash must carry ETag or Last-Modified evidence plus the downloaded
+hash; unsafe IDs/URLs, duplicate tools, nested parameters, and artifact drift are
+rejected. Three Node tests cover valid creation/verification and the rejection
+paths, and `pnpm verify:release` now runs them. This is provenance infrastructure,
+not an asset approval or builder: no unapproved definition, binary, tile, model,
+or placeholder hash was added.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

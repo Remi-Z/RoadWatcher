@@ -82,6 +82,9 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 
 ### Artifact production and managed matching
 
+- [x] `[AGENT]` Add a strict managed-artifact manifest generator/verifier for
+  final file identity, source retrieval evidence, licenses, build-tool versions,
+  recipe parameters, sizes, hashes, and generation timestamps.
 - [ ] `[AGENT]` Add reproducible York-buffered OSM/Valhalla tile and ONNX
   artifact builders.
 - [ ] `[AGENT]` Emit source, license, version, size, SHA-256, build-tool version,
