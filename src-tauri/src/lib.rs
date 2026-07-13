@@ -348,6 +348,9 @@ fn managed_environments_for_uv(
             environments.python_install_root = python_installations;
         }
     }
+    if let Some(managed_valhalla) = dependencies.managed_component_path("managed-valhalla") {
+        environments.valhalla = managed_valhalla;
+    }
     Ok(environments)
 }
 
@@ -440,13 +443,18 @@ fn runtime_prepare(
     } else {
         uv_executable
     };
+    let environments = managed_environments_for_uv(&app, &dependencies, use_managed_uv)?;
+    let allow_valhalla_sync =
+        managed_runtime::probe_managed_environment(&environments.valhalla, "pyvalhalla-3.7.0")
+            .is_ok();
     Ok(managed_runtime::prepare_runtime_environments(
         managed_runtime::RuntimePrepareRequest {
             uv_executable: resolved_uv,
             gpstitch_source,
             cv_source,
             valhalla_source,
-            environments: managed_environments_for_uv(&app, &dependencies, use_managed_uv)?,
+            environments,
+            allow_valhalla_sync,
         },
     ))
 }

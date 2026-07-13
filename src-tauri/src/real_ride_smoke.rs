@@ -174,6 +174,7 @@ fn real_ride_dataset_exercises_ingest_proxy_cv_and_gpstitch() {
             cv_source: cv_source.clone(),
             valhalla_source,
             environments: environments.clone(),
+            allow_valhalla_sync: true,
         });
     assert_eq!(
         preparation.status, "ready",

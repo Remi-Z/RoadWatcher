@@ -39,13 +39,17 @@ export function SetupCenter({
       : current.filter((item) => item !== digest));
   }
 
-  function canInstall(componentId: string) {
+  function canInstall(componentId: string, selectedComponentIds: string[] = []) {
     const component = catalog?.components.find((item) => item.id === componentId);
     return Boolean(component && component.availability === "available" && component.artifact
+      && component.dependencies.every((dependencyId) => selectedComponentIds.includes(dependencyId)
+        || catalog?.components.some((candidate) => candidate.id === dependencyId && candidate.state === "ready"))
       && componentLicenses(component).every((license) => !license.consentRequired || hasConsent(license.digest)) && !busy);
   }
 
-  const recommendedReady = recommended.length > 0 && recommended.every((component) => canInstall(component.id));
+  const recommendedIds = recommended.map((component) => component.id);
+  const recommendedReady = recommended.length > 0
+    && recommended.every((component) => canInstall(component.id, recommendedIds));
 
   return (
     <section className="setup-center" aria-label="Managed dependency setup center">

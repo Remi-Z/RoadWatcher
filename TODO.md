@@ -83,17 +83,20 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   - [x] `[AGENT]` Recover and verify the exact proven Gyan 8.1.1 archive URL,
     size, publisher/WinGet hash, executable hashes, source identity, and
     aggregate GPLv3 notice.
-  - [ ] `[BLOCKED-ON-USER]` Promote FFmpeg only after the owner accepts the
-    full static-build redistribution/source obligations.
+  - [ ] `[AGENT]` Promote the owner-approved exact Gyan full build with retained
+    GPLv3/source-notice evidence and real proxy/GPStitch qualification.
 - [ ] `[AGENT]` Install and validate the audited GDAL/OGR distribution.
   - [x] `[AGENT]` Recover the exact proven GISInternals package name, URL,
     retained hash, version, plugin tree, and notice inventory; prove that its
     daily publisher URL mutates in place.
-  - [ ] `[BLOCKED-ON-USER]` Select a reviewed frozen package or a minimal
-    open-driver build before promoting GDAL.
+  - [ ] `[AGENT]` Produce and qualify the owner-approved minimal open-driver
+    package; do not use the mutable daily bundle or its license-gated plugins.
 - [x] `[AGENT]` Add a locked `pyvalhalla==3.7.0` environment.
   - [x] `[AGENT]` Bundle and release-audit the exact Python 3.12 lock definition
     and Windows x64 wheel hash without redistributing the unapproved wheel.
+  - [x] `[AGENT]` Install the owner-approved exact wheel through Setup Center
+    into an offline-created app-local uv/Python environment, verify the native
+    service reference, and remove only the owned copy.
 - [ ] `[AGENT]` Install York Region plus 10 km Valhalla tiles with version/hash
   provenance.
 - [ ] `[AGENT]` Install the optional verified YOLO11n-compatible ONNX model and

@@ -211,8 +211,11 @@ Build a Windows-first, local-first evidence workstation:
 
 ## Current Verification
 
-Latest module verification on 2026-07-13: 173 frontend tests across 27 files,
-TypeScript compilation, production Vite build, and 72 default Rust tests passed.
+Latest module verification on 2026-07-13: 186 frontend tests across 30 files,
+TypeScript compilation, production Vite build, complete runtime/release audit,
+and 96 default Rust tests across all targets passed. Seven real/external smokes
+remain explicitly gated; the complete networked uv 0.11.23, CPython 3.12.13,
+and pyvalhalla 3.7.0 manager smoke passed separately.
 The ignored managed-uv, installed-FFmpeg, installed-GDAL, live-OSRM, and private
 ride smokes also pass when explicitly enabled. Release-governance verification passes the runtime audit, three
 positive/negative release metadata tests, the repository release audit,
@@ -489,12 +492,13 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Select and inventory the remaining FFmpeg/GDAL Windows runtimes. Managed
-   uv 0.11.23/CPython 3.12.13 is implemented and real-smoke qualified; GPL
+1. Implement the owner-approved FFmpeg 8.1.1 archive and select/build the
+   immutable minimal open-driver GDAL package. Managed uv 0.11.23, CPython
+   3.12.13, and pyvalhalla 3.7.0 are implemented and real-smoke qualified; GPL
    source and notice delivery for GPStitch is implemented. Production GIS container
    normalization, local CV, and GPStitch reconciliation are complete:
-   verification passes 173 frontend tests, 72 default Rust tests plus the
-   explicitly enabled managed-uv, installed-FFmpeg, installed-GDAL, and
+   verification passes 186 frontend tests, 96 default Rust tests plus the
+   explicitly enabled managed uv/Python/pyvalhalla, installed-FFmpeg, installed-GDAL, and
    live-OSRM and private-ride smokes,
    four locked/offline Python tests, and the
    production build.
@@ -523,7 +527,8 @@ network/DNS access.
 9. Configure and validate the selected York/GTA Valhalla/OSRM production data;
    the disposable live integration smoke is complete.
 10. Add PostGIS/spatial indexing only if production dataset scale requires it.
-11. Define FFmpeg/ffprobe bundling, update, and licensing policy for deployment.
+11. Preserve the approved FFmpeg/ffprobe GPLv3/source-notice policy while
+    implementing exact executable verification and app-local removal.
 
 ## Design Guardrails
 

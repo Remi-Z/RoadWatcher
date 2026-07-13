@@ -110,6 +110,16 @@ function verifyDependencyCatalog(catalog) {
           && artifact.fileName.split(/[\\/]/).length >= 2, `${component.id} bootstrap mirror path is invalid`);
       }
     }
+    if (component.installStrategy) {
+      const strategy = component.installStrategy;
+      assert(component.id === "managed-valhalla" && strategy.kind === "uv-wheel-environment"
+        && strategy.pythonVersion === "3.12.13" && strategy.package === "pyvalhalla"
+        && strategy.packageVersion === "3.7.0" && component.version === strategy.packageVersion
+        && component.artifact?.archive === "file" && component.artifact?.fileName === strategy.wheelFileName
+        && strategy.wheelFileName === "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"
+        && component.dependencies.length === 1 && component.dependencies[0] === "uv-python",
+      `${component.id} install strategy drifted from the fixed backend contract`);
+    }
     assert(Array.isArray(component.references), `${component.id} managed references are missing`);
     const referenceIds = new Set();
     for (const reference of component.references) {
@@ -162,6 +172,16 @@ function verifyDependencyCatalog(catalog) {
     "managed uv executable reference drifted");
   assert(uvReferences.get("python-installations")?.path === "python-installations"
     && uvReferences.get("python-installations")?.kind === "directory", "managed Python reference drifted");
+  const managedValhalla = byId.get("managed-valhalla");
+  assert(managedValhalla?.availability === "available", "approved managed Valhalla is not available");
+  assert(managedValhalla.license?.digest === "171fa658c40734d50202bfd28527989c2d27a1a24316ae0ed7a2f20ded416613"
+    && managedValhalla.license?.consentRequired === true, "managed Valhalla consent identity drifted");
+  assert(managedValhalla.artifact?.sha256 === "edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef"
+    && managedValhalla.artifact?.maxBytes === 24298623,
+  "managed Valhalla Windows wheel identity drifted");
+  const valhallaReferences = new Map(managedValhalla.references.map((reference) => [reference.id, reference]));
+  assert(valhallaReferences.get("service-executable")?.path === "Scripts/valhalla_service.exe"
+    && valhallaReferences.get("service-executable")?.kind === "file", "managed Valhalla service reference drifted");
   const visited = new Set();
   const visiting = new Set();
   const visit = (id) => {

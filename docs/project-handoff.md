@@ -855,14 +855,17 @@ Windows wheel, and hash; the Tauri resource manifest installs the pyproject,
 lock, and README, while the third-party notice records MIT terms. No wheel or
 prepared environment was added to the installer.
 
-Explicit `runtime_prepare` now prepares three atomic app-local environments:
-GPStitch, optional CV, and required pyvalhalla. Preflight has twelve identities,
-including the bundled Valhalla lock and the service-bearing environment, and
-requires both exact package/Python probes and `Scripts/valhalla_service.exe`.
+`runtime_prepare` prepares GPStitch and optional CV atomically, but no longer
+creates a fresh pyvalhalla environment without the component's Setup Center
+consent. A previously prepared exact environment remains usable. On a fresh
+machine, the owner-approved catalog component installs pyvalhalla first and
+`runtime_prepare` then probes and reuses that managed path. Preflight has twelve
+identities, including the bundled Valhalla lock and service-bearing environment,
+and requires exact package/Python probes plus `Scripts/valhalla_service.exe`.
 When no explicit HTTP Valhalla override is supplied, route matching resolves the
-prepared app-local service first, retains the catalog-installed environment as
-an alternate, and still preserves HTTP Valhalla/OSRM fallbacks. The existing
-bounded one-shot service lifecycle and tile/config provenance are unchanged.
+prepared or catalog-managed app-local service and still preserves HTTP
+Valhalla/OSRM fallbacks. The bounded one-shot lifecycle and tile/config
+provenance are unchanged.
 
 A disposable real Windows sync passed with uv 0.11.23, CPython 3.12.13, and
 pyvalhalla 3.7.0; it produced a 46,080-byte
@@ -870,8 +873,39 @@ pyvalhalla 3.7.0; it produced a 46,080-byte
 route matcher tests, TypeScript compilation, runtime packaging, and release
 audits pass. Windows denied uv cache promotion inside the repository workspace,
 so the disposable real smoke used `C:\\tmp`; RoadWatcher production preparation
-uses its app-local data root, not the repository. Redistribution approval and
-the production York tile artifact remain separate owner-gated work.
+uses its app-local data root, not the repository. The production York tile
+artifact remains separate owner-gated work.
+
+The owner approved pyvalhalla and all further software libraries on 2026-07-13.
+Catalog `2026.07.13-internal.6` therefore promotes `managed-valhalla` through a
+fixed `uv-wheel-environment` backend strategy. It downloads only the 24,298,623
+byte PyPI Windows x64 wheel pinned at SHA-256
+`edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef`.
+The frontend supplies only the component ID and exact MIT consent digest.
+
+The backend requires the ready managed `uv-python` dependency, creates a staged
+virtual environment from managed Python 3.12.13 with downloads disabled, then
+installs only the already verified local wheel with `--offline`, `--no-index`,
+`--no-deps`, `--no-config`, and copy link mode. It probes exact Python and
+package versions plus the native service before atomic publication. Generic
+wheel URLs, package names, versions, commands, and destination paths are not
+accepted. Setup Center now disables individual dependent installs until their
+dependencies are ready, while Install recommended may satisfy them in the same
+ordered request.
+
+Evidence passes 18 focused default dependency-manager tests (two real smokes
+ignored), 96 default Rust library tests (seven external smokes ignored), ten
+focused frontend Setup Center/contract tests, and the runtime package audit. The
+explicit full networked manager smoke also passed the combined uv 0.11.23,
+CPython 3.12.13, and pyvalhalla 3.7.0 download/install/probe/reference/removal
+flow. The environment is downloaded app-locally and is not redistributed in
+the RoadWatcher installer.
+
+The post-module qualification baseline is 186 frontend tests across 30 files,
+96 default Rust tests across all targets with seven explicitly gated real
+smokes, the production TypeScript/Vite build, and the complete runtime/release
+audit. The only Vite diagnostic is the existing advisory that Tauri core is
+both statically and dynamically imported.
 
 Managed GIS components now have a strict install-to-project handoff without an
 automatic import. Catalog `projectImports` declare only relative source paths
@@ -1076,8 +1110,8 @@ payload independently size/hash bounded and allows uv to run offline. The
 remaining FFmpeg, GDAL, Valhalla data, CV, and GIS rows are still unchanged and
 owner-gated.
 
-1. Complete the remaining owner choices in `docs/managed-source-approval.md`,
-   beginning with the pyvalhalla delivery policy and exact FFmpeg/GDAL archives.
+1. Implement the now-approved exact FFmpeg distribution and qualify a minimal
+   open-driver GDAL package; keep their runtime consent and notice inventories.
 2. Approve immutable York/OSM/model/GIS inputs, build the real Valhalla/ONNX
    assets, publish them to exact versioned GitHub Release URLs, and promote only
    the independently re-hashed bytes.

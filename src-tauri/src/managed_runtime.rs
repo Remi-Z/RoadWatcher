@@ -31,6 +31,7 @@ pub struct RuntimePrepareRequest {
     pub cv_source: PathBuf,
     pub valhalla_source: PathBuf,
     pub environments: ManagedEnvironmentPaths,
+    pub allow_valhalla_sync: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -151,26 +152,28 @@ fn prepare_with_executor(
     request: RuntimePrepareRequest,
     executor: Arc<dyn EnvironmentSyncExecutor>,
 ) -> RuntimePrepareResponse {
-    let specs = [
+    let mut specs = vec![
         (
             "gpstitch-environment",
             "gpstitch-0.18.0",
-            request.gpstitch_source,
-            request.environments.gpstitch,
+            request.gpstitch_source.clone(),
+            request.environments.gpstitch.clone(),
         ),
         (
             "cv-environment",
             "roadwatcher-cv-0.1.0",
-            request.cv_source,
-            request.environments.cv,
-        ),
-        (
-            "valhalla-environment",
-            "pyvalhalla-3.7.0",
-            request.valhalla_source,
-            request.environments.valhalla,
+            request.cv_source.clone(),
+            request.environments.cv.clone(),
         ),
     ];
+    if request.allow_valhalla_sync {
+        specs.push((
+            "valhalla-environment",
+            "pyvalhalla-3.7.0",
+            request.valhalla_source.clone(),
+            request.environments.valhalla.clone(),
+        ));
+    }
     let handles = specs
         .into_iter()
         .map(|(id, marker, source, target)| {
@@ -194,7 +197,7 @@ fn prepare_with_executor(
             })
         })
         .collect::<Vec<_>>();
-    let environments = handles
+    let mut environments = handles
         .into_iter()
         .map(|handle| {
             handle
@@ -207,6 +210,14 @@ fn prepare_with_executor(
                 })
         })
         .collect::<Vec<_>>();
+    if !request.allow_valhalla_sync {
+        environments.push(RuntimeEnvironmentPreparation {
+            id: "valhalla-environment".to_string(),
+            status: "failed".to_string(),
+            environment_path: request.environments.valhalla.display().to_string(),
+            detail: "Install Managed Valhalla in Setup Center and accept its exact MIT consent before preparing sidecar environments.".to_string(),
+        });
+    }
     RuntimePrepareResponse {
         prepared_at_unix: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -616,6 +627,7 @@ mod tests {
             cv_source: root.join("cv-source"),
             valhalla_source: root.join("valhalla-source"),
             environments: paths.clone(),
+            allow_valhalla_sync: true,
         };
         let first = prepare_with_executor(request.clone(), Arc::new(FakeSync));
         assert_eq!(first.status, "ready");
@@ -645,6 +657,42 @@ mod tests {
     }
 
     #[test]
+    fn refuses_fresh_valhalla_sync_without_setup_center_consent() {
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-valhalla-consent-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let paths = managed_environment_paths(&root);
+        let response = prepare_with_executor(
+            RuntimePrepareRequest {
+                uv_executable: "uv".to_string(),
+                gpstitch_source: root.join("gp-source"),
+                cv_source: root.join("cv-source"),
+                valhalla_source: root.join("valhalla-source"),
+                environments: paths.clone(),
+                allow_valhalla_sync: false,
+            },
+            Arc::new(FakeSync),
+        );
+        assert_eq!(response.status, "incomplete");
+        assert!(environment_structure_ready(
+            &paths.gpstitch,
+            "gpstitch-0.18.0"
+        ));
+        assert!(environment_structure_ready(
+            &paths.cv,
+            "roadwatcher-cv-0.1.0"
+        ));
+        assert!(!paths.valhalla.exists());
+        assert!(response.environments.iter().any(|item| {
+            item.id == "valhalla-environment"
+                && item.status == "failed"
+                && item.detail.contains("Setup Center")
+        }));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn refuses_to_replace_an_unowned_environment_directory() {
         let root = std::env::temp_dir().join(format!(
             "roadwatcher-unowned-runtime-{}",
@@ -665,6 +713,7 @@ mod tests {
                 cv_source: root.join("cv-source"),
                 valhalla_source: root.join("valhalla-source"),
                 environments: paths,
+                allow_valhalla_sync: true,
             },
             Arc::new(FakeSync),
         );
@@ -717,6 +766,7 @@ mod tests {
                 cv_source: root.join("cv-source"),
                 valhalla_source: root.join("valhalla-source"),
                 environments: paths.clone(),
+                allow_valhalla_sync: true,
             },
             Arc::new(FailAfterPromotion),
         );
@@ -757,6 +807,7 @@ mod tests {
                 .canonicalize()
                 .unwrap(),
             environments: paths.clone(),
+            allow_valhalla_sync: true,
         });
         assert_eq!(response.status, "ready", "{response:?}");
         assert!(environment_structure_ready(

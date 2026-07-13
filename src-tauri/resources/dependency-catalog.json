@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "platform": "windows-x86_64",
-  "catalogVersion": "2026.07.13-internal.5",
+  "catalogVersion": "2026.07.13-internal.6",
   "components": [
     {
       "id": "uv-python",
@@ -86,10 +86,23 @@
       "purpose": "Run local one-shot road matching without Docker or a persistent service.",
       "required": true,
       "recommended": true,
-      "license": { "id": "mit-valhalla", "label": "MIT", "url": "https://github.com/valhalla/valhalla/blob/3.7.0/COPYING", "digest": "pending-owner-approval", "consentRequired": true },
+      "license": { "id": "mit-valhalla", "label": "MIT", "url": "https://github.com/valhalla/valhalla/blob/3.7.0/COPYING", "digest": "171fa658c40734d50202bfd28527989c2d27a1a24316ae0ed7a2f20ded416613", "consentRequired": true },
       "sourceUrl": "https://pypi.org/project/pyvalhalla/3.7.0/",
-      "availability": "pendingApproval",
-      "artifact": null,
+      "availability": "available",
+      "artifact": {
+        "url": "https://files.pythonhosted.org/packages/49/bd/509b71c3e0bf20d9a98d41c75a30771cc3c6242cfdc574e68edb1258682a/pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl",
+        "sha256": "edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef",
+        "maxBytes": 24298623,
+        "archive": "file",
+        "fileName": "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"
+      },
+      "installStrategy": {
+        "kind": "uv-wheel-environment",
+        "pythonVersion": "3.12.13",
+        "package": "pyvalhalla",
+        "packageVersion": "3.7.0",
+        "wheelFileName": "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"
+      },
       "dependencies": ["uv-python"],
       "references": [
         { "id": "service-executable", "path": "Scripts/valhalla_service.exe", "kind": "file" }

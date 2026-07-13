@@ -32,8 +32,10 @@ RoadWatcher bundles a `pyproject.toml`, `uv.lock`, and explanatory README at
 Windows x64 wheel is identified by SHA-256
 `edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef`.
 Valhalla/pyvalhalla is MIT-licensed. The wheel and a prepared environment are
-not embedded in the current installer and remain subject to the explicit
-managed-install license/source approval gate.
+not embedded in the installer. After explicit Setup Center consent, RoadWatcher
+downloads the exact wheel from PyPI, verifies its catalog hash, and prepares an
+app-local environment using the already managed Python. Removing the component
+removes only this owned environment.
 
 ## External tools not redistributed
 

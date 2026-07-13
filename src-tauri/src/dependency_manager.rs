@@ -1,4 +1,5 @@
 use crate::bounded_process::run_bounded_process_cancellable;
+use crate::managed_runtime;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -16,6 +17,9 @@ use zip::ZipArchive;
 const MANAGED_MARKER: &str = ".roadwatcher-managed-component.json";
 const UV_PYTHON_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(20 * 60);
 const UV_PYTHON_BOOTSTRAP_OUTPUT_LIMIT: u64 = 16 * 1024 * 1024;
+const UV_WHEEL_ENVIRONMENT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const UV_WHEEL_ENVIRONMENT_OUTPUT_LIMIT: u64 = 4 * 1024 * 1024;
+const MANAGED_ENVIRONMENT_MARKER: &str = ".roadwatcher-managed-environment";
 const ALLOWED_DOWNLOAD_HOSTS: &[&str] = &[
     "github.com",
     "objects.githubusercontent.com",
@@ -50,9 +54,21 @@ pub struct DependencyComponent {
     pub artifact: Option<DependencyArtifact>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bootstrap: Option<DependencyBootstrap>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_strategy: Option<DependencyInstallStrategy>,
     pub dependencies: Vec<String>,
     pub references: Vec<DependencyReference>,
     pub project_imports: Vec<DependencyProjectImport>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependencyInstallStrategy {
+    pub kind: String,
+    pub python_version: String,
+    pub package: String,
+    pub package_version: String,
+    pub wheel_file_name: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -427,14 +443,19 @@ impl DependencyManager {
                 job.status = "installing".to_string();
                 job.detail = format!("Installing and validating {}.", component.label);
             });
-            match artifact.archive.as_str() {
-                "file" => {
-                    let name = artifact.file_name.as_deref().unwrap_or("artifact.bin");
-                    validate_relative_path(Path::new(name))?;
-                    fs::copy(&download, payload.join(name)).map_err(|error| error.to_string())?;
+            if let Some(strategy) = &component.install_strategy {
+                self.install_strategy(job_id, strategy, &download, &payload, &staging)?;
+            } else {
+                match artifact.archive.as_str() {
+                    "file" => {
+                        let name = artifact.file_name.as_deref().unwrap_or("artifact.bin");
+                        validate_relative_path(Path::new(name))?;
+                        fs::copy(&download, payload.join(name))
+                            .map_err(|error| error.to_string())?;
+                    }
+                    "zip" => extract_zip(&download, &payload, || self.is_cancelled(job_id))?,
+                    other => return Err(format!("unsupported dependency archive type {other}")),
                 }
-                "zip" => extract_zip(&download, &payload, || self.is_cancelled(job_id))?,
-                other => return Err(format!("unsupported dependency archive type {other}")),
             }
             if let Some(bootstrap) = &component.bootstrap {
                 self.install_bootstrap(job_id, bootstrap, &payload, &staging)?;
@@ -468,6 +489,37 @@ impl DependencyManager {
         })();
         let _ = fs::remove_dir_all(&staging);
         result
+    }
+
+    fn install_strategy(
+        &self,
+        job_id: &str,
+        strategy: &DependencyInstallStrategy,
+        download: &Path,
+        payload: &Path,
+        staging: &Path,
+    ) -> Result<(), String> {
+        match strategy.kind.as_str() {
+            "uv-wheel-environment" => {
+                let uv = self
+                    .managed_reference("uv-python", "executable")
+                    .ok_or_else(|| "managed uv is not installed and ready".to_string())?;
+                let python_installations = self
+                    .managed_reference("uv-python", "python-installations")
+                    .ok_or_else(|| "managed Python installations are not ready".to_string())?;
+                let wheel = staging.join(&strategy.wheel_file_name);
+                fs::copy(download, &wheel).map_err(|error| error.to_string())?;
+                install_uv_wheel_environment(
+                    &uv,
+                    &python_installations,
+                    &wheel,
+                    payload,
+                    strategy,
+                    || self.is_cancelled(job_id),
+                )
+            }
+            other => Err(format!("unsupported dependency install strategy {other}")),
+        }
     }
 
     fn install_bootstrap(
@@ -907,6 +959,147 @@ fn install_uv_managed_python(
     Ok(())
 }
 
+fn install_uv_wheel_environment(
+    uv: &Path,
+    python_installations: &Path,
+    wheel: &Path,
+    payload: &Path,
+    strategy: &DependencyInstallStrategy,
+    should_cancel: impl Fn() -> bool + Copy,
+) -> Result<(), String> {
+    let canonical_uv = uv
+        .canonicalize()
+        .map_err(|error| format!("could not validate managed uv: {error}"))?;
+    let canonical_python_installations = python_installations
+        .canonicalize()
+        .map_err(|error| format!("could not validate managed Python root: {error}"))?;
+    let canonical_wheel = wheel
+        .canonicalize()
+        .map_err(|error| format!("could not validate verified wheel: {error}"))?;
+    let canonical_payload = payload
+        .canonicalize()
+        .map_err(|error| format!("could not validate staged environment: {error}"))?;
+    let staging = canonical_payload
+        .parent()
+        .ok_or_else(|| "staged environment root is unavailable".to_string())?;
+    if canonical_wheel.parent() != Some(staging)
+        || canonical_wheel.file_name().and_then(|value| value.to_str())
+            != Some(strategy.wheel_file_name.as_str())
+    {
+        return Err("verified wheel escaped its fixed staging identity".to_string());
+    }
+    let cache = staging.join("uv-wheel-cache");
+    fs::create_dir_all(&cache).map_err(|error| error.to_string())?;
+
+    let mut venv = uv_wheel_venv_command(
+        &canonical_uv,
+        &canonical_python_installations,
+        &canonical_payload,
+        &cache,
+        &strategy.python_version,
+    );
+    let output = run_bounded_process_cancellable(
+        &mut venv,
+        UV_WHEEL_ENVIRONMENT_TIMEOUT,
+        UV_WHEEL_ENVIRONMENT_OUTPUT_LIMIT,
+        should_cancel,
+    )
+    .map_err(|error| format!("managed wheel environment creation failed: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "managed wheel environment creation returned a non-zero exit status: {}",
+            bounded_process_detail(&output.stderr, &output.stdout)
+        ));
+    }
+
+    let python = canonical_payload.join(if cfg!(windows) {
+        "Scripts/python.exe"
+    } else {
+        "bin/python"
+    });
+    let mut install = uv_wheel_install_command(&canonical_uv, &python, &canonical_wheel, &cache);
+    let output = run_bounded_process_cancellable(
+        &mut install,
+        UV_WHEEL_ENVIRONMENT_TIMEOUT,
+        UV_WHEEL_ENVIRONMENT_OUTPUT_LIMIT,
+        should_cancel,
+    )
+    .map_err(|error| format!("verified wheel installation failed: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "verified wheel installation returned a non-zero exit status: {}",
+            bounded_process_detail(&output.stderr, &output.stdout)
+        ));
+    }
+    fs::write(
+        canonical_payload.join(MANAGED_ENVIRONMENT_MARKER),
+        format!("{}-{}", strategy.package, strategy.package_version),
+    )
+    .map_err(|error| error.to_string())?;
+    managed_runtime::probe_managed_environment(
+        &canonical_payload,
+        &format!("{}-{}", strategy.package, strategy.package_version),
+    )?;
+    Ok(())
+}
+
+fn uv_wheel_venv_command(
+    uv: &Path,
+    python_installations: &Path,
+    payload: &Path,
+    cache: &Path,
+    python_version: &str,
+) -> Command {
+    let mut command = Command::new(uv);
+    command
+        .arg("venv")
+        .arg("--allow-existing")
+        .arg("--no-project")
+        .arg("--python")
+        .arg(python_version)
+        .arg("--managed-python")
+        .arg("--no-python-downloads")
+        .arg("--link-mode")
+        .arg("copy")
+        .arg("--offline")
+        .arg("--no-config")
+        .arg("--no-progress")
+        .arg(payload)
+        .env_remove("VIRTUAL_ENV")
+        .env_remove("UV_PROJECT")
+        .env_remove("UV_PROJECT_ENVIRONMENT")
+        .env_remove("UV_PYTHON_INSTALL_DIR")
+        .env_remove("UV_CACHE_DIR")
+        .env("UV_PYTHON_INSTALL_DIR", python_installations)
+        .env("UV_CACHE_DIR", cache);
+    command
+}
+
+fn uv_wheel_install_command(uv: &Path, python: &Path, wheel: &Path, cache: &Path) -> Command {
+    let mut command = Command::new(uv);
+    command
+        .arg("pip")
+        .arg("install")
+        .arg("--python")
+        .arg(python)
+        .arg("--no-deps")
+        .arg("--only-binary")
+        .arg(":all:")
+        .arg("--no-index")
+        .arg("--link-mode")
+        .arg("copy")
+        .arg("--offline")
+        .arg("--no-config")
+        .arg("--no-progress")
+        .arg(wheel)
+        .env_remove("VIRTUAL_ENV")
+        .env_remove("UV_PROJECT")
+        .env_remove("UV_PROJECT_ENVIRONMENT")
+        .env_remove("UV_CACHE_DIR")
+        .env("UV_CACHE_DIR", cache);
+    command
+}
+
 fn uv_managed_python_install_command(
     uv: &Path,
     mirror_url: &str,
@@ -1105,6 +1298,28 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
                 }
             }
         }
+        if let Some(strategy) = &component.install_strategy {
+            let artifact = component
+                .artifact
+                .as_ref()
+                .ok_or_else(|| format!("{} install strategy has no artifact", component.id))?;
+            if component.id != "managed-valhalla"
+                || strategy.kind != "uv-wheel-environment"
+                || strategy.python_version != "3.12.13"
+                || strategy.package != "pyvalhalla"
+                || strategy.package_version != "3.7.0"
+                || component.version != strategy.package_version
+                || artifact.archive != "file"
+                || artifact.file_name.as_deref() != Some(strategy.wheel_file_name.as_str())
+                || strategy.wheel_file_name != "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"
+                || component.dependencies != ["uv-python"]
+            {
+                return Err(format!(
+                    "{} uv wheel environment strategy drifted from its fixed backend contract",
+                    component.id
+                ));
+            }
+        }
         let mut reference_ids = HashSet::new();
         for reference in &component.references {
             if reference.id.is_empty()
@@ -1140,6 +1355,19 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
         {
             return Err(format!(
                 "{} bootstrap references do not match the fixed backend contract",
+                component.id
+            ));
+        }
+        if component.install_strategy.is_some()
+            && (component.references.len() != 1
+                || !component.references.iter().any(|reference| {
+                    reference.id == "service-executable"
+                        && reference.path == "Scripts/valhalla_service.exe"
+                        && reference.kind == "file"
+                }))
+        {
+            return Err(format!(
+                "{} uv wheel environment reference drifted from its fixed backend contract",
                 component.id
             ));
         }
@@ -1659,6 +1887,7 @@ mod tests {
                     file_name: None,
                 }),
                 bootstrap: None,
+                install_strategy: None,
                 dependencies: vec![],
                 references: vec![],
                 project_imports: vec![],
@@ -1857,6 +2086,106 @@ mod tests {
         );
     }
 
+    fn valhalla_wheel_catalog() -> DependencyCatalog {
+        let mut value = uv_bootstrap_catalog();
+        let mut base = catalog();
+        let mut component = base.components.remove(0);
+        component.id = "managed-valhalla".to_string();
+        component.label = "Managed Valhalla 3.7.0".to_string();
+        component.version = "3.7.0".to_string();
+        component.artifact = Some(DependencyArtifact {
+            url: "https://files.pythonhosted.org/packages/49/bd/pyvalhalla.whl".to_string(),
+            sha256: "e".repeat(64),
+            max_bytes: 24_298_623,
+            archive: "file".to_string(),
+            file_name: Some("pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl".to_string()),
+        });
+        component.install_strategy = Some(DependencyInstallStrategy {
+            kind: "uv-wheel-environment".to_string(),
+            python_version: "3.12.13".to_string(),
+            package: "pyvalhalla".to_string(),
+            package_version: "3.7.0".to_string(),
+            wheel_file_name: "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl".to_string(),
+        });
+        component.dependencies = vec!["uv-python".to_string()];
+        component.references = vec![DependencyReference {
+            id: "service-executable".to_string(),
+            path: "Scripts/valhalla_service.exe".to_string(),
+            kind: "file".to_string(),
+        }];
+        value.components.push(component);
+        value
+    }
+
+    #[test]
+    fn validates_only_the_fixed_pyvalhalla_wheel_environment() {
+        assert!(validate_catalog(&valhalla_wheel_catalog()).is_ok());
+
+        let mut arbitrary_package = valhalla_wheel_catalog();
+        arbitrary_package.components[1]
+            .install_strategy
+            .as_mut()
+            .unwrap()
+            .package = "arbitrary".to_string();
+        assert!(validate_catalog(&arbitrary_package)
+            .unwrap_err()
+            .contains("fixed backend contract"));
+
+        let mut arbitrary_reference = valhalla_wheel_catalog();
+        arbitrary_reference.components[1].references[0].path = "service.exe".to_string();
+        assert!(validate_catalog(&arbitrary_reference)
+            .unwrap_err()
+            .contains("reference drifted"));
+    }
+
+    #[test]
+    fn pyvalhalla_commands_are_offline_managed_and_argument_locked() {
+        let venv = uv_wheel_venv_command(
+            Path::new("C:/managed/uv.exe"),
+            Path::new("C:/managed/python-installations"),
+            Path::new("C:/staging/payload"),
+            Path::new("C:/staging/cache"),
+            "3.12.13",
+        );
+        let venv_args = venv
+            .get_args()
+            .map(|value| value.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            venv_args,
+            vec![
+                "venv",
+                "--allow-existing",
+                "--no-project",
+                "--python",
+                "3.12.13",
+                "--managed-python",
+                "--no-python-downloads",
+                "--link-mode",
+                "copy",
+                "--offline",
+                "--no-config",
+                "--no-progress",
+                "C:/staging/payload",
+            ]
+        );
+        let install = uv_wheel_install_command(
+            Path::new("C:/managed/uv.exe"),
+            Path::new("C:/staging/payload/Scripts/python.exe"),
+            Path::new("C:/staging/pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"),
+            Path::new("C:/staging/cache"),
+        );
+        let install_args = install
+            .get_args()
+            .map(|value| value.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        assert!(install_args.contains(&"--offline".to_string()));
+        assert!(install_args.contains(&"--no-index".to_string()));
+        assert!(install_args.contains(&"--no-deps".to_string()));
+        assert!(install_args.contains(&"--no-config".to_string()));
+        assert!(!install_args.iter().any(|value| value.starts_with("http")));
+    }
+
     #[test]
     #[ignore = "requires explicitly supplied approved uv and CPython archives"]
     fn real_approved_uv_python_bootstrap_smoke() {
@@ -1900,7 +2229,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "downloads the explicitly approved uv and CPython artifacts"]
+    #[ignore = "downloads the explicitly approved uv, CPython, and pyvalhalla artifacts"]
     fn real_managed_uv_python_install_and_remove_smoke() {
         assert_eq!(
             std::env::var("ROADWATCHER_RUN_REAL_MANAGED_UV").as_deref(),
@@ -1915,20 +2244,36 @@ mod tests {
             .join("resources")
             .join("dependency-catalog.json");
         let manager = DependencyManager::load(&catalog_path, &app_data).unwrap();
-        let component = manager
+        let uv_component = manager
             .catalog
             .components
             .iter()
             .find(|component| component.id == "uv-python")
             .unwrap();
+        let valhalla_component = manager
+            .catalog
+            .components
+            .iter()
+            .find(|component| component.id == "managed-valhalla")
+            .unwrap();
         let digests = vec![
-            component.license.digest.clone(),
-            component.bootstrap.as_ref().unwrap().license.digest.clone(),
+            uv_component.license.digest.clone(),
+            uv_component
+                .bootstrap
+                .as_ref()
+                .unwrap()
+                .license
+                .digest
+                .clone(),
+            valhalla_component.license.digest.clone(),
         ];
         let job = manager
-            .start(vec!["uv-python".to_string()], digests)
+            .start(
+                vec!["uv-python".to_string(), "managed-valhalla".to_string()],
+                digests,
+            )
             .unwrap();
-        let deadline = std::time::Instant::now() + Duration::from_secs(5 * 60);
+        let deadline = std::time::Instant::now() + Duration::from_secs(7 * 60);
         let terminal = loop {
             let status = manager.status(&job.job_id).unwrap();
             if matches!(status.status.as_str(), "ready" | "failed" | "cancelled") {
@@ -1936,7 +2281,7 @@ mod tests {
             }
             assert!(
                 std::time::Instant::now() < deadline,
-                "managed uv/Python install timed out"
+                "managed uv/Python/Valhalla install timed out"
             );
             thread::sleep(Duration::from_millis(100));
         };
@@ -1957,6 +2302,29 @@ mod tests {
                 .artifact_sha256,
             "02ad29f07e674d68726ba3bb1ff25b335d83515756e2b1a194bb56c3cc30e07c"
         );
+        let valhalla = manager
+            .catalog()
+            .components
+            .into_iter()
+            .find(|component| component.component.id == "managed-valhalla")
+            .unwrap();
+        assert_eq!(valhalla.state, "ready");
+        assert!(valhalla.managed_references["service-executable"].ends_with("valhalla_service.exe"));
+        assert!(managed_runtime::probe_managed_environment(
+            Path::new(&valhalla.install_path),
+            "pyvalhalla-3.7.0"
+        )
+        .unwrap()
+        .contains("3.7.0"));
+        assert_eq!(
+            manager
+                .managed_identity("managed-valhalla")
+                .unwrap()
+                .artifact_sha256,
+            "edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef"
+        );
+        let removed = manager.remove("managed-valhalla").unwrap();
+        assert_eq!(removed.state, "notInstalled");
         let removed = manager.remove("uv-python").unwrap();
         assert_eq!(removed.state, "notInstalled");
         fs::remove_dir_all(app_data).unwrap();

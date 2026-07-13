@@ -92,9 +92,20 @@ struct DependencyComponent {
     availability: String,
     artifact: Option<DependencyArtifact>,
     bootstrap: Option<DependencyBootstrap>,
+    install_strategy: Option<DependencyInstallStrategy>,
     dependencies: Vec<String>,
     references: Vec<DependencyReference>,
     project_imports: Vec<DependencyProjectImport>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependencyInstallStrategy {
+    kind: String,
+    python_version: String,
+    package: String,
+    package_version: String,
+    wheel_file_name: String,
 }
 
 #[derive(Deserialize)]
@@ -349,6 +360,26 @@ fn validate_dependency_catalog() {
                 );
             }
         }
+        if let Some(strategy) = &component.install_strategy {
+            let artifact = component
+                .artifact
+                .as_ref()
+                .expect("install strategy requires an artifact");
+            assert!(
+                component.id == "managed-valhalla"
+                    && strategy.kind == "uv-wheel-environment"
+                    && strategy.python_version == "3.12.13"
+                    && strategy.package == "pyvalhalla"
+                    && strategy.package_version == "3.7.0"
+                    && component.version == strategy.package_version
+                    && artifact.archive == "file"
+                    && artifact.file_name.as_deref() == Some(strategy.wheel_file_name.as_str())
+                    && strategy.wheel_file_name == "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"
+                    && component.dependencies.as_slice() == ["uv-python"],
+                "dependency component {} install strategy drifted from the fixed backend contract",
+                component.id
+            );
+        }
         let mut reference_ids = HashSet::new();
         for reference in &component.references {
             assert!(
@@ -392,6 +423,17 @@ fn validate_dependency_catalog() {
                         && reference.path == "python-installations"
                         && reference.kind == "directory"),
                 "uv bootstrap Python reference drifted"
+            );
+        }
+        if component.install_strategy.is_some() {
+            assert!(
+                component.references.len() == 1
+                    && component.references.iter().any(|reference| {
+                        reference.id == "service-executable"
+                            && reference.path == "Scripts/valhalla_service.exe"
+                            && reference.kind == "file"
+                    }),
+                "managed Valhalla service reference drifted"
             );
         }
         let mut import_ids = HashSet::new();

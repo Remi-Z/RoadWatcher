@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DependencyCatalog, DependencyComponent, DependencyInstallJob } from "../native/nativeDependencyRepository";
 import { SetupCenter } from "./SetupCenter";
@@ -35,6 +35,21 @@ describe("Setup Center", () => {
     expect(install).toBeEnabled();
     fireEvent.click(install);
     expect(props.onInstall).toHaveBeenCalledWith(["tool"], ["license-digest"]);
+  });
+
+  it("requires dependencies to be ready or selected in the same recommended install", () => {
+    const dependency = { ...installable, id: "runtime", label: "Runtime", state: "notInstalled" as const };
+    const dependent = { ...installable, id: "matcher", label: "Matcher", recommended: false, dependencies: ["runtime"] };
+    renderSetup({ catalog: { ...catalog, components: [dependency, dependent] } });
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /reviewed and accept/i })[0]);
+    expect(within(screen.getByText("Matcher").closest("article")!).getByRole("button", { name: "Install" })).toBeDisabled();
+
+    cleanup();
+    const readyDependency = { ...dependency, state: "ready" as const };
+    renderSetup({ catalog: { ...catalog, components: [readyDependency, dependent] } });
+    const checkboxes = screen.getAllByRole("checkbox", { name: /reviewed and accept/i });
+    fireEvent.click(checkboxes[checkboxes.length - 1]);
+    expect(within(screen.getByText("Matcher").closest("article")!).getByRole("button", { name: "Install" })).toBeEnabled();
   });
 
   it("includes a managed bootstrap payload in displayed download guidance", () => {
