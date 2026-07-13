@@ -92,6 +92,15 @@ struct DependencyComponent {
     availability: String,
     artifact: Option<DependencyArtifact>,
     dependencies: Vec<String>,
+    references: Vec<DependencyReference>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependencyReference {
+    id: String,
+    path: String,
+    kind: String,
 }
 
 #[derive(Deserialize)]
@@ -235,6 +244,31 @@ fn validate_dependency_catalog() {
             assert!(
                 matches!(artifact.archive.as_str(), "file" | "zip"),
                 "dependency component {} uses an unsupported archive",
+                component.id
+            );
+        }
+        let mut reference_ids = HashSet::new();
+        for reference in &component.references {
+            assert!(
+                !reference.id.is_empty()
+                    && reference.id.chars().all(|value| value.is_ascii_lowercase()
+                        || value.is_ascii_digit()
+                        || value == '-')
+                    && reference_ids.insert(reference.id.as_str()),
+                "dependency component {} has an invalid or duplicate managed reference id",
+                component.id
+            );
+            assert!(
+                matches!(reference.kind.as_str(), "file" | "directory"),
+                "dependency component {} has an unsupported managed reference kind",
+                component.id
+            );
+            assert!(
+                !reference.path.is_empty()
+                    && Path::new(&reference.path)
+                        .components()
+                        .all(|part| matches!(part, Component::Normal(_))),
+                "dependency component {} has an unsafe managed reference path",
                 component.id
             );
         }

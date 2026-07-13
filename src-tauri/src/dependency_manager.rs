@@ -44,6 +44,15 @@ pub struct DependencyComponent {
     pub availability: String,
     pub artifact: Option<DependencyArtifact>,
     pub dependencies: Vec<String>,
+    pub references: Vec<DependencyReference>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependencyReference {
+    pub id: String,
+    pub path: String,
+    pub kind: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -84,6 +93,7 @@ pub struct DependencyComponentStatus {
     pub install_path: String,
     pub update_available: bool,
     pub detail: String,
+    pub managed_references: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -408,17 +418,76 @@ impl DependencyManager {
         let Ok(component) = self.component(id) else {
             return false;
         };
+        self.has_valid_marker(component) && self.resolve_references(component).is_ok()
+    }
+
+    fn has_valid_marker(&self, component: &DependencyComponent) -> bool {
         matches!(read_marker(&self.component_path(component)), Ok(marker) if marker.id == component.id && marker.version == component.version && component.artifact.as_ref().is_some_and(|artifact| marker.artifact_sha256 == artifact.sha256))
+    }
+
+    fn resolve_references(
+        &self,
+        component: &DependencyComponent,
+    ) -> Result<HashMap<String, String>, String> {
+        let root = self.component_path(component);
+        let mut result = HashMap::new();
+        for reference in &component.references {
+            let candidate = root.join(&reference.path);
+            let valid_kind = match reference.kind.as_str() {
+                "file" => candidate.is_file(),
+                "directory" => candidate.is_dir(),
+                _ => false,
+            };
+            if !valid_kind {
+                return Err(format!(
+                    "Managed reference {} is missing or has the wrong type.",
+                    reference.id
+                ));
+            }
+            let canonical = candidate.canonicalize().map_err(|error| {
+                format!(
+                    "Could not validate managed reference {}: {error}",
+                    reference.id
+                )
+            })?;
+            let canonical_root = root
+                .canonicalize()
+                .map_err(|error| format!("Could not validate managed component root: {error}"))?;
+            if !canonical.starts_with(&canonical_root) {
+                return Err(format!(
+                    "Managed reference {} escaped its component root.",
+                    reference.id
+                ));
+            }
+            result.insert(reference.id.clone(), canonical.display().to_string());
+        }
+        Ok(result)
     }
 
     fn component_status(&self, component: &DependencyComponent) -> DependencyComponentStatus {
         let path = self.component_path(component);
+        let marker_valid = self.has_valid_marker(component);
+        let resolved_references = marker_valid.then(|| self.resolve_references(component));
+        let managed_references = resolved_references
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
+            .cloned()
+            .unwrap_or_default();
         let update_available =
             !self.is_ready(&component.id) && self.has_owned_previous_version(component);
-        let (state, detail) = if self.is_ready(&component.id) {
+        let (state, detail) = if marker_valid
+            && resolved_references.as_ref().is_some_and(Result::is_ok)
+        {
             (
                 "ready",
                 "Managed component identity and integrity marker are valid.".to_string(),
+            )
+        } else if marker_valid {
+            (
+                "invalid",
+                resolved_references
+                    .and_then(Result::err)
+                    .unwrap_or_else(|| "Managed component references are invalid.".to_string()),
             )
         } else if path.exists() {
             (
@@ -451,6 +520,7 @@ impl DependencyManager {
             install_path: path.display().to_string(),
             update_available,
             detail,
+            managed_references,
         }
     }
 
@@ -625,6 +695,28 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
             if !matches!(artifact.archive.as_str(), "file" | "zip") {
                 return Err(format!("{} archive type is unsupported", component.id));
             }
+        }
+        let mut reference_ids = HashSet::new();
+        for reference in &component.references {
+            if reference.id.is_empty()
+                || !reference.id.chars().all(|value| {
+                    value.is_ascii_lowercase() || value.is_ascii_digit() || value == '-'
+                })
+                || !reference_ids.insert(reference.id.clone())
+            {
+                return Err(format!(
+                    "{} has an invalid or duplicate managed reference id",
+                    component.id
+                ));
+            }
+            if !matches!(reference.kind.as_str(), "file" | "directory") {
+                return Err(format!(
+                    "{} managed reference kind is unsupported",
+                    component.id
+                ));
+            }
+            validate_relative_path(Path::new(&reference.path))
+                .map_err(|_| format!("{} managed reference path is unsafe", component.id))?;
         }
     }
     for component in &catalog.components {
@@ -1066,6 +1158,7 @@ mod tests {
                     file_name: None,
                 }),
                 dependencies: vec![],
+                references: vec![],
             }],
         }
     }
@@ -1086,6 +1179,15 @@ mod tests {
         let mut cycle = catalog();
         cycle.components[0].dependencies.push("tool".to_string());
         assert!(validate_catalog(&cycle).unwrap_err().contains("cycle"));
+        let mut unsafe_reference = catalog();
+        unsafe_reference.components[0].references = vec![DependencyReference {
+            id: "tool".to_string(),
+            path: "../tool.exe".to_string(),
+            kind: "file".to_string(),
+        }];
+        assert!(validate_catalog(&unsafe_reference)
+            .unwrap_err()
+            .contains("reference path"));
     }
 
     #[test]
@@ -1114,6 +1216,47 @@ mod tests {
             .remove("tool")
             .unwrap_err()
             .contains("ownership marker"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn publishes_only_valid_backend_resolved_component_references() {
+        let root =
+            std::env::temp_dir().join(format!("roadwatcher-reference-test-{}", Uuid::new_v4()));
+        let mut configured_catalog = catalog();
+        configured_catalog.components[0].references = vec![DependencyReference {
+            id: "executable".to_string(),
+            path: "bin/tool.exe".to_string(),
+            kind: "file".to_string(),
+        }];
+        let manager = DependencyManager::from_catalog(configured_catalog, root.clone()).unwrap();
+        let target = root.join("tool").join("1");
+        fs::create_dir_all(target.join("bin")).unwrap();
+        fs::write(target.join("bin/tool.exe"), b"fixture").unwrap();
+        fs::write(
+            target.join(MANAGED_MARKER),
+            serde_json::to_vec(&ManagedComponentMarker {
+                id: "tool".to_string(),
+                version: "1".to_string(),
+                artifact_sha256: "a".repeat(64),
+                source_url: "https://github.com/example/tool.zip".to_string(),
+                installed_at_unix: 1,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        let ready = manager.catalog().components.remove(0);
+        assert_eq!(ready.state, "ready");
+        assert!(ready
+            .managed_references
+            .get("executable")
+            .is_some_and(|path| path.ends_with("tool.exe")));
+
+        fs::remove_file(target.join("bin/tool.exe")).unwrap();
+        let invalid = manager.catalog().components.remove(0);
+        assert_eq!(invalid.state, "invalid");
+        assert!(invalid.managed_references.is_empty());
         fs::remove_dir_all(root).unwrap();
     }
 

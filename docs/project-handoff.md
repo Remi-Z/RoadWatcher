@@ -807,6 +807,25 @@ Valhalla build commands, the pinned YOLO exporter recipe, and their exact packag
 locks remain unfinished because their upstream URLs/licenses are owner approval
 gates; the shared packager does not weaken or bypass those gates.
 
+Managed component layouts are now explicit catalog contracts. Each component
+declares named relative file/directory references; build-time, runtime, and
+release verifiers reject unsafe or duplicate contracts. The dependency manager
+returns absolute `managedReferences` only when the current ownership marker is
+valid, each declared target has the expected type, and its canonical path stays
+inside the component root. Missing layout changes the component to `invalid` and
+returns no references. The frontend parser rejects undeclared keys and any
+reference map on a non-ready component.
+
+Setup refresh maps only known backend-issued references into untouched
+`slot:` workstation fields: uv, FFmpeg, GDAL, York Valhalla config, and optional
+CV model/labels. It marks populated slots configured, refreshes native preflight
+after installation, and never replaces an owner-entered path. Removal restores
+the original placeholder only while the field still exactly matches the issued
+managed path. Focused evidence: 9 dependency-manager tests, 182 frontend tests,
+the production build, runtime catalog audit, and release audit passed. The
+frontend test/build commands needed an unsandboxed retry because esbuild was
+denied while resolving the workspace config; no product-code bypass was added.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

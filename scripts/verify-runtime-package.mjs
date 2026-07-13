@@ -79,6 +79,18 @@ function verifyDependencyCatalog(catalog) {
       assert(/^[a-fA-F0-9]{64}$/.test(component.artifact.sha256), `${component.id} artifact SHA-256 is invalid`);
       assert(["file", "zip"].includes(component.artifact.archive), `${component.id} archive type is unsupported`);
     }
+    assert(Array.isArray(component.references), `${component.id} managed references are missing`);
+    const referenceIds = new Set();
+    for (const reference of component.references) {
+      assert(/^[a-z0-9-]+$/.test(reference.id) && !referenceIds.has(reference.id), `${component.id} has an invalid or duplicate managed reference id`);
+      referenceIds.add(reference.id);
+      assert(["file", "directory"].includes(reference.kind), `${component.id} managed reference kind is unsupported`);
+      const pathParts = typeof reference.path === "string" ? reference.path.split(/[\\/]/) : [];
+      assert(pathParts.length > 0 && !/^[A-Za-z]:/.test(reference.path) && !reference.path.startsWith("/")
+        && !reference.path.startsWith("\\") && !/[\r\n]/.test(reference.path)
+        && pathParts.every((part) => part.length > 0 && part !== "." && part !== ".." && !part.includes(":")),
+      `${component.id} managed reference path is unsafe`);
+    }
   }
   for (const component of catalog.components) {
     for (const dependency of component.dependencies) {

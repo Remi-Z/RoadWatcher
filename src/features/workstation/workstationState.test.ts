@@ -22,6 +22,22 @@ const FIRST_PROJECT_ID = "local-workstation-first" as ProjectId;
 const SECOND_PROJECT_ID = "local-workstation-second" as ProjectId;
 
 describe("workstation state", () => {
+  it("applies managed references only to untouched placeholder slots", () => {
+    const initial = createInitialWorkstationState({ seed: createSeed(FIRST_PROJECT_ID) });
+    const withOverride = workstationReducer(initial, {
+      type: "edit_component_slot", id: "ffmpeg", field: "reference", value: "D:/Owner/ffmpeg/bin"
+    });
+    const updated = workstationReducer(withOverride, {
+      type: "apply_managed_component_references",
+      references: { ffmpeg: "C:/Managed/ffmpeg/bin", gdal: "C:/Managed/gdal/bin" }
+    });
+
+    expect(updated.componentSlots.find((slot) => slot.id === "ffmpeg")?.reference).toBe("D:/Owner/ffmpeg/bin");
+    expect(updated.componentSlots.find((slot) => slot.id === "gdal")).toMatchObject({
+      reference: "C:/Managed/gdal/bin", status: "configured"
+    });
+  });
+
   it("creates a cloned fallback state with deterministic selection", () => {
     const seed = createSeed(FIRST_PROJECT_ID);
 

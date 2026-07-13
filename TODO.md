@@ -105,7 +105,7 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Add Install recommended plus individual optional actions with
   source, license, purpose, size, consent, progress, cancel, retry, validation,
   removal, and disk-space guidance.
-- [ ] `[AGENT]` Refresh preflight after installation and prefer managed paths
+- [x] `[AGENT]` Refresh preflight after installation and prefer managed paths
   without overwriting explicit user overrides.
 - [ ] `[AGENT]` Require an explicit Import into project action for installed GIS
   data.

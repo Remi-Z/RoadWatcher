@@ -32,10 +32,18 @@ export interface DependencyComponent {
   availability: DependencyAvailability;
   artifact: DependencyArtifact | null;
   dependencies: string[];
+  references: DependencyReference[];
   state: DependencyInstallState;
   installPath: string;
   updateAvailable: boolean;
   detail: string;
+  managedReferences: Record<string, string>;
+}
+
+export interface DependencyReference {
+  id: string;
+  path: string;
+  kind: "file" | "directory";
 }
 
 export interface DependencyCatalog {
@@ -121,18 +129,40 @@ function parseComponent(value: unknown): DependencyComponent | null {
     || typeof value.required !== "boolean" || typeof value.recommended !== "boolean" || !record(value.license)
     || !id(value.license.id) || !text(value.license.label) || !https(value.license.url) || !text(value.license.digest)
     || typeof value.license.consentRequired !== "boolean" || !https(value.sourceUrl) || !availability(value.availability)
-    || !Array.isArray(value.dependencies) || !value.dependencies.every(id) || !installState(value.state)
-    || typeof value.installPath !== "string" || typeof value.updateAvailable !== "boolean" || !text(value.detail)) return null;
+    || !Array.isArray(value.dependencies) || !value.dependencies.every(id) || !Array.isArray(value.references)
+    || !installState(value.state) || typeof value.installPath !== "string" || typeof value.updateAvailable !== "boolean"
+    || !text(value.detail) || !record(value.managedReferences)) return null;
   const artifact = value.artifact === null ? null : parseArtifact(value.artifact);
   if (value.artifact !== null && !artifact) return null;
   if (value.availability === "available" && !artifact) return null;
+  const references = value.references.map(parseReference);
+  if (references.some((reference) => !reference)) return null;
+  const referenceIds = new Set<string>();
+  for (const reference of references as DependencyReference[]) {
+    if (referenceIds.has(reference.id)) return null;
+    referenceIds.add(reference.id);
+  }
+  const managedReferences: Record<string, string> = {};
+  for (const [referenceId, referencePath] of Object.entries(value.managedReferences)) {
+    if (!referenceIds.has(referenceId) || !text(referencePath)) return null;
+    managedReferences[referenceId] = referencePath;
+  }
+  if (value.state === "ready" && references.some((reference) => !managedReferences[(reference as DependencyReference).id])) return null;
+  if (value.state !== "ready" && Object.keys(managedReferences).length > 0) return null;
   return {
     id: value.id, label: value.label, version: value.version, purpose: value.purpose,
     required: value.required, recommended: value.recommended,
     license: value.license as unknown as DependencyLicense, sourceUrl: value.sourceUrl,
-    availability: value.availability, artifact, dependencies: value.dependencies,
-    state: value.state, installPath: value.installPath, updateAvailable: value.updateAvailable, detail: value.detail
+    availability: value.availability, artifact, dependencies: value.dependencies, references: references as DependencyReference[],
+    state: value.state, installPath: value.installPath, updateAvailable: value.updateAvailable, detail: value.detail,
+    managedReferences
   };
+}
+
+function parseReference(value: unknown): DependencyReference | null {
+  if (!record(value) || !id(value.id) || typeof value.path !== "string" || !safeRelativePath(value.path)
+    || (value.kind !== "file" && value.kind !== "directory")) return null;
+  return value as unknown as DependencyReference;
 }
 
 function parseArtifact(value: unknown): DependencyArtifact | null {
@@ -160,6 +190,11 @@ function invalid(message: string) {
 function record(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === "object" && !Array.isArray(value)); }
 function text(value: unknown): value is string { return typeof value === "string" && value.trim().length > 0; }
 function id(value: unknown): value is string { return typeof value === "string" && /^[a-z0-9-]+$/.test(value); }
+function safeRelativePath(value: string): boolean {
+  const parts = value.split(/[\\/]/);
+  return value.length > 0 && value.length <= 260 && !/^[A-Za-z]:/.test(value) && !value.startsWith("/") && !value.startsWith("\\")
+    && !/[\r\n]/.test(value) && parts.every((part) => part.length > 0 && part !== "." && part !== "..");
+}
 function https(value: unknown): value is string { return typeof value === "string" && value.startsWith("https://") && !/[\r\n]/.test(value); }
 function availability(value: unknown): value is DependencyAvailability { return value === "available" || value === "pendingApproval" || value === "blockedOnUser"; }
 function installState(value: unknown): value is DependencyInstallState { return typeof value === "string" && ["notInstalled", "queued", "downloading", "installing", "ready", "failed", "cancelled", "invalid"].includes(value); }

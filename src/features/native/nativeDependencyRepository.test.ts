@@ -7,7 +7,9 @@ const component = {
   license: { id: "mit", label: "MIT", url: "https://example.com/license", digest: "digest", consentRequired: true },
   sourceUrl: "https://example.com/tool", availability: "available",
   artifact: { url: "https://github.com/example/tool.zip", sha256: "a".repeat(64), maxBytes: 1000, archive: "zip" },
-  dependencies: [], state: "notInstalled", installPath: "C:/RoadWatcher/tool/1", updateAvailable: false, detail: "Available for installation."
+  dependencies: [], references: [{ id: "executable", path: "bin/tool.exe", kind: "file" }],
+  state: "notInstalled", installPath: "C:/RoadWatcher/tool/1", updateAvailable: false,
+  detail: "Available for installation.", managedReferences: {}
 };
 
 describe("native dependency repository", () => {
@@ -36,5 +38,32 @@ describe("native dependency repository", () => {
     const repository = createNativeDependencyRepository({ invoke });
     await expect(repository.catalog()).resolves.toMatchObject({ status: "unavailable", commandStatus: "invalid_response" });
     await expect(repository.status("job-1", ["tool"])).resolves.toMatchObject({ status: "unavailable", commandStatus: "invalid_response" });
+  });
+
+  it("accepts only backend-resolved references for ready components", async () => {
+    const invoke = vi.fn<NativeCommandBridge["invoke"]>().mockResolvedValue({
+      ok: true, status: "invoked", command: "dependency_catalog", response: {
+        schemaVersion: 1, platform: "windows-x86_64", catalogVersion: "test", components: [{
+          ...component, state: "ready", managedReferences: { executable: "C:/RoadWatcher/tool/1/bin/tool.exe" }
+        }]
+      }
+    });
+    await expect(createNativeDependencyRepository({ invoke }).catalog()).resolves.toMatchObject({
+      status: "loaded", catalog: { components: [{ managedReferences: { executable: "C:/RoadWatcher/tool/1/bin/tool.exe" } }] }
+    });
+
+    invoke.mockResolvedValueOnce({ ok: true, status: "invoked", command: "dependency_catalog", response: {
+      schemaVersion: 1, platform: "windows-x86_64", catalogVersion: "test", components: [{
+        ...component, managedReferences: { arbitrary: "C:/untrusted.exe" }
+      }]
+    } });
+    await expect(createNativeDependencyRepository({ invoke }).catalog()).resolves.toMatchObject({ status: "unavailable" });
+
+    invoke.mockResolvedValueOnce({ ok: true, status: "invoked", command: "dependency_catalog", response: {
+      schemaVersion: 1, platform: "windows-x86_64", catalogVersion: "test", components: [{
+        ...component, state: "ready", managedReferences: {}
+      }]
+    } });
+    await expect(createNativeDependencyRepository({ invoke }).catalog()).resolves.toMatchObject({ status: "unavailable" });
   });
 });

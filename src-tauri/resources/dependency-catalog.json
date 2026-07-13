@@ -14,7 +14,10 @@
       "sourceUrl": "https://github.com/astral-sh/uv/releases/tag/0.11.23",
       "availability": "pendingApproval",
       "artifact": null,
-      "dependencies": []
+      "dependencies": [],
+      "references": [
+        { "id": "executable", "path": "uv.exe", "kind": "file" }
+      ]
     },
     {
       "id": "ffmpeg",
@@ -27,7 +30,10 @@
       "sourceUrl": "https://ffmpeg.org/download.html#build-windows",
       "availability": "pendingApproval",
       "artifact": null,
-      "dependencies": []
+      "dependencies": [],
+      "references": [
+        { "id": "binary-directory", "path": "bin", "kind": "directory" }
+      ]
     },
     {
       "id": "gdal",
@@ -40,7 +46,10 @@
       "sourceUrl": "https://gdal.org/en/latest/download.html#binaries",
       "availability": "pendingApproval",
       "artifact": null,
-      "dependencies": []
+      "dependencies": [],
+      "references": [
+        { "id": "binary-directory", "path": "bin", "kind": "directory" }
+      ]
     },
     {
       "id": "managed-valhalla",
@@ -53,7 +62,10 @@
       "sourceUrl": "https://pypi.org/project/pyvalhalla/3.7.0/",
       "availability": "pendingApproval",
       "artifact": null,
-      "dependencies": ["uv-python"]
+      "dependencies": ["uv-python"],
+      "references": [
+        { "id": "service-executable", "path": "Scripts/valhalla_service.exe", "kind": "file" }
+      ]
     },
     {
       "id": "york-valhalla-tiles",
@@ -66,7 +78,10 @@
       "sourceUrl": "https://github.com/Remi-Z/RoadWatcher/releases",
       "availability": "blockedOnUser",
       "artifact": null,
-      "dependencies": ["managed-valhalla"]
+      "dependencies": ["managed-valhalla"],
+      "references": [
+        { "id": "config", "path": "valhalla.json", "kind": "file" }
+      ]
     },
     {
       "id": "cv-yolo11n",
@@ -79,7 +94,11 @@
       "sourceUrl": "https://github.com/Remi-Z/RoadWatcher/releases",
       "availability": "blockedOnUser",
       "artifact": null,
-      "dependencies": []
+      "dependencies": [],
+      "references": [
+        { "id": "model", "path": "yolo11n.onnx", "kind": "file" },
+        { "id": "labels", "path": "labels.txt", "kind": "file" }
+      ]
     },
     {
       "id": "york-official-gis",
@@ -92,7 +111,10 @@
       "sourceUrl": "https://www.york.ca/york-region/statistics-and-data/open-data",
       "availability": "blockedOnUser",
       "artifact": null,
-      "dependencies": ["gdal"]
+      "dependencies": ["gdal"],
+      "references": [
+        { "id": "catalog", "path": "catalog.json", "kind": "file" }
+      ]
     }
   ]
 }

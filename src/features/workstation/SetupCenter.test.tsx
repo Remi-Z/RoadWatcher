@@ -9,8 +9,8 @@ const installable: DependencyComponent = {
   license: { id: "mit", label: "MIT", url: "https://example.com/license", digest: "license-digest", consentRequired: true },
   sourceUrl: "https://example.com/tool", availability: "available",
   artifact: { url: "https://github.com/example/tool.zip", sha256: "a".repeat(64), maxBytes: 25_000_000, archive: "zip" },
-  dependencies: [], state: "notInstalled", installPath: "C:/RoadWatcher/tool/1.2.3", updateAvailable: false,
-  detail: "Available for explicit installation."
+  dependencies: [], references: [], state: "notInstalled", installPath: "C:/RoadWatcher/tool/1.2.3", updateAvailable: false,
+  detail: "Available for explicit installation.", managedReferences: {}
 };
 
 const catalog: DependencyCatalog = {

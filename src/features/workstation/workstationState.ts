@@ -87,6 +87,7 @@ export type WorkstationAction =
       field: keyof Pick<ComponentSlot, "status" | "reference" | "notes">;
       value: string;
     }
+  | { type: "apply_managed_component_references"; references: Record<string, string> }
   | { type: "set_native_project_root"; value: string }
   | {
       type: "edit_projected_feature";
@@ -230,6 +231,16 @@ export function workstationReducer(state: WorkstationState, action: WorkstationA
             : slot
         )
       });
+    case "apply_managed_component_references": {
+      let changed = false;
+      const componentSlots = state.componentSlots.map((slot) => {
+        const reference = action.references[slot.id];
+        if (!reference || !slot.reference.startsWith("slot:")) return slot;
+        changed = true;
+        return { ...slot, reference, status: "configured" as const };
+      });
+      return changed ? withInvalidatedExport(state, { componentSlots }) : state;
+    }
     case "set_native_project_root":
       return withInvalidatedExport(state, { nativeProjectRoot: action.value });
     case "edit_projected_feature":

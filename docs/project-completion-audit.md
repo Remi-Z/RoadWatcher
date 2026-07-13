@@ -32,7 +32,7 @@ unpublished hashes in final evidence.
 | GPStitch telemetry render and provenance | Pinned v0.18.0 source/license, durable worker tests, real locked/offline fixture render | Proven complete |
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
 | Installed runtime preparation and preflight | Ten-component strict preflight, managed-environment tests, explicitly enabled real uv smoke | Proven complete for external-runtime model |
-| Managed dependency command/security boundary | Build-validated catalog, strict ID/license-only commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, Setup Center contract tests | Proven complete; exact artifacts intentionally unavailable |
+| Managed dependency command/security boundary | Build-validated catalog, strict ID/license-only commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, backend-resolved reference contracts, Setup Center tests | Proven complete; exact artifacts intentionally unavailable |
 | Managed one-shot Valhalla adapter | Rust path resolution, bounded process/request/result files, HTTP/OSRM fallback tests, durable provenance | Implementation complete; production York tile artifact missing |
 | Managed artifact provenance manifests | Strict generator/verifier, three Node tests, release-audit integration, manifest documentation | Proven complete |
 | Deterministic release-asset packaging | Exact-tree/SHA lock, normalized stored ZIPs, atomic no-overwrite publication, three Python tests | Proven complete as shared packaging foundation; York/ONNX recipes missing |

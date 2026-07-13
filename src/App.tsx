@@ -115,6 +115,7 @@ import {
 } from "./features/workstation/WorkstationViews";
 import { ReviewReadinessPanel as WorkstationReviewReadinessPanel } from "./features/workstation/ReviewReadinessPanel";
 import { SetupCenter } from "./features/workstation/SetupCenter";
+import { managedDependencyDefaults } from "./features/workstation/managedDependencyDefaults";
 
 const defaultProjectRepository = createBrowserProjectRepository();
 const defaultNativeProjectLocator = createNativeProjectLocator();
@@ -1065,6 +1066,10 @@ export function App({
     const result = await nativeDependencyRepository.catalog();
     if (result.status === "loaded") {
       setDependencyCatalog(result.catalog);
+      const defaults = managedDependencyDefaults(result.catalog);
+      dispatchWorkstation({ type: "apply_managed_component_references", references: defaults.componentSlotReferences });
+      if (defaults.cvModelPath) setNativeCvModelPath((current) => current === NATIVE_CV_MODEL_PATH_SLOT ? defaults.cvModelPath : current);
+      if (defaults.cvLabelsPath) setNativeCvLabelsPath((current) => current === NATIVE_CV_LABELS_PATH_SLOT ? defaults.cvLabelsPath : current);
       setDependencyStatus(`Catalog ${result.catalog.catalogVersion}: ${result.catalog.components.length} audited component entries.`);
     } else {
       setDependencyCatalog(null);
@@ -1095,7 +1100,24 @@ export function App({
   }
 
   async function handleDependencyRemove(componentId: string) {
+    const managedDefaults = dependencyCatalog ? managedDependencyDefaults(dependencyCatalog) : null;
     const result = await nativeDependencyRepository.remove(componentId);
+    if (result.status === "removed" && managedDefaults) {
+      for (const [slotId, managedReference] of Object.entries(managedDefaults.componentSlotReferences)) {
+        const slot = componentSlots.find((candidate) => candidate.id === slotId);
+        const fallback = defaultComponentSlots.find((candidate) => candidate.id === slotId);
+        if (slot?.reference === managedReference && fallback) {
+          dispatchWorkstation({ type: "edit_component_slot", id: slotId, field: "reference", value: fallback.reference });
+          dispatchWorkstation({ type: "edit_component_slot", id: slotId, field: "status", value: fallback.status });
+        }
+      }
+      if (managedDefaults.cvModelPath) {
+        setNativeCvModelPath((current) => current === managedDefaults.cvModelPath ? NATIVE_CV_MODEL_PATH_SLOT : current);
+      }
+      if (managedDefaults.cvLabelsPath) {
+        setNativeCvLabelsPath((current) => current === managedDefaults.cvLabelsPath ? NATIVE_CV_LABELS_PATH_SLOT : current);
+      }
+    }
     setDependencyStatus(result.status === "removed" ? `${result.component.label}: ${result.component.detail}` : result.message);
     await refreshDependencyCatalog();
     await handleRuntimePreflight();
