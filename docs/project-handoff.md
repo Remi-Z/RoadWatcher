@@ -886,10 +886,27 @@ command; installation alone never modifies a project.
 The bundled catalog intentionally contains empty `projectImports` arrays. Exact
 municipal endpoints, terms, retrieval provenance, and layer metadata remain
 owner approval gates, so this module proves the security and UI contract without
-inventing a production dataset. Focused evidence is 9 dependency-manager tests,
+inventing a production dataset. Focused evidence is 12 dependency-manager tests,
 7 frontend repository/Setup Center tests, TypeScript compilation, and the
 runtime catalog audit. Real selectable datasets remain unfinished until those
 approvals are recorded in root `TODO.md`.
+
+Managed-dependency qualification now exercises the failure boundaries directly.
+The Rust catalog validator rejects duplicate/cyclic identities, unsafe or
+non-allowlisted URLs, invalid hashes, unsupported archives, and reused license
+identities with drifting digests. Downloader tests prove SHA-256 and size-limit
+failure, explicit cancellation, strict Range/ETag resume, and safe restart.
+Extraction rejects traversal entries; publication tests prove atomic replacement
+and restoration of the previous owned target when promotion fails. Restart and
+removal tests preserve unowned directories. The focused suite passes 12 tests,
+and the full default Rust library suite passes 86 with five external real smokes
+ignored by design.
+
+Release verification still reports RoadWatcher 0.1.0 as `development` and
+`unsigned-development-only`, with `publicReleaseReady: false`. These two
+qualification rows are complete independently of the aggregate internal pilot;
+the aggregate remains open because the GPStitch test boundary and clean-Windows
+owner run are unresolved.
 
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep

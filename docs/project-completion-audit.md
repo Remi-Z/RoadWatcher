@@ -46,9 +46,10 @@ unpublished hashes in final evidence.
 
 ## Current Verification
 
-- Frontend: 29 files / 179 tests pass.
+- Frontend: 29 files / 182 tests pass; the subsequent managed-GIS handoff passed
+  its 7 focused frontend tests and production build.
 - App integration: 68 tests pass without React asynchronous-update warnings.
-- Rust: 77 default tests pass; five real smokes are ignored by default. The
+- Rust: 86 default tests pass; five real smokes are ignored by default. The
   managed-uv, installed-FFmpeg, installed-GDAL, live-OSRM, and private ride
   dataset smokes pass when enabled separately.
 - The private ride smoke copies only the smallest 128,353,932-byte LRV into an

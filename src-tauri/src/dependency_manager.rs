@@ -732,6 +732,7 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
         return Err("dependency catalog must target windows-x86_64".to_string());
     }
     let mut ids = HashSet::new();
+    let mut licenses = HashMap::new();
     for component in &catalog.components {
         if component.id.is_empty()
             || !component
@@ -751,6 +752,17 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
         validate_https_url(&component.license.url)?;
         if component.license.digest.trim().is_empty() {
             return Err(format!("{} license digest is blank", component.id));
+        }
+        if let Some(previous_digest) = licenses.insert(
+            component.license.id.clone(),
+            component.license.digest.clone(),
+        ) {
+            if previous_digest != component.license.digest {
+                return Err(format!(
+                    "license {} has inconsistent digests",
+                    component.license.id
+                ));
+            }
         }
         if component.availability == "available" && component.artifact.is_none() {
             return Err(format!(
@@ -1227,8 +1239,11 @@ fn lock_error<T>(_: std::sync::PoisonError<T>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
     use std::collections::VecDeque;
     use std::io::{Cursor, ErrorKind};
+    use zip::write::SimpleFileOptions;
+    use zip::ZipWriter;
 
     fn catalog() -> DependencyCatalog {
         DependencyCatalog {
@@ -1290,6 +1305,38 @@ mod tests {
         assert!(validate_catalog(&unsafe_reference)
             .unwrap_err()
             .contains("reference path"));
+
+        let mut disallowed_host = catalog();
+        disallowed_host.components[0].artifact.as_mut().unwrap().url =
+            "https://example.com/tool.zip".to_string();
+        assert!(validate_catalog(&disallowed_host)
+            .unwrap_err()
+            .contains("not allowlisted"));
+
+        let mut invalid_hash = catalog();
+        invalid_hash.components[0].artifact.as_mut().unwrap().sha256 = "not-a-hash".to_string();
+        assert!(validate_catalog(&invalid_hash)
+            .unwrap_err()
+            .contains("SHA-256"));
+
+        let mut unsupported_archive = catalog();
+        unsupported_archive.components[0]
+            .artifact
+            .as_mut()
+            .unwrap()
+            .archive = "tar".to_string();
+        assert!(validate_catalog(&unsupported_archive)
+            .unwrap_err()
+            .contains("unsupported"));
+
+        let mut inconsistent_license = catalog();
+        let mut second = inconsistent_license.components[0].clone();
+        second.id = "tool-two".to_string();
+        second.license.digest = "different-digest".to_string();
+        inconsistent_license.components.push(second);
+        assert!(validate_catalog(&inconsistent_license)
+            .unwrap_err()
+            .contains("inconsistent digests"));
     }
 
     #[test]
@@ -1533,6 +1580,142 @@ mod tests {
         assert!(client.requests()[1].is_some());
         assert!(client.requests()[2].is_none());
         fs::remove_file(destination).unwrap();
+    }
+
+    #[test]
+    fn rejects_download_hash_size_and_cancellation_failures() {
+        let payload = b"abcdefghij";
+
+        let hash_destination = temporary_download_path("hash-mismatch");
+        let hash_client = FakeDownloadClient::new(vec![Ok(download_response(
+            200,
+            None,
+            false,
+            None,
+            Box::new(Cursor::new(payload.to_vec())),
+        ))]);
+        assert!(download_verified_with_client(
+            &hash_client,
+            "https://github.com/example/tool.zip",
+            &hash_destination,
+            100,
+            &"0".repeat(64),
+            || false,
+        )
+        .unwrap_err()
+        .contains("SHA-256 mismatch"));
+        fs::remove_file(hash_destination).unwrap();
+
+        let size_destination = temporary_download_path("size-limit");
+        let size_client = FakeDownloadClient::new(vec![Ok(download_response(
+            200,
+            None,
+            false,
+            None,
+            Box::new(Cursor::new(payload.to_vec())),
+        ))]);
+        assert!(download_verified_with_client(
+            &size_client,
+            "https://github.com/example/tool.zip",
+            &size_destination,
+            4,
+            &hex::encode(Sha256::digest(payload)),
+            || false,
+        )
+        .unwrap_err()
+        .contains("size limit"));
+        fs::remove_file(size_destination).unwrap();
+
+        let cancel_destination = temporary_download_path("cancel");
+        let cancel_client = FakeDownloadClient::new(vec![Ok(download_response(
+            200,
+            None,
+            false,
+            None,
+            Box::new(Cursor::new(payload.to_vec())),
+        ))]);
+        let cancellation_checks = Cell::new(0_u8);
+        assert!(download_verified_with_client(
+            &cancel_client,
+            "https://github.com/example/tool.zip",
+            &cancel_destination,
+            100,
+            &hex::encode(Sha256::digest(payload)),
+            || {
+                cancellation_checks.set(cancellation_checks.get() + 1);
+                cancellation_checks.get() > 1
+            },
+        )
+        .unwrap_err()
+        .contains("cancelled"));
+        fs::remove_file(cancel_destination).unwrap();
+    }
+
+    #[test]
+    fn extraction_rejects_traversal_entries() {
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-dependency-zip-traversal-{}",
+            Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let archive_path = root.join("unsafe.zip");
+        let archive = File::create(&archive_path).unwrap();
+        let mut writer = ZipWriter::new(archive);
+        writer
+            .start_file("../escape.txt", SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"escape").unwrap();
+        writer.finish().unwrap();
+
+        let destination = root.join("payload");
+        fs::create_dir_all(&destination).unwrap();
+        assert!(extract_zip(&archive_path, &destination, || false)
+            .unwrap_err()
+            .contains("unsafe path"));
+        assert!(!root.join("escape.txt").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn atomic_promotion_preserves_or_restores_owned_targets() {
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-dependency-promotion-{}",
+            Uuid::new_v4()
+        ));
+        let target = root.join("tool").join("1");
+        fs::create_dir_all(&target).unwrap();
+        write_test_marker(&target);
+        fs::write(target.join("identity.txt"), b"previous").unwrap();
+
+        let staging = root.join("staging-payload");
+        fs::create_dir_all(&staging).unwrap();
+        write_test_marker(&staging);
+        fs::write(staging.join("identity.txt"), b"promoted").unwrap();
+        promote_owned_directory(&staging, &target, &root).unwrap();
+        assert_eq!(fs::read(target.join("identity.txt")).unwrap(), b"promoted");
+
+        let missing_staging = root.join("missing-staging");
+        assert!(promote_owned_directory(&missing_staging, &target, &root)
+            .unwrap_err()
+            .contains("atomically"));
+        assert_eq!(fs::read(target.join("identity.txt")).unwrap(), b"promoted");
+        assert!(read_marker(&target).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn write_test_marker(target: &Path) {
+        fs::write(
+            target.join(MANAGED_MARKER),
+            serde_json::to_vec(&ManagedComponentMarker {
+                id: "tool".to_string(),
+                version: "1".to_string(),
+                artifact_sha256: "a".repeat(64),
+                source_url: "https://github.com/example/tool.zip".to_string(),
+                installed_at_unix: 1,
+            })
+            .unwrap(),
+        )
+        .unwrap();
     }
 
     fn temporary_download_path(label: &str) -> PathBuf {

@@ -116,9 +116,9 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 
 - [ ] `[AGENT]` Pass frontend, build, release/runtime audit, Rust, sidecar, and
   deterministic matcher/artifact tests.
-- [ ] `[AGENT]` Verify dependency catalog rejection, download confinement,
+- [x] `[AGENT]` Verify dependency catalog rejection, download confinement,
   integrity failures, cancellation, restart recovery, rollback, and ownership.
-- [ ] `[AGENT]` Keep release metadata development/internal, unsigned, and
+- [x] `[AGENT]` Keep release metadata development/internal, unsigned, and
   `publicReleaseReady: false`.
 
 ## User Context — Agents Must Not Complete These
@@ -173,8 +173,10 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 
 ## Latest Qualification Evidence (2026-07-13)
 
-- [x] `[AGENT]` Frontend: 179 tests passed across 29 files.
-- [x] `[AGENT]` Rust: 77 tests passed; five explicit real/native smokes remain
+- [x] `[AGENT]` Frontend: 182 tests passed across 29 files; the subsequent
+  managed-GIS change passed its 7 focused repository/Setup Center tests and a
+  production build.
+- [x] `[AGENT]` Rust: 86 tests passed; five explicit real/native smokes remain
   ignored until their external tools or private fixture are available.
 - [x] `[AGENT]` CV sidecar: four tests passed in the locked environment with a
   test-only pytest injection.
@@ -187,6 +189,10 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   initial response advertises byte ranges with a strong ETag and the resumed
   response proves the same ETag, HTTP 206, and exact Content-Range offset;
   weak/drifting identity safely restarts staged bytes from zero.
+- [x] `[AGENT]` Twelve focused managed-dependency tests directly cover catalog
+  identity/license/host/hash/archive rejection, size and integrity failures,
+  cancellation, traversal-safe extraction, confined resolved references,
+  atomic promotion and rollback, restart cleanup, and ownership enforcement.
 - [ ] `[USER-CONTEXT]` Decide whether internal qualification may exclude
   GPStitch's upstream browser suite or whether RoadWatcher should carry a
   reviewed GPStitch Windows-test patch and the separate Playwright browser.
