@@ -186,17 +186,15 @@ The runnable app today is the React/Vite evidence workstation:
   both the UI and exported evidence packet.
 - Processing job rail unblock hints reuse the native setup checklist to show
   which setup slot and verification command clears each blocked job.
-- Native runtime status that detects browser fallback versus Tauri shell
-  presence and lists planned Rust command names without claiming they are
-  implemented.
-- TypeScript native command contract registry that records request and response
-  fields for each planned Tauri command before Rust DTOs are implemented.
-- Safe native command bridge that returns explicit browser fallback or
-  bridge-unavailable results until a real Tauri `invoke` function is wired, with
-  required request-field validation before native calls and response-field
-  validation before accepting native data. Rejected native invokes return
-  explicit `failed` command results so the app can keep running and audit the
-  failed attempt.
+- Native runtime status that distinguishes browser fallback, unavailable bridge,
+  and active Tauri shell states without implying that browser mode lacks native
+  implementations.
+- TypeScript native command contracts and registered Rust commands share strict
+  request/response validation for the supported project, media, proxy, GPX,
+  GIS, CV, GPStitch, runtime, and dependency flows.
+- Safe native command bridge that records browser fallback without invoking
+  native code, invokes registered commands in an active Tauri shell, and turns
+  unavailable/rejected calls into explicit auditable results.
 - Browser-safe Tauri invoke adapter that avoids loading Tauri APIs in browser
   fallback mode, resolves `@tauri-apps/api/core.invoke` in a detected Tauri
   shell, and carries ready bridge status into UI readiness and packet exports.
@@ -212,18 +210,10 @@ The runnable app today is the React/Vite evidence workstation:
   SHA-256 in Rust, persists the referenced original and queued proxy job in one
   SQLite transaction, and atomically adds media/job/clip/audit state. Browser
   file import remains the fallback when no native project is open.
-- Readiness-panel GPX matcher probe that routes an explicit persisted GPX path
-  slot through the planned `gpx_match` bridge path, recording browser fallback
-  attempts in readiness, saved drafts, and packet exports until Valhalla/OSRM
-  matching is wired.
-- Readiness-panel GIS projection probe that routes an explicit official GIS
-  source path slot through the planned `gis_project` bridge path, recording
-  browser fallback attempts in readiness, saved drafts, and packet exports until
-  Turf/PostGIS/native projection is wired.
-- Readiness-panel FFmpeg proxy probe that routes the selected media through the
-  planned `ffmpeg_proxy` bridge path with the explicit `review-proxy` profile,
-  recording browser fallback attempts in readiness, saved drafts, and packet
-  exports until native proxy/thumbnail jobs are wired.
+- Readiness-panel GPX matching, GIS projection, and FFmpeg proxy actions route
+  bounded explicit requests through their registered commands in an active
+  Tauri shell. Browser mode records a fallback attempt in readiness, saved
+  drafts, and packet exports; it does not imply the native adapter is absent.
 - Readiness-panel local CV controls route selected media and separate model/label
   paths through implemented `cv_scan`/`cv_job_status` commands. Findings are
   reconciled into reviewer-editable rows, decisions persist through
@@ -334,7 +324,7 @@ Passing on 2026-07-08:
 pnpm test
 ```
 
-Result: 15 files, 89 tests passing.
+At that 2026-07-08 checkpoint: 15 files, 89 tests passing.
 
 Passing on 2026-07-08:
 
@@ -586,7 +576,7 @@ Checked with the in-app browser against `http://127.0.0.1:5173/`:
 - `docs/project-completion-audit.md` - requirement-by-requirement evidence and
   the exact external gates that keep the signed public release incomplete.
 
-## Latest Completed Implementation Slice
+## Implementation History — Checkpoint-Specific
 
 Release governance is now explicit rather than inferred from scattered config.
 The bundled release manifest records version, channel, signing state, update
@@ -774,9 +764,10 @@ Tradeoffs and external review requests for this slice:
   cases lacked the vendored Playwright Chromium. Owner review is needed to choose
   an internal qualification boundary or authorize a reviewed upstream patch and
   separate browser installation.
-- Reproducible York-buffered tile and ONNX builders, managed GIS import handoff,
-  and final managed component layouts remain the next agent-owned implementation
-  slices; they are tracked in root `TODO.md`.
+- Reusable York-buffered tile and ONNX builders, managed GIS import handoff, and
+  final managed component layouts are implemented and fake-tool qualified. Real
+  owner-approved input recipes, resulting assets/notices, publication, and
+  catalog promotion remain the next tracked work in root `TODO.md`.
 
 Artifact provenance now has a checked-in strict generator and verifier at
 `scripts/managed-artifact-manifest.mjs`, documented in
@@ -802,10 +793,10 @@ release audit run both the manifest and packaging suites.
 
 Packaging tradeoff: uncompressed ZIP entries avoid zlib-version variance but can
 make hosted assets larger. Publication also requires hard-link support on the
-target filesystem and fails closed otherwise. The York-buffer extraction and
-Valhalla build commands, the pinned YOLO exporter recipe, and their exact package
-locks remain unfinished because their upstream URLs/licenses are owner approval
-gates; the shared packager does not weaken or bypass those gates.
+target filesystem and fails closed otherwise. The York extraction/Valhalla and
+YOLO exporter builders are implemented, but their real approved input recipes,
+output package locks, notices, and hosted assets remain owner-gated; the shared
+packager does not weaken or bypass those gates.
 
 Managed component layouts are now explicit catalog contracts. Each component
 declares named relative file/directory references; build-time, runtime, and

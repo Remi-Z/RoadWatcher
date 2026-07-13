@@ -14,6 +14,10 @@ change `publicReleaseReady` from `false`.
   status for this milestone.
 - Complete the relevant decisions in `managed-source-approval.md`; do not use
   placeholder catalog entries or manually copy dependencies into managed paths.
+- Do not start this pilot until `gdal`, `york-valhalla-tiles`, and the selected
+  `york-official-gis` entry are catalog-available with exact artifact identity.
+  Until then, this procedure is a planned internal-milestone contract, not a
+  runnable qualification.
 - Hash each representative source video, GPX file, and GIS input before the run.
   Keep those inputs outside the installation and project output directories.
 
@@ -21,10 +25,10 @@ change `publicReleaseReady` from `false`.
 
 1. Install and launch RoadWatcher. Confirm it reports missing components without
    downloading anything in the background.
-2. Open Setup Center, review source/license/size/purpose, accept the exact
-   approved licenses, and select **Install recommended**. Confirm uv/Python,
-   FFmpeg, GDAL, managed Valhalla, and York tiles become `ready` without
-   elevation or PATH changes.
+2. Once all required components are catalog-available, open Setup Center, review
+   source/license/size/purpose, accept the exact approved licenses, and select
+   **Install recommended**. Confirm uv/Python, FFmpeg, GDAL, managed Valhalla,
+   and York tiles become `ready` without elevation or PATH changes.
 3. Install the approved York GIS dataset separately. Confirm no project import
    occurs until **Import into project** is selected.
 4. Create a project and import representative video, GPX, and installed GIS.

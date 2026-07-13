@@ -282,7 +282,8 @@ pnpm test
 pnpm build
 ```
 
-Both passed on 2026-07-08. Current test count is 15 files / 89 tests.
+Both passed at the 2026-07-08 checkpoint, when the suite had 15 files / 89
+tests. See the current-verification section above for the present baseline.
 
 Fresh check on 2026-07-08 after Rustup install:
 
@@ -418,9 +419,10 @@ network/DNS access.
 - Canonical snapshot JSON, normalized media/GIS/job state, proxy completion, and
   export manifests are durable. Dense timeline rendering remains a later UI
   upgrade rather than a persistence gap.
-- The native setup checklist is informational and slot-backed. It records saved
-  references and verification commands, but it does not execute toolchain or data
-  checks automatically; reviewers still run or configure external tools/data.
+- The native setup checklist is informational and slot-backed. Setup Center may
+  perform user-initiated installation and validation for catalog-available
+  managed components, but it never silently downloads, accepts a license, or
+  auto-imports data; user-gated sources remain manual.
 - The native runtime boundary detects Tauri shell globals and lists implemented
   versus planned DTOs. Project create/save/load, media import, durable FFmpeg,
   native GPX import, Valhalla/OSRM matching, official GeoJSON import/projection,
@@ -443,10 +445,10 @@ network/DNS access.
   proxy/thumbnail generation, progress, cancellation, recovery, terminal
   reconciliation, and native picker are implemented. The approved exact FFmpeg
   8.1.1 distribution, consent, child-process wiring, and owned removal are implemented.
-- Browser GPX import remains an explicit fallback. Native projects now persist
-  hashed GPX assets and immutable raw points, execute Valhalla with OSRM fallback,
-  publish matched points transactionally, poll durable state, and reproject
-  official features. Live matching still requires a configured loopback service.
+- Browser GPX import remains an explicit fallback. Native projects persist
+  hashed GPX assets and immutable raw points, prefer managed one-shot Valhalla
+  when approved tiles are installed, and retain configured HTTP Valhalla/OSRM as
+  fallbacks. York tile input/asset publication remains the deployment gate.
 - Browser GeoJSON import remains an explicit fallback. Native projects hash and
   persist direct GeoJSON or complete Shapefile/FileGDB dataset evidence and use
   bounded no-shell GDAL/OGR normalization for Shapefile, GeoPackage,
@@ -464,12 +466,13 @@ network/DNS access.
   confined output publication, and snapshot/export provenance are implemented.
   Distribution must retain its GPL-3.0-or-later notices; a real installed-tool
   render smoke passes.
-- Valhalla/OSRM adapters are implemented for configured loopback HTTP services;
-  live OSRM service evidence now passes. Production York/GTA tiles/profiles
-  remain deployment inputs.
+- Managed one-shot Valhalla and configured HTTP Valhalla/OSRM fallbacks are
+  implemented; live OSRM service evidence passes. Production York/GTA tiles and
+  their approved inputs/publication remain deployment gates.
 - Shapefile, GeoPackage, FlatGeobuf, FileGDB, and arbitrary CRS normalization
-  are implemented through configured/PATH GDAL/OGR tools. A live installed-GDAL
-  3.12.4 Windows adapter smoke now passes; deployment binaries remain external.
+  work through an explicit/PATH GDAL/OGR override. Managed GDAL layout and
+  child-process containment are implemented, but no immutable managed archive
+  exists yet. A live external GDAL 3.12.4 Windows adapter smoke passes.
 - The CV sidecar implements bounded YOLO-style ONNX Runtime/OpenCV frame
   scanning and conservative finding JSON. Durable Rust execution, strict
   polling, reviewer reconciliation, SQLite decision persistence, portable
@@ -484,12 +487,12 @@ network/DNS access.
 | Rust/Cargo | Tauri dev/build and Rust command implementation | `src-tauri/` scaffold |
 | GPStitch sidecar | Telemetry sync and overlay processing | Pinned/bundled source v0.18.0; environment preparation plus managed/external FFmpeg resolution implemented |
 | uv 0.11.23 + Python 3.12.13 | Locked GPStitch/CV/Valhalla environment preparation | Owner-approved, exact-hash managed Setup Center component; explicit override and PATH remain lower-priority alternatives |
-| Valhalla York/GTA data | Local map matching | Editable UI slot + blocked job |
-| OSRM Match fallback | Simpler GPX matching fallback | Editable optional UI slot |
-| Official GIS layers | Stop signs/lights/bike lanes projection | Editable UI slot |
-| GDAL/OGR | Production GIS containers and CRS normalization | Editable optional binary-directory/PATH slot |
+| Valhalla York/GTA data | Local map matching | Managed matcher/builder implemented; real approved inputs and published tile asset blocked |
+| OSRM Match fallback | Simpler GPX matching fallback | Configured optional HTTP fallback |
+| Official GIS layers | Stop signs/lights/bike lanes projection | User-approved source/layer selection and explicit project import required |
+| GDAL/OGR | Production GIS containers and CRS normalization | Explicit/PATH override works; managed layout/containment implemented, source package absent |
 | FFmpeg/ffprobe | Proxy generation and metadata probing | Owner-approved exact managed 8.1.1 build; explicit override and PATH remain fallbacks |
-| ONNX model + labels | Local vehicle/CV scan | Editable UI slot + `roadwatcher-cv scan --model --labels --source` |
+| ONNX model + labels | Local vehicle/CV scan | Builder implemented; approved weights/labels/consent and hosted asset absent |
 
 ## Next Agent Checklist
 
@@ -525,11 +528,11 @@ network/DNS access.
 8. Before a candidate/stable release, follow `docs/windows-release-validation.md`,
    retain signing plus startup-smoke evidence, and change release metadata only
    in the evidence-bearing release commit.
-9. Configure and validate the selected York/GTA Valhalla/OSRM production data;
-   the disposable live integration smoke is complete.
+9. Approve immutable York/OSM inputs, build and publish the tile asset, then
+   validate managed matching; the disposable live integration smoke is complete.
 10. Add PostGIS/spatial indexing only if production dataset scale requires it.
-11. Preserve the approved FFmpeg/ffprobe GPLv3/source-notice policy while
-    implementing exact executable verification and app-local removal.
+11. Preserve the approved FFmpeg/ffprobe GPLv3/source-notice policy and its
+    exact executable verification/app-local owned-removal behavior.
 
 ## Design Guardrails
 

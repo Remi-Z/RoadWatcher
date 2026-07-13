@@ -58,13 +58,13 @@ verification commands, linked blocked jobs, runtime command-slot status, and
 typed request/response field manifests for the future Tauri path. The
 Processing jobs rail also shows which setup slot and verification command
 unblocks each blocked job. A safe native command bridge now returns explicit
-browser fallback or bridge-unavailable
-results until real Tauri `invoke` wiring exists, and validates required request
-fields before any native call and required response fields after invoke. A
-browser-safe Tauri invoke adapter is resolved only inside a detected Tauri shell,
-and that bridge status is carried into the readiness panel and exported packets.
-Rejected native invokes are converted into explicit failed command results so
-the app can keep running and record the failed attempt.
+browser fallback results in browser mode and `bridge_unavailable` results for an
+unavailable shell bridge. In a detected Tauri shell, the adapter invokes
+registered commands after validating required request fields and validates
+required response fields before accepting native data. That bridge status is
+carried into the readiness panel and exported packets. Rejected native invokes
+become explicit failed command results so the app can keep running and record
+the failed attempt.
 The readiness panel also includes tested project-store, native media import, GPX
 matcher, GIS projection, FFmpeg proxy, and local CV actions. Project
 create/save/load, `media_import`, `ffmpeg_proxy`, `job_status`, `job_cancel`,
@@ -129,10 +129,11 @@ ordinary Vite once dependencies are installed.
   installers.
 - Sidecars: `uv` Python packages under `sidecars/`.
 - Windows bundles: audited GPStitch/CV source, lockfiles, the full GPL text,
-  runtime manifest, and third-party notices are installer resources. `uv`,
-  Python, FFmpeg/ffprobe, GDAL/OGR, and matcher services remain declared external
-  prerequisites; the current package is intentionally not described as
-  self-contained.
+  runtime manifest, and third-party notices are installer resources. Setup
+  Center explicitly installs the approved `uv-python`, `managed-valhalla`, and
+  `ffmpeg` components after runtime consent. GDAL/OGR, York tiles, municipal GIS,
+  and CV model assets remain unavailable or user-gated, so the current package is
+  intentionally not described as self-contained.
 - Package manager: pnpm 11.7.0. `pnpm-workspace.yaml` explicitly approves the
   required `esbuild` postinstall for Vite.
 
@@ -218,7 +219,8 @@ a locked/offline GPStitch render of the upstream five-second fixture. The latter
 exposed and fixed an upstream Windows default-font failure by passing an existing
 system TrueType font explicitly. GDAL/OGR is not persistently installed on this
 machine, but the opt-in real adapter smoke passes with a temporary GDAL 3.12.4
-Windows distribution.
+Windows distribution. The managed GDAL package remains unavailable pending the
+pinned minimal source build, complete notices, and a clean-build comparison.
 `project_create`, `project_save`, and `project_load` are registered with exact
 camel-case DTO contracts. The app adopts the native UUID, persists saves and
 imports to SQLite, reopens the last native project through a shell-local locator,
@@ -247,19 +249,17 @@ version 4.
 
 - Keep the pinned GPStitch v0.18.0 submodule initialized and preserve its
   GPL-3.0-or-later notices in source/distribution packaging.
-- Install `uv` with access to Python 3.12+, then use **Prepare sidecar
-  environments** once before offline sidecar use. The executable remains an
-  external prerequisite; the versioned environments are managed in app-local data.
-- Provide York/GTA Valhalla data/config for local map matching.
-- Optionally provide OSRM Match endpoint/config as the simpler fallback.
-- Provide official GIS files for traffic signals, stop signs, and bike lanes.
-- Install GDAL/OGR or configure its binary directory when importing non-GeoJSON
-  containers or arbitrary coordinate systems.
-- Bundle or document a redistributable FFmpeg/ffprobe installation and resolve
-  its licensing/distribution policy; PATH and configured directories work now.
-- Run a local Valhalla or OSRM HTTP service and replace their slot placeholders
-  with loopback endpoints such as `http://localhost:8002`.
-- Provide a local ONNX vehicle model and labels file for the CV sidecar.
+- Use Setup Center to install the approved app-local uv/Python, pyvalhalla, and
+  FFmpeg components after reviewing and accepting their individual licenses.
+- Approve York source/attribution details and publish the resulting tile asset
+  before managed local matching can become ready. A configured HTTP
+  Valhalla/OSRM service remains an optional fallback, not a core prerequisite.
+- Use an explicit GDAL directory/PATH override for production GIS now, or wait
+  for the pinned minimal managed GDAL package to be built and qualified.
+- Approve each municipal GIS source/layer and explicitly import it into a
+  project; RoadWatcher never auto-imports data.
+- Approve a local ONNX vehicle model and labels, including its license-consent
+  copy and representative-video review, before optional CV use.
 
 See [docs/rewrite-manifest.md](docs/rewrite-manifest.md) for the implementation
 handoff and next-agent roadmap. The evidence-backed distinction between completed

@@ -38,7 +38,7 @@ unpublished hashes in final evidence.
 | Managed dependency command/security boundary | Build-validated catalog, strict ID/license commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, manual allowlisted redirects, backend-resolved reference contracts, Setup Center dependency-order tests | Proven complete; uv/Python, pyvalhalla, and FFmpeg are available while data/model artifacts stay gated |
 | Managed one-shot Valhalla adapter | Exact Python 3.12/pyvalhalla 3.7.0 wheel, offline uv environment install, exact package/Python/service probe, ownership-resolved config/tile references, bounded process/request/result files, HTTP/OSRM fallback tests, durable provenance | Managed runtime complete; production York tile artifact missing |
 | Managed artifact provenance manifests | Strict generator/verifier, three Node tests, release-audit integration, manifest documentation | Proven complete |
-| Deterministic release-asset packaging | Exact-tree/SHA lock, normalized stored ZIPs, atomic no-overwrite publication, three Python tests | Proven complete as shared packaging foundation; real approved York/ONNX recipes and assets are missing |
+| Deterministic release-asset packaging | Exact-tree/SHA lock, normalized stored ZIPs, atomic no-overwrite publication, three Python tests | Proven complete as shared packaging foundation; York/ONNX builders are fake-tool qualified, while real owner-approved input recipes and resulting assets remain absent |
 | Reproducible York/ONNX release-asset production | Strict York boundary/OSM/config/tool recipe and strict weights/labels/exporter ONNX recipe; coverage/tensor validation, fixed bounded commands, deterministic archives and verified manifest publication; catalog placeholders | Both builders proven with fake tools/workers; real approved recipes/assets remain owner-gated |
 | Managed source approval evidence | Exact decision matrix for uv/Python, Valhalla, FFmpeg, GDAL, York OSM/boundary, YOLO, and municipal GIS; preserves source gaps and owner-only decisions | Software libraries approved; uv/Python/pyvalhalla/FFmpeg promoted; data/model/publication gates remain |
 | Managed GIS install-to-project handoff | Catalog/build/runtime validation, ownership-confined backend resolution, strict frontend parsing, explicit Setup Center action, existing native import command | Contract and UI proven; production datasets remain owner-gated |
@@ -118,27 +118,35 @@ failure: an `incomplete` preparation report with a failed optional CV probe is
 retained in command evidence, followed by a core-ready runtime preflight rather
 than a false global failure.
 
-## Required External Gates
+## Remaining Gates by Milestone
 
-1. Complete the owner-only decisions in `docs/managed-source-approval.md`; do
-   not treat local smoke executable hashes as distributable archive identities.
-2. Acquire and configure the intended Windows code-signing identity.
-3. Build the exact candidate/stable artifact, validate both installer and
-   installed executable signatures, and run `docs/windows-release-validation.md`
-   on a clean supported Windows VM.
-4. Select/provide approved deployment CV weights and labels if CV is included
-   operationally. The real development smoke is complete; weights remain
-   external and are not redistributed.
-5. Build and qualify the pinned minimal open-driver GDAL/OGR package if
-   non-GeoJSON or arbitrary-CRS ingestion is in operational scope. The real
+### Internal milestone
+
+1. Complete the owner-only source/data decisions in
+   `docs/managed-source-approval.md`; do not treat local smoke hashes as
+   distributable archive identities.
+2. Build and qualify the pinned minimal open-driver GDAL/OGR package. The real
    adapter normalization is proven with an external runtime; managed binary,
    notice, and clean-build-comparison evidence remains open.
-6. Supply and validate the intended York/GTA Valhalla/OSRM data for deployment.
-   The live loopback integration smoke is complete; the temporary three-node
-   graph is not production map data.
+3. Approve the immutable York OSM/boundary inputs, build and publish the York
+   tile asset, then validate managed matching. The temporary live graph is not
+   production map data.
+4. Select and validate each municipal GIS layer, retain its terms/provenance,
+   publish its approved catalog identity, and keep project import explicit.
+5. If optional CV is in scope, select approved weights/labels and consent copy,
+   produce the asset, and review representative-video output. It may be recorded
+   as skipped without blocking core readiness.
+6. Run and sign off on the clean-Windows internal pilot only after its required
+   catalog components are actually available.
 
-Only after the required release-scope gates pass may the release commit set the
-channel/signing/clean-machine fields so `publicReleaseReady` becomes true.
+### Public release after internal acceptance
+
+1. Acquire and configure the intended Windows code-signing identity.
+2. Build the exact candidate/stable artifact, validate installer and installed
+   executable signatures, and run `docs/windows-release-validation.md` on a
+   clean supported Windows VM.
+3. Only then may the release commit set the channel/signing/clean-machine fields
+   so `publicReleaseReady` becomes true.
 
 ## Explicitly Non-Blocking
 
