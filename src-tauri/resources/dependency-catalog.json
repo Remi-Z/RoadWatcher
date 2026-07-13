@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "platform": "windows-x86_64",
-  "catalogVersion": "2026.07.13-internal.1",
+  "catalogVersion": "2026.07.13-internal.2",
   "components": [
     {
       "id": "uv-python",
       "label": "uv and managed Python 3.12",
-      "version": "uv-0.11.23_python-3.12",
+      "version": "uv-0.11.23_python-3.12.13",
       "purpose": "Prepare and run RoadWatcher's locked Python sidecar environments.",
       "required": true,
       "recommended": true,

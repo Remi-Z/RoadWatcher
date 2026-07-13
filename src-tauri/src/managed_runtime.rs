@@ -12,12 +12,15 @@ const PREPARE_OUTPUT_LIMIT: u64 = 16 * 1024 * 1024;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 const PROBE_OUTPUT_LIMIT: u64 = 64 * 1024;
 const MANAGED_MARKER: &str = ".roadwatcher-managed-environment";
+const MANAGED_PYTHON_VERSION: &str = "3.12.13";
 
 #[derive(Clone, Debug)]
 pub struct ManagedEnvironmentPaths {
     pub root: PathBuf,
     pub gpstitch: PathBuf,
     pub cv: PathBuf,
+    pub python_install_root: PathBuf,
+    pub uv_cache_root: PathBuf,
 }
 
 #[derive(Clone, Debug)]
@@ -46,22 +49,35 @@ pub struct RuntimePrepareResponse {
 }
 
 trait EnvironmentSyncExecutor: Send + Sync {
-    fn sync(&self, uv_executable: &str, source: &Path, staging: &Path) -> Result<String, String>;
+    fn sync(
+        &self,
+        uv_executable: &str,
+        source: &Path,
+        staging: &Path,
+        python_install_root: &Path,
+        uv_cache_root: &Path,
+    ) -> Result<String, String>;
     fn validate(&self, environment: &Path, marker: &str) -> Result<String, String>;
 }
 
 struct ProcessEnvironmentSyncExecutor;
 
 impl EnvironmentSyncExecutor for ProcessEnvironmentSyncExecutor {
-    fn sync(&self, uv_executable: &str, source: &Path, staging: &Path) -> Result<String, String> {
-        let mut command = Command::new(uv_executable);
-        command
-            .arg("sync")
-            .arg("--locked")
-            .arg("--no-dev")
-            .arg("--project")
-            .arg(source)
-            .env("UV_PROJECT_ENVIRONMENT", staging);
+    fn sync(
+        &self,
+        uv_executable: &str,
+        source: &Path,
+        staging: &Path,
+        python_install_root: &Path,
+        uv_cache_root: &Path,
+    ) -> Result<String, String> {
+        let mut command = sync_command(
+            uv_executable,
+            source,
+            staging,
+            python_install_root,
+            uv_cache_root,
+        );
         let output = run_bounded_process(&mut command, PREPARE_TIMEOUT, PREPARE_OUTPUT_LIMIT)
             .map_err(|error| error.to_string())?;
         let detail = bounded_detail(&output.stderr, &output.stdout);
@@ -91,7 +107,37 @@ pub fn managed_environment_paths(app_local_data: &Path) -> ManagedEnvironmentPat
         gpstitch: root.join("gpstitch-0.18.0"),
         cv: root.join("roadwatcher-cv-0.1.0"),
         root,
+        python_install_root: app_local_data
+            .join("python-installations")
+            .join(MANAGED_PYTHON_VERSION),
+        uv_cache_root: app_local_data.join("uv-cache"),
     }
+}
+
+fn sync_command(
+    uv_executable: &str,
+    source: &Path,
+    staging: &Path,
+    python_install_root: &Path,
+    uv_cache_root: &Path,
+) -> Command {
+    let mut command = Command::new(uv_executable);
+    command
+        .arg("sync")
+        .arg("--locked")
+        .arg("--no-dev")
+        .arg("--python")
+        .arg(MANAGED_PYTHON_VERSION)
+        .arg("--managed-python")
+        .arg("--link-mode")
+        .arg("copy")
+        .arg("--no-progress")
+        .arg("--project")
+        .arg(source)
+        .env("UV_PROJECT_ENVIRONMENT", staging)
+        .env("UV_PYTHON_INSTALL_DIR", python_install_root)
+        .env("UV_CACHE_DIR", uv_cache_root);
+    command
 }
 
 pub fn prepare_runtime_environments(request: RuntimePrepareRequest) -> RuntimePrepareResponse {
@@ -122,8 +168,20 @@ fn prepare_with_executor(
             let executor = Arc::clone(&executor);
             let uv = request.uv_executable.clone();
             let root = request.environments.root.clone();
+            let python_install_root = request.environments.python_install_root.clone();
+            let uv_cache_root = request.environments.uv_cache_root.clone();
             thread::spawn(move || {
-                prepare_one(id, marker, &uv, &source, &root, &target, executor.as_ref())
+                prepare_one(
+                    id,
+                    marker,
+                    &uv,
+                    &source,
+                    &root,
+                    &target,
+                    &python_install_root,
+                    &uv_cache_root,
+                    executor.as_ref(),
+                )
             })
         })
         .collect::<Vec<_>>();
@@ -162,10 +220,14 @@ fn prepare_one(
     source: &Path,
     root: &Path,
     target: &Path,
+    python_install_root: &Path,
+    uv_cache_root: &Path,
     executor: &dyn EnvironmentSyncExecutor,
 ) -> RuntimeEnvironmentPreparation {
     let result = (|| -> Result<String, String> {
         fs::create_dir_all(root).map_err(|error| error.to_string())?;
+        fs::create_dir_all(python_install_root).map_err(|error| error.to_string())?;
+        fs::create_dir_all(uv_cache_root).map_err(|error| error.to_string())?;
         if environment_structure_ready(target, marker) {
             if let Ok(detail) = executor.validate(target, marker) {
                 return Ok(format!("managed environment is already ready; {detail}"));
@@ -187,7 +249,13 @@ fn prepare_one(
         if staging.exists() || quarantined.exists() {
             return Err("generated environment staging path already exists".to_string());
         }
-        let sync_detail = match executor.sync(uv_executable, source, &staging) {
+        let sync_detail = match executor.sync(
+            uv_executable,
+            source,
+            &staging,
+            python_install_root,
+            uv_cache_root,
+        ) {
             Ok(detail) => detail,
             Err(error) => {
                 let _ = remove_owned_staging(root, &staging);
@@ -259,10 +327,10 @@ pub(crate) fn environment_python(environment: &Path) -> PathBuf {
 pub(crate) fn environment_probe_code(marker: &str) -> Option<&'static str> {
     match marker {
         "gpstitch-0.18.0" => Some(
-            "from importlib.metadata import version; import gpstitch; print(version('gpstitch'))",
+            "import platform; from importlib.metadata import version; import gpstitch; print(version('gpstitch')); print(platform.python_version())",
         ),
         "roadwatcher-cv-0.1.0" => Some(
-            "from importlib.metadata import version; import roadwatcher_cv; print(version('roadwatcher-cv'))",
+            "import platform; from importlib.metadata import version; import roadwatcher_cv; print(version('roadwatcher-cv')); print(platform.python_version())",
         ),
         _ => None,
     }
@@ -297,14 +365,27 @@ pub(crate) fn probe_managed_environment(
             detail
         });
     }
+    validate_environment_probe_output(&output.stdout, marker)
+}
+
+fn validate_environment_probe_output(output: &[u8], marker: &str) -> Result<String, String> {
+    let lines = nonblank_lines(output);
     let expected = environment_version(marker).unwrap_or_default();
-    let actual = first_nonblank_line(&output.stdout).unwrap_or_default();
+    let actual = lines.first().map(String::as_str).unwrap_or_default();
     if actual != expected {
         return Err(format!(
             "managed Python module probe returned version {actual:?}; expected {expected}"
         ));
     }
-    Ok(format!("managed Python module {expected} probe succeeded"))
+    let actual_python = lines.get(1).map(String::as_str).unwrap_or_default();
+    if actual_python != MANAGED_PYTHON_VERSION {
+        return Err(format!(
+            "managed Python probe returned version {actual_python:?}; expected {MANAGED_PYTHON_VERSION}"
+        ));
+    }
+    Ok(format!(
+        "managed Python {actual_python}; module {expected} probe succeeded"
+    ))
 }
 
 fn python_relative_path() -> PathBuf {
@@ -356,19 +437,22 @@ fn bounded_detail(stderr: &[u8], stdout: &[u8]) -> String {
         .collect()
 }
 
-fn first_nonblank_line(bytes: &[u8]) -> Option<String> {
+fn nonblank_lines(bytes: &[u8]) -> Vec<String> {
     String::from_utf8_lossy(bytes)
         .lines()
         .map(str::trim)
-        .find(|line| !line.is_empty())
+        .filter(|line| !line.is_empty())
+        .take(3)
         .map(|line| line.chars().take(512).collect())
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         environment_structure_ready, managed_environment_paths, prepare_with_executor,
-        EnvironmentSyncExecutor, RuntimePrepareRequest,
+        sync_command, validate_environment_probe_output, EnvironmentSyncExecutor,
+        RuntimePrepareRequest,
     };
     use std::fs;
     use std::path::Path;
@@ -376,7 +460,14 @@ mod tests {
 
     struct FakeSync;
     impl EnvironmentSyncExecutor for FakeSync {
-        fn sync(&self, _uv: &str, _source: &Path, staging: &Path) -> Result<String, String> {
+        fn sync(
+            &self,
+            _uv: &str,
+            _source: &Path,
+            staging: &Path,
+            _python_install_root: &Path,
+            _uv_cache_root: &Path,
+        ) -> Result<String, String> {
             fs::create_dir_all(staging.join(if cfg!(windows) { "Scripts" } else { "bin" }))
                 .unwrap();
             fs::write(staging.join("pyvenv.cfg"), "home=test").unwrap();
@@ -399,8 +490,15 @@ mod tests {
 
     struct FailAfterPromotion;
     impl EnvironmentSyncExecutor for FailAfterPromotion {
-        fn sync(&self, uv: &str, source: &Path, staging: &Path) -> Result<String, String> {
-            FakeSync.sync(uv, source, staging)
+        fn sync(
+            &self,
+            uv: &str,
+            source: &Path,
+            staging: &Path,
+            python_install_root: &Path,
+            uv_cache_root: &Path,
+        ) -> Result<String, String> {
+            FakeSync.sync(uv, source, staging, python_install_root, uv_cache_root)
         }
 
         fn validate(&self, environment: &Path, marker: &str) -> Result<String, String> {
@@ -413,6 +511,65 @@ mod tests {
                 Err("simulated post-promotion import failure".to_string())
             }
         }
+    }
+
+    #[test]
+    fn pins_managed_python_and_app_local_uv_storage() {
+        let root = Path::new("C:/RoadWatcher/AppData");
+        let paths = managed_environment_paths(root);
+        let command = sync_command(
+            "uv.exe",
+            Path::new("C:/RoadWatcher/resources/sidecar"),
+            Path::new("C:/RoadWatcher/AppData/staging"),
+            &paths.python_install_root,
+            &paths.uv_cache_root,
+        );
+        let arguments = command
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert!(arguments
+            .windows(2)
+            .any(|pair| pair == ["--python", "3.12.13"]));
+        assert!(arguments.contains(&"--managed-python".to_string()));
+        assert!(arguments
+            .windows(2)
+            .any(|pair| pair == ["--link-mode", "copy"]));
+        let environment = command
+            .get_envs()
+            .filter_map(|(key, value)| {
+                value.map(|item| (key.to_string_lossy(), item.to_string_lossy()))
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        assert_eq!(
+            environment
+                .get("UV_PYTHON_INSTALL_DIR")
+                .map(|value| value.as_ref()),
+            Some(paths.python_install_root.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            environment.get("UV_CACHE_DIR").map(|value| value.as_ref()),
+            Some(paths.uv_cache_root.to_string_lossy().as_ref())
+        );
+    }
+
+    #[test]
+    fn probe_requires_the_locked_module_and_python_3_12() {
+        assert!(
+            validate_environment_probe_output(b"0.18.0\n3.12.13\n", "gpstitch-0.18.0")
+                .unwrap()
+                .contains("3.12.13")
+        );
+        assert!(
+            validate_environment_probe_output(b"0.18.0\n3.14.4\n", "gpstitch-0.18.0")
+                .unwrap_err()
+                .contains("expected 3.12.13")
+        );
+        assert!(
+            validate_environment_probe_output(b"0.19.0\n3.12.13\n", "gpstitch-0.18.0")
+                .unwrap_err()
+                .contains("expected 0.18.0")
+        );
     }
 
     #[test]

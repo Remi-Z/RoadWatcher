@@ -826,6 +826,25 @@ the production build, runtime catalog audit, and release audit passed. The
 frontend test/build commands needed an unsandboxed retry because esbuild was
 denied while resolving the workspace config; no product-code bypass was added.
 
+Explicit `runtime_prepare` now turns the resolved owner override, managed
+`uv.exe`, or PATH uv into app-local sidecar environments with exact managed
+CPython 3.12.13. Both locked syncs add `--python 3.12.13 --managed-python
+--link-mode copy --no-progress`; `UV_PYTHON_INSTALL_DIR`, `UV_CACHE_DIR`, and
+`UV_PROJECT_ENVIRONMENT` all resolve below RoadWatcher's app-local data. The
+module probe now requires the full Python patch version as well as the exact
+GPStitch/CV package version and returns both identities in its detail. This
+preserves explicit initiation: Setup Center never silently downloads Python or
+prepares an environment in the background.
+
+Five focused managed-runtime tests pass (one networked real-uv smoke remains
+ignored by default), including exact command/environment identity, Python and
+module rejection, unowned-target refusal, reuse, and post-promotion rollback;
+the two preflight aggregate tests also pass. The live 3.12.13 download/sync was
+not repeated for this slice because it is network/cache intensive. uv 0.11.23's
+local Windows x64 download inventory was used to pin CPython 3.12.13. The uv
+executable archive itself is still `pendingApproval`, so the broader TODO entry
+for bootstrapping the approved uv/Python component remains open.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

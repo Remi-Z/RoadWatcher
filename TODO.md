@@ -68,7 +68,7 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 ### Initial managed components
 
 - [ ] `[AGENT]` Bootstrap pinned uv and isolated uv-managed Python 3.12.
-- [ ] `[AGENT]` Reuse runtime preparation for locked GPStitch and CV
+- [x] `[AGENT]` Reuse runtime preparation for locked GPStitch and CV
   environments.
 - [ ] `[AGENT]` Install and validate the audited FFmpeg/ffprobe distribution.
 - [ ] `[AGENT]` Install and validate the audited GDAL/OGR distribution.

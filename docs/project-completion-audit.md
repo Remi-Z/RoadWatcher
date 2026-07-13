@@ -31,7 +31,7 @@ unpublished hashes in final evidence.
 | Local conservative CV scanning and reviewer decisions | Locked sidecar tests, durable CV Rust/frontend tests, hash-verified YOLO11n/real GoPro video smoke | Proven complete |
 | GPStitch telemetry render and provenance | Pinned v0.18.0 source/license, durable worker tests, real locked/offline fixture render | Proven complete |
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
-| Installed runtime preparation and preflight | Ten-component strict preflight, managed-environment tests, explicitly enabled real uv smoke | Proven complete for external-runtime model |
+| Installed runtime preparation and preflight | Exact uv-managed CPython 3.12.13, app-local Python/cache roots, locked GPStitch/CV sync, ten-component preflight, rollback/probe tests, prior real uv smoke | Proven complete for external-runtime model |
 | Managed dependency command/security boundary | Build-validated catalog, strict ID/license-only commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, backend-resolved reference contracts, Setup Center tests | Proven complete; exact artifacts intentionally unavailable |
 | Managed one-shot Valhalla adapter | Rust path resolution, bounded process/request/result files, HTTP/OSRM fallback tests, durable provenance | Implementation complete; production York tile artifact missing |
 | Managed artifact provenance manifests | Strict generator/verifier, three Node tests, release-audit integration, manifest documentation | Proven complete |
