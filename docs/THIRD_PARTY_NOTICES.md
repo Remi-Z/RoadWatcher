@@ -43,8 +43,8 @@ The current installer does not contain `uv`, Python, FFmpeg/ffprobe, GDAL/OGR,
 Valhalla, OSRM, an ONNX model, or GIS/map datasets. Approved components may be
 downloaded only after an explicit Setup Center action and exact license consent;
 all unapproved components still require an operator-selected external source.
-In particular, FFmpeg license terms depend on how a specific binary was
-configured.
+RoadWatcher currently manages only exact audited builds; it does not treat an
+arbitrary FFmpeg configuration as equivalent.
 
 ### Managed uv 0.11.23 and CPython 3.12.13
 
@@ -101,9 +101,11 @@ The proven FFmpeg smoke maps to Gyan's immutable
 `ffmpeg-8.1.1-full_build.zip`, 252,194,496 bytes, SHA-256
 `49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552`.
 The package retains its GPLv3 `LICENSE` and `README.txt` with source commit and
-static linked-library configuration. It remains external and unavailable in
-the managed catalog until the owner approves the exact GPLv3 distribution and
-its full source/notice obligations.
+static linked-library configuration. After explicit consent, Setup Center may
+download this exact archive app-locally. RoadWatcher verifies the archive plus
+the retained `LICENSE`, `README.txt`, `ffmpeg.exe`, and `ffprobe.exe` identities,
+probes both executable versions, publishes only the owned copy, and removes only
+that copy. The files are downloaded rather than embedded in the installer.
 
 The live matcher smoke used the official Project OSRM backend v5.27.1 container
 image at digest

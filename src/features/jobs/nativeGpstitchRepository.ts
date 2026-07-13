@@ -18,6 +18,7 @@ export interface NativeGpstitchConfig {
   alignment: GpstitchAlignment;
   timeOffsetSeconds: number;
   sidecarDirectory: string;
+  ffmpegBinaryDirectory: string;
 }
 
 export function createNativeGpstitchRepository(

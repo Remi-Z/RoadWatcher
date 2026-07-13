@@ -20,6 +20,9 @@ const UV_PYTHON_BOOTSTRAP_OUTPUT_LIMIT: u64 = 16 * 1024 * 1024;
 const UV_WHEEL_ENVIRONMENT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const UV_WHEEL_ENVIRONMENT_OUTPUT_LIMIT: u64 = 4 * 1024 * 1024;
 const MANAGED_ENVIRONMENT_MARKER: &str = ".roadwatcher-managed-environment";
+const FFMPEG_ARCHIVE_ROOT: &str = "ffmpeg-8.1.1-full_build";
+const FFMPEG_VERSION_PREFIX: &str = "ffmpeg version 8.1.1-full_build-www.gyan.dev";
+const FFPROBE_VERSION_PREFIX: &str = "ffprobe version 8.1.1-full_build-www.gyan.dev";
 const ALLOWED_DOWNLOAD_HOSTS: &[&str] = &[
     "github.com",
     "objects.githubusercontent.com",
@@ -65,9 +68,13 @@ pub struct DependencyComponent {
 #[serde(rename_all = "camelCase")]
 pub struct DependencyInstallStrategy {
     pub kind: String,
+    #[serde(default)]
     pub python_version: String,
+    #[serde(default)]
     pub package: String,
+    #[serde(default)]
     pub package_version: String,
+    #[serde(default)]
     pub wheel_file_name: String,
 }
 
@@ -517,6 +524,10 @@ impl DependencyManager {
                     strategy,
                     || self.is_cancelled(job_id),
                 )
+            }
+            "verified-ffmpeg-archive" => {
+                extract_zip(download, payload, || self.is_cancelled(job_id))?;
+                validate_ffmpeg_payload(payload, || self.is_cancelled(job_id))
             }
             other => Err(format!("unsupported dependency install strategy {other}")),
         }
@@ -1043,6 +1054,104 @@ fn install_uv_wheel_environment(
     Ok(())
 }
 
+fn validate_ffmpeg_payload(
+    payload: &Path,
+    should_cancel: impl Fn() -> bool + Copy,
+) -> Result<(), String> {
+    let root = payload.join(FFMPEG_ARCHIVE_ROOT);
+    let expected_files = [
+        (
+            "LICENSE",
+            35_147,
+            "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+        ),
+        (
+            "README.txt",
+            45_240,
+            "35ef02f329d062a1b49397a2869718264b5f12776517791c02126f0efd323528",
+        ),
+        (
+            "bin/ffmpeg.exe",
+            227_398_656,
+            "09948d4cdd0650da6ff5a87577469f2a218dc2615ae379f8f734d24c49de0f73",
+        ),
+        (
+            "bin/ffprobe.exe",
+            227_193_344,
+            "a6618e99bb58869ded3c6f37b53aa1a8d701c3591dbb7b5b317d47369c112be2",
+        ),
+    ];
+    for (relative, expected_size, expected_hash) in expected_files {
+        let path = root.join(relative);
+        let metadata = fs::metadata(&path)
+            .map_err(|error| format!("managed FFmpeg is missing {relative}: {error}"))?;
+        if !metadata.is_file() || metadata.len() != expected_size {
+            return Err(format!(
+                "managed FFmpeg {relative} size drifted from {expected_size} bytes"
+            ));
+        }
+        let actual = hash_file_cancellable(&path, should_cancel)?;
+        if !actual.eq_ignore_ascii_case(expected_hash) {
+            return Err(format!("managed FFmpeg {relative} SHA-256 drifted"));
+        }
+    }
+    probe_ffmpeg_executable(
+        &root.join("bin/ffmpeg.exe"),
+        FFMPEG_VERSION_PREFIX,
+        should_cancel,
+    )?;
+    probe_ffmpeg_executable(
+        &root.join("bin/ffprobe.exe"),
+        FFPROBE_VERSION_PREFIX,
+        should_cancel,
+    )?;
+    Ok(())
+}
+
+fn hash_file_cancellable(path: &Path, should_cancel: impl Fn() -> bool) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|error| error.to_string())?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0_u8; 1024 * 1024];
+    loop {
+        if should_cancel() {
+            return Err("managed component validation cancelled".to_string());
+        }
+        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
+        if read == 0 {
+            return Ok(hex::encode(hash.finalize()));
+        }
+        hash.update(&buffer[..read]);
+    }
+}
+
+fn probe_ffmpeg_executable(
+    executable: &Path,
+    expected_prefix: &str,
+    should_cancel: impl Fn() -> bool,
+) -> Result<(), String> {
+    let mut command = Command::new(executable);
+    command.arg("-version");
+    let output = run_bounded_process_cancellable(
+        &mut command,
+        Duration::from_secs(30),
+        256 * 1024,
+        should_cancel,
+    )
+    .map_err(|error| format!("managed FFmpeg version probe failed: {error}"))?;
+    let detail = bounded_process_detail(&output.stdout, &output.stderr);
+    if !output.status.success()
+        || !detail
+            .lines()
+            .next()
+            .is_some_and(|line| line.starts_with(expected_prefix))
+    {
+        return Err(format!(
+            "managed FFmpeg version probe did not match {expected_prefix}: {detail}"
+        ));
+    }
+    Ok(())
+}
+
 fn uv_wheel_venv_command(
     uv: &Path,
     python_installations: &Path,
@@ -1303,19 +1412,43 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
                 .artifact
                 .as_ref()
                 .ok_or_else(|| format!("{} install strategy has no artifact", component.id))?;
-            if component.id != "managed-valhalla"
-                || strategy.kind != "uv-wheel-environment"
-                || strategy.python_version != "3.12.13"
-                || strategy.package != "pyvalhalla"
-                || strategy.package_version != "3.7.0"
-                || component.version != strategy.package_version
-                || artifact.archive != "file"
-                || artifact.file_name.as_deref() != Some(strategy.wheel_file_name.as_str())
-                || strategy.wheel_file_name != "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"
-                || component.dependencies != ["uv-python"]
-            {
+            let valid = match strategy.kind.as_str() {
+                "uv-wheel-environment" => {
+                    component.id == "managed-valhalla"
+                        && strategy.python_version == "3.12.13"
+                        && strategy.package == "pyvalhalla"
+                        && strategy.package_version == "3.7.0"
+                        && component.version == strategy.package_version
+                        && artifact.archive == "file"
+                        && artifact.file_name.as_deref()
+                            == Some(strategy.wheel_file_name.as_str())
+                        && strategy.wheel_file_name
+                            == "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"
+                        && component.dependencies == ["uv-python"]
+                }
+                "verified-ffmpeg-archive" => {
+                    component.id == "ffmpeg"
+                        && component.version == "8.1.1-audited-windows-x64"
+                        && strategy.python_version.is_empty()
+                        && strategy.package.is_empty()
+                        && strategy.package_version.is_empty()
+                        && strategy.wheel_file_name.is_empty()
+                        && component.license.digest
+                            == "c31bd2401e4b09ced92dc957006d20997edbd7211301d9ca06e94802a2e11b50"
+                        && artifact.url == "https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip"
+                        && artifact.sha256
+                            == "49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552"
+                        && artifact.max_bytes == 252_194_496
+                        && artifact.archive == "zip"
+                        && artifact.file_name.as_deref()
+                            == Some("ffmpeg-8.1.1-full_build.zip")
+                        && component.dependencies.is_empty()
+                }
+                _ => false,
+            };
+            if !valid {
                 return Err(format!(
-                    "{} uv wheel environment strategy drifted from its fixed backend contract",
+                    "{} install strategy drifted from its fixed backend contract",
                     component.id
                 ));
             }
@@ -1358,18 +1491,27 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
                 component.id
             ));
         }
-        if component.install_strategy.is_some()
-            && (component.references.len() != 1
-                || !component.references.iter().any(|reference| {
-                    reference.id == "service-executable"
-                        && reference.path == "Scripts/valhalla_service.exe"
-                        && reference.kind == "file"
-                }))
-        {
-            return Err(format!(
-                "{} uv wheel environment reference drifted from its fixed backend contract",
-                component.id
-            ));
+        if let Some(strategy) = &component.install_strategy {
+            let valid_reference = component.references.len() == 1
+                && match strategy.kind.as_str() {
+                    "uv-wheel-environment" => component.references.iter().any(|reference| {
+                        reference.id == "service-executable"
+                            && reference.path == "Scripts/valhalla_service.exe"
+                            && reference.kind == "file"
+                    }),
+                    "verified-ffmpeg-archive" => component.references.iter().any(|reference| {
+                        reference.id == "binary-directory"
+                            && reference.path == "ffmpeg-8.1.1-full_build/bin"
+                            && reference.kind == "directory"
+                    }),
+                    _ => false,
+                };
+            if !valid_reference {
+                return Err(format!(
+                    "{} managed reference drifted from its fixed backend contract",
+                    component.id
+                ));
+            }
         }
         let mut import_ids = HashSet::new();
         for project_import in &component.project_imports {
@@ -2186,6 +2328,57 @@ mod tests {
         assert!(!install_args.iter().any(|value| value.starts_with("http")));
     }
 
+    fn ffmpeg_catalog() -> DependencyCatalog {
+        let mut value = catalog();
+        let component = &mut value.components[0];
+        component.id = "ffmpeg".to_string();
+        component.label = "FFmpeg and ffprobe".to_string();
+        component.version = "8.1.1-audited-windows-x64".to_string();
+        component.license.digest =
+            "c31bd2401e4b09ced92dc957006d20997edbd7211301d9ca06e94802a2e11b50".to_string();
+        component.artifact = Some(DependencyArtifact {
+            url: "https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip".to_string(),
+            sha256: "49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552".to_string(),
+            max_bytes: 252_194_496,
+            archive: "zip".to_string(),
+            file_name: Some("ffmpeg-8.1.1-full_build.zip".to_string()),
+        });
+        component.install_strategy = Some(DependencyInstallStrategy {
+            kind: "verified-ffmpeg-archive".to_string(),
+            python_version: String::new(),
+            package: String::new(),
+            package_version: String::new(),
+            wheel_file_name: String::new(),
+        });
+        component.references = vec![DependencyReference {
+            id: "binary-directory".to_string(),
+            path: "ffmpeg-8.1.1-full_build/bin".to_string(),
+            kind: "directory".to_string(),
+        }];
+        value
+    }
+
+    #[test]
+    fn validates_only_the_fixed_ffmpeg_archive() {
+        assert!(validate_catalog(&ffmpeg_catalog()).is_ok());
+
+        let mut arbitrary_hash = ffmpeg_catalog();
+        arbitrary_hash.components[0]
+            .artifact
+            .as_mut()
+            .unwrap()
+            .sha256 = "f".repeat(64);
+        assert!(validate_catalog(&arbitrary_hash)
+            .unwrap_err()
+            .contains("fixed backend contract"));
+
+        let mut arbitrary_reference = ffmpeg_catalog();
+        arbitrary_reference.components[0].references[0].path = "bin".to_string();
+        assert!(validate_catalog(&arbitrary_reference)
+            .unwrap_err()
+            .contains("managed reference drifted"));
+    }
+
     #[test]
     #[ignore = "requires explicitly supplied approved uv and CPython archives"]
     fn real_approved_uv_python_bootstrap_smoke() {
@@ -2326,6 +2519,66 @@ mod tests {
         let removed = manager.remove("managed-valhalla").unwrap();
         assert_eq!(removed.state, "notInstalled");
         let removed = manager.remove("uv-python").unwrap();
+        assert_eq!(removed.state, "notInstalled");
+        fs::remove_dir_all(app_data).unwrap();
+    }
+
+    #[test]
+    #[ignore = "downloads and validates the explicitly approved 252 MB FFmpeg archive"]
+    fn real_managed_ffmpeg_install_proxy_reference_and_remove_smoke() {
+        assert_eq!(
+            std::env::var("ROADWATCHER_RUN_REAL_MANAGED_FFMPEG").as_deref(),
+            Ok("1"),
+            "set ROADWATCHER_RUN_REAL_MANAGED_FFMPEG=1 to run the approved FFmpeg smoke"
+        );
+        let app_data = std::env::temp_dir().join(format!(
+            "roadwatcher-real-managed-ffmpeg-{}",
+            Uuid::new_v4()
+        ));
+        let catalog_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("dependency-catalog.json");
+        let manager = DependencyManager::load(&catalog_path, &app_data).unwrap();
+        let component = manager
+            .catalog
+            .components
+            .iter()
+            .find(|component| component.id == "ffmpeg")
+            .unwrap();
+        let job = manager
+            .start(
+                vec!["ffmpeg".to_string()],
+                vec![component.license.digest.clone()],
+            )
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(12 * 60);
+        let terminal = loop {
+            let status = manager.status(&job.job_id).unwrap();
+            if matches!(status.status.as_str(), "ready" | "failed" | "cancelled") {
+                break status;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "managed FFmpeg install timed out"
+            );
+            thread::sleep(Duration::from_millis(100));
+        };
+        assert_eq!(terminal.status, "ready", "{terminal:?}");
+        let ready = manager
+            .catalog()
+            .components
+            .into_iter()
+            .find(|component| component.component.id == "ffmpeg")
+            .unwrap();
+        assert_eq!(ready.state, "ready");
+        let binary_directory = PathBuf::from(&ready.managed_references["binary-directory"]);
+        assert!(binary_directory.join("ffmpeg.exe").is_file());
+        assert!(binary_directory.join("ffprobe.exe").is_file());
+        assert_eq!(
+            manager.managed_identity("ffmpeg").unwrap().artifact_sha256,
+            "49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552"
+        );
+        let removed = manager.remove("ffmpeg").unwrap();
         assert_eq!(removed.state, "notInstalled");
         fs::remove_dir_all(app_data).unwrap();
     }

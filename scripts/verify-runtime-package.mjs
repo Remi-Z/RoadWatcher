@@ -112,13 +112,21 @@ function verifyDependencyCatalog(catalog) {
     }
     if (component.installStrategy) {
       const strategy = component.installStrategy;
-      assert(component.id === "managed-valhalla" && strategy.kind === "uv-wheel-environment"
+      const validValhalla = component.id === "managed-valhalla" && strategy.kind === "uv-wheel-environment"
         && strategy.pythonVersion === "3.12.13" && strategy.package === "pyvalhalla"
         && strategy.packageVersion === "3.7.0" && component.version === strategy.packageVersion
         && component.artifact?.archive === "file" && component.artifact?.fileName === strategy.wheelFileName
         && strategy.wheelFileName === "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"
-        && component.dependencies.length === 1 && component.dependencies[0] === "uv-python",
-      `${component.id} install strategy drifted from the fixed backend contract`);
+        && component.dependencies.length === 1 && component.dependencies[0] === "uv-python";
+      const validFfmpeg = component.id === "ffmpeg" && strategy.kind === "verified-ffmpeg-archive"
+        && Object.keys(strategy).length === 1 && component.version === "8.1.1-audited-windows-x64"
+        && component.license.digest === "c31bd2401e4b09ced92dc957006d20997edbd7211301d9ca06e94802a2e11b50"
+        && component.artifact?.url === "https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip"
+        && component.artifact?.sha256 === "49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552"
+        && component.artifact?.maxBytes === 252194496 && component.artifact?.archive === "zip"
+        && component.artifact?.fileName === "ffmpeg-8.1.1-full_build.zip"
+        && component.dependencies.length === 0;
+      assert(validValhalla || validFfmpeg, `${component.id} install strategy drifted from the fixed backend contract`);
     }
     assert(Array.isArray(component.references), `${component.id} managed references are missing`);
     const referenceIds = new Set();
@@ -182,6 +190,15 @@ function verifyDependencyCatalog(catalog) {
   const valhallaReferences = new Map(managedValhalla.references.map((reference) => [reference.id, reference]));
   assert(valhallaReferences.get("service-executable")?.path === "Scripts/valhalla_service.exe"
     && valhallaReferences.get("service-executable")?.kind === "file", "managed Valhalla service reference drifted");
+  const ffmpeg = byId.get("ffmpeg");
+  assert(ffmpeg?.availability === "available", "approved managed FFmpeg is not available");
+  assert(ffmpeg.license?.digest === "c31bd2401e4b09ced92dc957006d20997edbd7211301d9ca06e94802a2e11b50"
+    && ffmpeg.license?.consentRequired === true, "managed FFmpeg consent identity drifted");
+  assert(ffmpeg.artifact?.sha256 === "49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552"
+    && ffmpeg.artifact?.maxBytes === 252194496, "managed FFmpeg archive identity drifted");
+  const ffmpegReferences = new Map(ffmpeg.references.map((reference) => [reference.id, reference]));
+  assert(ffmpegReferences.get("binary-directory")?.path === "ffmpeg-8.1.1-full_build/bin"
+    && ffmpegReferences.get("binary-directory")?.kind === "directory", "managed FFmpeg binary reference drifted");
   const visited = new Set();
   const visiting = new Set();
   const visit = (id) => {

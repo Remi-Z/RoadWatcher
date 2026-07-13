@@ -256,6 +256,7 @@ fn gis_job_status(
 fn gpstitch_render(
     app: tauri::AppHandle,
     state: tauri::State<'_, GpstitchWorkerManager>,
+    dependencies: tauri::State<'_, DependencyManager>,
     sqlite_path: String,
     project_id: String,
     media_id: String,
@@ -264,10 +265,16 @@ fn gpstitch_render(
     alignment: String,
     time_offset_seconds: i64,
     sidecar_directory: String,
+    ffmpeg_binary_directory: String,
 ) -> Result<GpstitchStartResponse, String> {
     let sidecar_directory =
         resolve_runtime_component(&app, &sidecar_directory, "sidecars/roadwatcher-gpstitch")?;
     let environment_directory = managed_environments(&app)?.gpstitch;
+    let ffmpeg_binary_directory = if ffmpeg_binary_directory.trim().is_empty() {
+        dependencies.managed_reference("ffmpeg", "binary-directory")
+    } else {
+        Some(PathBuf::from(ffmpeg_binary_directory))
+    };
     state
         .start(GpstitchWorkerRequest {
             store: project_store::GpstitchRenderRequest {
@@ -283,6 +290,7 @@ fn gpstitch_render(
             },
             sidecar_directory,
             environment_directory,
+            ffmpeg_binary_directory,
         })
         .map_err(|error| error.to_string())
 }
@@ -386,7 +394,7 @@ fn runtime_preflight(
     };
     let resolved_ffmpeg_directory = if ffmpeg_binary_directory.trim().is_empty() {
         dependencies
-            .managed_component_path("ffmpeg")
+            .managed_reference("ffmpeg", "binary-directory")
             .map(|path| path.display().to_string())
             .unwrap_or_default()
     } else {
@@ -557,6 +565,7 @@ fn gpx_job_status(
 #[tauri::command]
 fn ffmpeg_proxy(
     state: tauri::State<'_, ProxyWorkerManager>,
+    dependencies: tauri::State<'_, DependencyManager>,
     sqlite_path: String,
     project_id: String,
     media_id: String,
@@ -564,6 +573,14 @@ fn ffmpeg_proxy(
     profile: String,
     binary_directory: String,
 ) -> Result<ProxyStartResponse, String> {
+    let binary_directory = if binary_directory.trim().is_empty() {
+        dependencies
+            .managed_reference("ffmpeg", "binary-directory")
+            .map(|path| path.display().to_string())
+            .unwrap_or_default()
+    } else {
+        binary_directory
+    };
     state
         .start(ProxyJobRequest {
             sqlite_path: PathBuf::from(sqlite_path),

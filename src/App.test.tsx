@@ -981,7 +981,7 @@ describe("RoadWatcher workstation", () => {
     expect(nativeInvoke).toHaveBeenCalledWith("gpstitch_render", expect.objectContaining({
       sqlitePath, projectId: "native-gpstitch-project", mediaId: "media-front-001", routeId: "route-1",
       layout: "speed-awareness", alignment: "auto", timeOffsetSeconds: 0,
-      sidecarDirectory: "sidecars/roadwatcher-gpstitch"
+      sidecarDirectory: "sidecars/roadwatcher-gpstitch", ffmpegBinaryDirectory: ""
     }));
     expect(screen.getByText("GPStitch 0.18.0")).toBeInTheDocument();
     expect(screen.getByText(`Hash ${"a".repeat(64)}`)).toBeInTheDocument();

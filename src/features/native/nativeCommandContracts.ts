@@ -284,7 +284,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     command: "gpstitch_render",
     implementation: "implemented",
     readinessRequired: false,
-    requestFields: ["sqlitePath", "projectId", "mediaId", "routeId", "layout", "alignment", "timeOffsetSeconds", "sidecarDirectory"],
+    requestFields: ["sqlitePath", "projectId", "mediaId", "routeId", "layout", "alignment", "timeOffsetSeconds", "sidecarDirectory", "ffmpegBinaryDirectory"],
     responseFields: ["renderId", "jobId", "status"],
     fallback: "preserve media, route, and alignment metadata without rendering",
     ownerAction: "Queue a pinned GPStitch render against an immutable review proxy and imported GPX evidence."

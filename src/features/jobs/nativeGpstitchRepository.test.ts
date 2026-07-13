@@ -5,7 +5,7 @@ import { createNativeGpstitchRepository } from "./nativeGpstitchRepository";
 const config = {
   sqlitePath: "D:/project/project.sqlite", projectId: "project", mediaId: "media", routeId: "route",
   layout: "speed-awareness" as const, alignment: "auto" as const, timeOffsetSeconds: 0,
-  sidecarDirectory: "D:/roadwatcher-gpstitch"
+  sidecarDirectory: "D:/roadwatcher-gpstitch", ffmpegBinaryDirectory: "D:/managed/ffmpeg/bin"
 };
 
 describe("native GPStitch repository", () => {

@@ -30,9 +30,9 @@ The runnable app today is the React/Vite evidence workstation:
   runtime manifest. A build-script gate and `pnpm verify:runtime` reject missing
   source/version/license/resource mappings or falsely bundled external tools.
   Native sidecar commands resolve installed resources through Tauri instead of
-  relying on the process working directory. `uv` and its Python resolver remain
-  explicit preparation prerequisites; FFmpeg/ffprobe, GDAL/OGR, Valhalla, and
-  OSRM remain explicit external runtime/data prerequisites.
+  relying on the process working directory. Approved uv/Python, pyvalhalla, and
+  FFmpeg are explicit Setup Center downloads; GDAL/OGR, Valhalla tiles, OSRM,
+  model assets, and GIS data remain external or user-gated prerequisites.
 - A bundled, build-validated Windows x64 managed-dependency catalog now exposes
   seven audited component identities through strict `dependency_catalog`,
   `dependency_install_start`, `dependency_install_status`,
@@ -44,9 +44,9 @@ The runnable app today is the React/Vite evidence workstation:
   enforces size and SHA-256 limits, extracts ZIP entries without traversal,
   publishes through owned staging/rollback directories, persists job state for
   restart recovery, refuses unowned removal, and detects installed older
-  versions. Exact artifacts intentionally remain `pendingApproval` or
-  `blockedOnUser` until their sources, licenses, release URLs, and hashes are
-  approved; the Setup Center therefore does not offer a fake installation.
+  versions. Only the approved uv/Python, pyvalhalla, and FFmpeg artifacts are
+  `available`; other artifacts remain `pendingApproval` or `blockedOnUser` until
+  their sources, licenses, release URLs, and hashes are approved.
 - The readiness experience now contains an accessible Setup Center with catalog
   refresh, recommended/individual install selection, exact license consent,
   progress, safe cancellation, retry, validation, update, removal, and disk-space
@@ -907,6 +907,35 @@ smokes, the production TypeScript/Vite build, and the complete runtime/release
 audit. The only Vite diagnostic is the existing advisory that Tauri core is
 both statically and dynamically imported.
 
+Catalog `2026.07.13-internal.7` promotes the owner-approved Gyan FFmpeg 8.1.1
+full-build archive through a dedicated `verified-ffmpeg-archive` backend
+strategy. The fixed contract binds the 252,194,496-byte ZIP and SHA-256
+`49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552`,
+the retained GPLv3 `LICENSE` and source/configuration `README.txt`, both exact
+executable byte counts and hashes, and the two 8.1.1 version prefixes. It exposes
+only the canonical nested `ffmpeg-8.1.1-full_build/bin` reference after atomic
+publication. Arbitrary commands, URLs, versions, and install paths are not
+accepted.
+
+Runtime preflight and proxy execution preserve explicit override, managed
+reference, then PATH precedence. GPStitch receives the resolved directory only
+through its child-process PATH after the backend validates an existing absolute
+directory containing both executables; RoadWatcher makes no process-global,
+system PATH, registry, or elevation change. Setup Center retains the archive's
+LICENSE/README, requires the exact consent digest, and removal remains
+ownership-marker confined.
+
+The real managed-manager smoke downloaded the release through the production
+redirect/allowlist boundary, verified, extracted, probed, atomically published,
+resolved, and removed it in 26 seconds. The native proxy smoke passed with the
+same exact 8.1.1 binaries. A locked GPStitch fixture render using the child-only
+managed binary directory produced a 17,233,284-byte, 2.44-second output with
+SHA-256 `788E913566F0126E3FA1269AFD086271F8E20644275ABB08F98958BF43DAC050`
+before cleanup. The current deterministic baseline is 186 frontend tests, 98
+default Rust tests with eight explicit real/external smokes ignored by default,
+the production build, and the full runtime/release audit. Both new real FFmpeg
+smokes and the GPStitch fixture qualification passed separately.
+
 Managed GIS components now have a strict install-to-project handoff without an
 automatic import. Catalog `projectImports` declare only relative source paths
 and bounded GIS metadata. Build-time, runtime, Rust, and frontend validators
@@ -1002,22 +1031,20 @@ a later refactor may share those helpers after the real recipes prove whether
 their policies remain identical.
 
 The remaining source and license gate is normalized in
-`docs/managed-source-approval.md`. It records the approved uv/Python identities,
-fully identified but unapproved pyvalhalla and FFmpeg candidates, the mutable
-GDAL daily-build problem, and the open Ontario/York, YOLO, and municipal-data
-choices. Unapproved catalog entries remain `pendingApproval` or
+`docs/managed-source-approval.md`. It records the approved uv/Python,
+pyvalhalla, and FFmpeg identities, the mutable GDAL daily-build problem, and the
+open Ontario/York, YOLO, and municipal-data choices. Unapproved catalog entries remain `pendingApproval` or
 `blockedOnUser`; their consent digests remain placeholders. Generated GitHub
 assets still require owner publication or explicit workflow authorization
 before catalog promotion.
 
-The proven Gyan FFmpeg package has now been recovered as the immutable 8.1.1
+The proven Gyan FFmpeg package was recovered as the immutable 8.1.1
 full-build GitHub Release ZIP: 252,194,496 bytes, SHA-256
 `49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552`.
 Gyan's release metadata and Microsoft's WinGet manifest agree on that identity;
 the local executable hashes, source commit, GPLv3 license, and static build
-configuration match. Managed promotion remains owner-blocked because the full
-build's large linked-library inventory creates redistribution/source obligations
-that an agent cannot accept.
+configuration match. The owner approved the exact software-library package on
+2026-07-13; its managed promotion and qualification are recorded below.
 
 The GDAL smoke used GISInternals'
 `release-1944-x64-gdal-3-12-mapserver-8-6.zip` daily stable-branch package. The
@@ -1107,11 +1134,11 @@ Tradeoff: RoadWatcher downloads the Python archive itself before handing it to
 uv, instead of letting uv make an unobservable second network request. This adds
 a second catalog artifact and download progress phase, but makes the executable
 payload independently size/hash bounded and allows uv to run offline. The
-remaining FFmpeg, GDAL, Valhalla data, CV, and GIS rows are still unchanged and
+remaining GDAL, Valhalla data, CV, and GIS rows are still unchanged and
 owner-gated.
 
-1. Implement the now-approved exact FFmpeg distribution and qualify a minimal
-   open-driver GDAL package; keep their runtime consent and notice inventories.
+1. Qualify a reproducible minimal open-driver GDAL package; keep its runtime
+   consent and complete notice inventory.
 2. Approve immutable York/OSM/model/GIS inputs, build the real Valhalla/ONNX
    assets, publish them to exact versioned GitHub Release URLs, and promote only
    the independently re-hashed bytes.

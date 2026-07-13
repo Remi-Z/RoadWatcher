@@ -79,11 +79,11 @@ later agent does not mistake an intentional boundary for an unfinished feature.
     publish both references atomically below app-local data.
 - [x] `[AGENT]` Reuse runtime preparation for locked GPStitch and CV
   environments.
-- [ ] `[AGENT]` Install and validate the audited FFmpeg/ffprobe distribution.
+- [x] `[AGENT]` Install and validate the audited FFmpeg/ffprobe distribution.
   - [x] `[AGENT]` Recover and verify the exact proven Gyan 8.1.1 archive URL,
     size, publisher/WinGet hash, executable hashes, source identity, and
     aggregate GPLv3 notice.
-  - [ ] `[AGENT]` Promote the owner-approved exact Gyan full build with retained
+  - [x] `[AGENT]` Promote the owner-approved exact Gyan full build with retained
     GPLv3/source-notice evidence and real proxy/GPStitch qualification.
 - [ ] `[AGENT]` Install and validate the audited GDAL/OGR distribution.
   - [x] `[AGENT]` Recover the exact proven GISInternals package name, URL,
@@ -209,11 +209,11 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 
 ## Latest Qualification Evidence (2026-07-13)
 
-- [x] `[AGENT]` Frontend: 182 tests passed across 29 files; the subsequent
-  managed-GIS change passed its 7 focused repository/Setup Center tests and a
-  production build.
-- [x] `[AGENT]` Rust: 86 tests passed; five explicit real/native smokes remain
-  ignored until their external tools or private fixture are available.
+- [x] `[AGENT]` Frontend: 186 tests passed across 30 files, including Setup
+  Center dependency ordering and managed GPStitch FFmpeg command contracts.
+- [x] `[AGENT]` Rust: 98 tests passed; eight explicit real/native smokes remain
+  ignored by default because they use network downloads, installed tools, a live
+  service, or private evidence.
 - [x] `[AGENT]` CV sidecar: four tests passed in the locked environment with a
   test-only pytest injection.
 - [x] `[AGENT]` Production frontend build and release/runtime audit passed;
@@ -233,6 +233,12 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   dual-consent, cancellation, manual redirect-allowlist, and Windows promotion
   coverage; the explicit real networked install/reference/removal smoke passed
   with uv 0.11.23 and CPython 3.12.13.
+- [x] `[AGENT]` Approved managed Valhalla qualification passed the complete
+  uv/CPython/pyvalhalla download, offline install, probe, reference, and removal
+  smoke.
+- [x] `[AGENT]` Approved managed FFmpeg qualification passed the exact 252 MB
+  archive download/install/probe/reference/removal smoke, the native proxy
+  smoke, and a locked GPStitch fixture render using child-only PATH injection.
 - [x] `[AGENT]` Four York builder tests cover a portable staged tile tree,
   boundary/hash/config rejection, strict recipe fields, and complete
   archive/lock/definition/manifest publication with fake fixed-command tools.

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "platform": "windows-x86_64",
-  "catalogVersion": "2026.07.13-internal.6",
+  "catalogVersion": "2026.07.13-internal.7",
   "components": [
     {
       "id": "uv-python",
@@ -52,13 +52,20 @@
       "purpose": "Generate review proxies, thumbnails, and GPStitch telemetry renders.",
       "required": true,
       "recommended": true,
-      "license": { "id": "ffmpeg-build-license", "label": "FFmpeg build license inventory", "url": "https://ffmpeg.org/legal.html", "digest": "pending-owner-approval", "consentRequired": true },
-      "sourceUrl": "https://ffmpeg.org/download.html#build-windows",
-      "availability": "pendingApproval",
-      "artifact": null,
+      "license": { "id": "ffmpeg-build-license", "label": "GPL-3.0-or-later and bundled static library notices", "url": "https://ffmpeg.org/legal.html", "digest": "c31bd2401e4b09ced92dc957006d20997edbd7211301d9ca06e94802a2e11b50", "consentRequired": true },
+      "sourceUrl": "https://github.com/GyanD/codexffmpeg/releases/tag/8.1.1",
+      "availability": "available",
+      "artifact": {
+        "url": "https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip",
+        "sha256": "49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552",
+        "maxBytes": 252194496,
+        "archive": "zip",
+        "fileName": "ffmpeg-8.1.1-full_build.zip"
+      },
+      "installStrategy": { "kind": "verified-ffmpeg-archive" },
       "dependencies": [],
       "references": [
-        { "id": "binary-directory", "path": "bin", "kind": "directory" }
+        { "id": "binary-directory", "path": "ffmpeg-8.1.1-full_build/bin", "kind": "directory" }
       ],
       "projectImports": []
     },

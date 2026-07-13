@@ -102,9 +102,13 @@ struct DependencyComponent {
 #[serde(rename_all = "camelCase")]
 struct DependencyInstallStrategy {
     kind: String,
+    #[serde(default)]
     python_version: String,
+    #[serde(default)]
     package: String,
+    #[serde(default)]
     package_version: String,
+    #[serde(default)]
     wheel_file_name: String,
 }
 
@@ -365,17 +369,42 @@ fn validate_dependency_catalog() {
                 .artifact
                 .as_ref()
                 .expect("install strategy requires an artifact");
+            let valid = match strategy.kind.as_str() {
+                "uv-wheel-environment" => {
+                    component.id == "managed-valhalla"
+                        && strategy.python_version == "3.12.13"
+                        && strategy.package == "pyvalhalla"
+                        && strategy.package_version == "3.7.0"
+                        && component.version == strategy.package_version
+                        && artifact.archive == "file"
+                        && artifact.file_name.as_deref()
+                            == Some(strategy.wheel_file_name.as_str())
+                        && strategy.wheel_file_name
+                            == "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"
+                        && component.dependencies.as_slice() == ["uv-python"]
+                }
+                "verified-ffmpeg-archive" => {
+                    component.id == "ffmpeg"
+                        && component.version == "8.1.1-audited-windows-x64"
+                        && strategy.python_version.is_empty()
+                        && strategy.package.is_empty()
+                        && strategy.package_version.is_empty()
+                        && strategy.wheel_file_name.is_empty()
+                        && component.license.digest
+                            == "c31bd2401e4b09ced92dc957006d20997edbd7211301d9ca06e94802a2e11b50"
+                        && artifact.url == "https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip"
+                        && artifact.sha256
+                            == "49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552"
+                        && artifact.max_bytes == 252_194_496
+                        && artifact.archive == "zip"
+                        && artifact.file_name.as_deref()
+                            == Some("ffmpeg-8.1.1-full_build.zip")
+                        && component.dependencies.is_empty()
+                }
+                _ => false,
+            };
             assert!(
-                component.id == "managed-valhalla"
-                    && strategy.kind == "uv-wheel-environment"
-                    && strategy.python_version == "3.12.13"
-                    && strategy.package == "pyvalhalla"
-                    && strategy.package_version == "3.7.0"
-                    && component.version == strategy.package_version
-                    && artifact.archive == "file"
-                    && artifact.file_name.as_deref() == Some(strategy.wheel_file_name.as_str())
-                    && strategy.wheel_file_name == "pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"
-                    && component.dependencies.as_slice() == ["uv-python"],
+                valid,
                 "dependency component {} install strategy drifted from the fixed backend contract",
                 component.id
             );
@@ -425,15 +454,24 @@ fn validate_dependency_catalog() {
                 "uv bootstrap Python reference drifted"
             );
         }
-        if component.install_strategy.is_some() {
-            assert!(
-                component.references.len() == 1
-                    && component.references.iter().any(|reference| {
+        if let Some(strategy) = &component.install_strategy {
+            let valid_reference = component.references.len() == 1
+                && match strategy.kind.as_str() {
+                    "uv-wheel-environment" => component.references.iter().any(|reference| {
                         reference.id == "service-executable"
                             && reference.path == "Scripts/valhalla_service.exe"
                             && reference.kind == "file"
                     }),
-                "managed Valhalla service reference drifted"
+                    "verified-ffmpeg-archive" => component.references.iter().any(|reference| {
+                        reference.id == "binary-directory"
+                            && reference.path == "ffmpeg-8.1.1-full_build/bin"
+                            && reference.kind == "directory"
+                    }),
+                    _ => false,
+                };
+            assert!(
+                valid_reference,
+                "managed dependency reference drifted from the fixed backend contract"
             );
         }
         let mut import_ids = HashSet::new();

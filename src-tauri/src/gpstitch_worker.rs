@@ -24,6 +24,7 @@ pub struct GpstitchWorkerRequest {
     pub store: GpstitchRenderRequest,
     pub sidecar_directory: PathBuf,
     pub environment_directory: PathBuf,
+    pub ffmpeg_binary_directory: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -92,6 +93,19 @@ impl GpstitchExecutor for ProcessGpstitchExecutor {
             .arg(&claimed.layout)
             .arg("--font")
             .arg(overlay_font);
+        if let Some(directory) = &request.ffmpeg_binary_directory {
+            let directory = validate_ffmpeg_directory(directory)?;
+            let mut search_paths = vec![directory];
+            if let Some(existing) = std::env::var_os("PATH") {
+                search_paths.extend(std::env::split_paths(&existing));
+            }
+            let joined = std::env::join_paths(search_paths).map_err(|error| {
+                GpstitchWorkerError::InvalidConfiguration(format!(
+                    "could not construct the GPStitch media-tool search path: {error}"
+                ))
+            })?;
+            command.env("PATH", joined);
+        }
         let result =
             run_bounded_process(&mut command, MAX_RENDER_DURATION, MAX_PROCESS_OUTPUT_BYTES)
                 .map_err(|error| GpstitchWorkerError::Execution(error.to_string()))?;
@@ -105,6 +119,27 @@ impl GpstitchExecutor for ProcessGpstitchExecutor {
         }
         Ok(())
     }
+}
+
+fn validate_ffmpeg_directory(directory: &Path) -> Result<PathBuf, GpstitchWorkerError> {
+    if !directory.is_absolute() || !directory.is_dir() {
+        return Err(GpstitchWorkerError::InvalidConfiguration(
+            "FFmpeg binary directory must be an existing absolute directory".to_string(),
+        ));
+    }
+    let canonical = directory.canonicalize().map_err(|error| {
+        GpstitchWorkerError::InvalidConfiguration(format!(
+            "could not validate the FFmpeg binary directory: {error}"
+        ))
+    })?;
+    for executable in ["ffmpeg.exe", "ffprobe.exe"] {
+        if !canonical.join(executable).is_file() {
+            return Err(GpstitchWorkerError::InvalidConfiguration(format!(
+                "managed media-tool directory is missing {executable}"
+            )));
+        }
+    }
+    Ok(canonical)
 }
 
 pub struct GpstitchWorkerManager {
@@ -304,8 +339,8 @@ impl From<std::io::Error> for GpstitchWorkerError {
 #[cfg(test)]
 mod tests {
     use super::{
-        overlay_font_path, GpstitchExecutor, GpstitchWorkerError, GpstitchWorkerManager,
-        GpstitchWorkerRequest, PINNED_GPSTITCH_VERSION,
+        overlay_font_path, validate_ffmpeg_directory, GpstitchExecutor, GpstitchWorkerError,
+        GpstitchWorkerManager, GpstitchWorkerRequest, PINNED_GPSTITCH_VERSION,
     };
     use crate::project_store::{
         create_project_at, import_media_at, import_route_at, read_gpstitch_render_status,
@@ -327,6 +362,18 @@ mod tests {
     #[test]
     fn resolves_an_existing_windows_overlay_font() {
         assert!(overlay_font_path().is_some_and(|path| path.is_file()));
+    }
+
+    #[test]
+    fn validates_an_explicit_child_process_media_tool_directory() {
+        let root = TestRoot::new();
+        fs::write(root.path.join("ffmpeg.exe"), b"ffmpeg").unwrap();
+        assert!(validate_ffmpeg_directory(&root.path).is_err());
+        fs::write(root.path.join("ffprobe.exe"), b"ffprobe").unwrap();
+        assert_eq!(
+            validate_ffmpeg_directory(&root.path).unwrap(),
+            root.path.canonicalize().unwrap()
+        );
     }
 
     impl GpstitchExecutor for FakeExecutor {
@@ -478,6 +525,7 @@ mod tests {
             },
             sidecar_directory: root.path.join("sidecar"),
             environment_directory: root.path.join("environment"),
+            ffmpeg_binary_directory: None,
         };
         (root, request)
     }

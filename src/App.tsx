@@ -570,10 +570,12 @@ export function App({
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const monitored = activeGpstitchJob;
+    const ffmpegReference = componentSlots.find((slot) => slot.id === "ffmpeg")?.reference ?? "";
     const repository = createNativeGpstitchRepository(nativeCommandBridge, {
       sqlitePath: activeNativeSqlitePath, projectId, mediaId: monitored.mediaId, routeId: monitored.routeId,
       layout: monitored.layout, alignment: monitored.alignment, timeOffsetSeconds: monitored.timeOffsetSeconds,
-      sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
+      sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY,
+      ffmpegBinaryDirectory: ffmpegReference.startsWith("slot:") ? "" : ffmpegReference
     });
     const poll = async () => {
       const response = await repository.status(monitored.renderId, monitored.jobId);
@@ -595,7 +597,7 @@ export function App({
     };
     void poll();
     return () => { active = false; if (timer) clearTimeout(timer); };
-  }, [activeGpstitchJob, activeNativeSqlitePath, nativeCommandBridge, projectId]);
+  }, [activeGpstitchJob, activeNativeSqlitePath, componentSlots, nativeCommandBridge, projectId]);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -1030,10 +1032,12 @@ export function App({
       return;
     }
     const requestedAtIso = new Date().toISOString();
+    const ffmpegReference = componentSlots.find((slot) => slot.id === "ffmpeg")?.reference ?? "";
     const config = {
       sqlitePath: activeNativeSqlitePath, projectId, mediaId: mediaAsset.id, routeId: routeJob.routeId,
       layout: gpstitchLayout, alignment: gpstitchAlignment, timeOffsetSeconds: gpstitchTimeOffsetSeconds,
-      sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
+      sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY,
+      ffmpegBinaryDirectory: ffmpegReference.startsWith("slot:") ? "" : ffmpegReference
     };
     const result = await createNativeGpstitchRepository(nativeCommandBridge, config).start();
     const attempt: NativeCommandAttempt = {

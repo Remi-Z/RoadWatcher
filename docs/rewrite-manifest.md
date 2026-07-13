@@ -213,9 +213,9 @@ Build a Windows-first, local-first evidence workstation:
 
 Latest module verification on 2026-07-13: 186 frontend tests across 30 files,
 TypeScript compilation, production Vite build, complete runtime/release audit,
-and 96 default Rust tests across all targets passed. Seven real/external smokes
-remain explicitly gated; the complete networked uv 0.11.23, CPython 3.12.13,
-and pyvalhalla 3.7.0 manager smoke passed separately.
+and 98 default Rust tests across all targets passed. Eight real/external smokes
+remain explicitly gated; the complete networked uv 0.11.23/CPython 3.12.13/
+pyvalhalla 3.7.0 and FFmpeg 8.1.1 manager smokes passed separately.
 The ignored managed-uv, installed-FFmpeg, installed-GDAL, live-OSRM, and private
 ride smokes also pass when explicitly enabled. Release-governance verification passes the runtime audit, three
 positive/negative release metadata tests, the repository release audit,
@@ -227,8 +227,9 @@ Windows runtime packaging now has a deterministic source-and-license boundary.
 locks, license markers, explicit Tauri resource map, notices, and six
 non-redistributed tools. A debug NSIS build and archive extraction confirmed the
 manifest, notices, GPL text, and whitelisted source files are non-empty and omit
-local Python caches. The installer still requires externally provisioned
-uv/Python and native media/GIS/matcher tools.
+local Python caches. The installer remains source-only, while Setup Center can
+explicitly download approved uv/Python, pyvalhalla, and FFmpeg components;
+GDAL, production data, and model assets remain external or user-gated.
 
 Release policy is now a second deterministic packaging boundary. The bundled
 release manifest declares synchronized version/channel, unsigned-development
@@ -251,8 +252,8 @@ emitted bounded JSON evidence. Clean-VM and signed-artifact gates remain open.
 The native `runtime_preflight` command and strict React adapter now expose
 packaged-source, uv/Python, FFmpeg/ffprobe, and optional GDAL/OGR status through
 parallel bounded probes. A real locked/offline GPStitch render of the upstream
-five-second fixture produced a verified H.264/AAC output after RoadWatcher added
-explicit Windows system-font selection. A hash-verified AGPL-3.0 YOLO11n ONNX
+five-second fixture produced a verified H.264/AAC output using the exact approved
+FFmpeg directory scoped to the child process. A hash-verified AGPL-3.0 YOLO11n ONNX
 model also completed locked/offline inference against a real GoPro fixture with
 six bounded reviewer-required findings. A temporary GDAL 3.12.4 Windows package
 also passed the real bounded adapter smoke from EPSG:26917 to WGS84. An official
@@ -440,8 +441,8 @@ network/DNS access.
 - Browser media import remains available as fallback. Native import accepts an
   explicit path and persists its hash/size/proxy job; ffprobe metadata,
   proxy/thumbnail generation, progress, cancellation, recovery, terminal
-  reconciliation, and native picker are implemented. FFmpeg distribution and
-  licensing policy remain.
+  reconciliation, and native picker are implemented. The approved exact FFmpeg
+  8.1.1 distribution, consent, child-process wiring, and owned removal are implemented.
 - Browser GPX import remains an explicit fallback. Native projects now persist
   hashed GPX assets and immutable raw points, execute Valhalla with OSRM fallback,
   publish matched points transactionally, poll durable state, and reproject
@@ -481,23 +482,23 @@ network/DNS access.
 | Slot | Needed For | Current Placeholder |
 | --- | --- | --- |
 | Rust/Cargo | Tauri dev/build and Rust command implementation | `src-tauri/` scaffold |
-| GPStitch sidecar | Telemetry sync and overlay processing | Pinned/bundled source v0.18.0; environment preparation and FFmpeg remain external |
+| GPStitch sidecar | Telemetry sync and overlay processing | Pinned/bundled source v0.18.0; environment preparation plus managed/external FFmpeg resolution implemented |
 | uv 0.11.23 + Python 3.12.13 | Locked GPStitch/CV/Valhalla environment preparation | Owner-approved, exact-hash managed Setup Center component; explicit override and PATH remain lower-priority alternatives |
 | Valhalla York/GTA data | Local map matching | Editable UI slot + blocked job |
 | OSRM Match fallback | Simpler GPX matching fallback | Editable optional UI slot |
 | Official GIS layers | Stop signs/lights/bike lanes projection | Editable UI slot |
 | GDAL/OGR | Production GIS containers and CRS normalization | Editable optional binary-directory/PATH slot |
-| FFmpeg/ffprobe | Proxy generation and metadata probing | Editable UI slot + proxy jobs |
+| FFmpeg/ffprobe | Proxy generation and metadata probing | Owner-approved exact managed 8.1.1 build; explicit override and PATH remain fallbacks |
 | ONNX model + labels | Local vehicle/CV scan | Editable UI slot + `roadwatcher-cv scan --model --labels --source` |
 
 ## Next Agent Checklist
 
-1. Implement the owner-approved FFmpeg 8.1.1 archive and select/build the
-   immutable minimal open-driver GDAL package. Managed uv 0.11.23, CPython
-   3.12.13, and pyvalhalla 3.7.0 are implemented and real-smoke qualified; GPL
+1. Select/build the immutable minimal open-driver GDAL package. Managed uv
+   0.11.23, CPython 3.12.13, pyvalhalla 3.7.0, and FFmpeg 8.1.1 are implemented
+   and real-smoke qualified; GPL
    source and notice delivery for GPStitch is implemented. Production GIS container
    normalization, local CV, and GPStitch reconciliation are complete:
-   verification passes 186 frontend tests, 96 default Rust tests plus the
+   verification passes 186 frontend tests, 98 default Rust tests plus the
    explicitly enabled managed uv/Python/pyvalhalla, installed-FFmpeg, installed-GDAL, and
    live-OSRM and private-ride smokes,
    four locked/offline Python tests, and the

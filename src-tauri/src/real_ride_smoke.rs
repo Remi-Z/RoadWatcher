@@ -226,6 +226,7 @@ fn real_ride_dataset_exercises_ingest_proxy_cv_and_gpstitch() {
             store: render_store.clone(),
             sidecar_directory: gpstitch_source,
             environment_directory: environments.gpstitch,
+            ffmpeg_binary_directory: None,
         })
         .expect("real ride GPStitch render did not start");
     let render = wait_for_terminal_status(
