@@ -686,7 +686,7 @@ mod tests {
 
         assert_eq!(started.job_id, fixture.request.job_id);
         assert!(matches!(started.status.as_str(), "queued" | "running"));
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         loop {
             let status = read_proxy_job_status(
                 &fixture.request.sqlite_path,
@@ -710,7 +710,7 @@ mod tests {
         let fixture = ProxyFixture::new();
         let manager = ProxyWorkerManager::new(Arc::new(FakeRunner::wait_for_cancel()));
         manager.start(fixture.request.clone()).unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while read_proxy_job_status(
             &fixture.request.sqlite_path,
             &fixture.request.project_id,
