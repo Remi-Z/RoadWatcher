@@ -147,7 +147,7 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   evidence verifier covering managed installs, explicit GIS import, proxy,
   managed matching, optional CV, GPStitch, persistence, export, cancellation,
   retry, removal, immutable originals, and unchanged release guardrails.
-- [ ] `[AGENT]` Pass frontend, build, release/runtime audit, Rust, sidecar, and
+- [x] `[AGENT]` Pass frontend, build, release/runtime audit, Rust, sidecar, and
   deterministic matcher/artifact tests.
 - [x] `[AGENT]` Verify dependency catalog rejection, download confinement,
   integrity failures, cancellation, restart recovery, rollback, and ownership.

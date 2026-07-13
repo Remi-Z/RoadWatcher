@@ -49,12 +49,18 @@ unpublished hashes in final evidence.
 
 ## Current Verification
 
-- Frontend: 29 files / 182 tests pass; the subsequent managed-GIS handoff passed
-  its 7 focused frontend tests and production build.
+- Frontend: 30 files / 185 tests pass, including the managed installer and Setup
+  Center flows; the production build passes.
 - App integration: 68 tests pass without React asynchronous-update warnings.
-- Rust: 86 default tests pass; five real smokes are ignored by default. The
-  managed-uv, installed-FFmpeg, installed-GDAL, live-OSRM, and private ride
-  dataset smokes pass when enabled separately.
+- Rust: 93 default tests pass; seven external real smokes are ignored by default.
+  They cover the two approved uv/Python install paths, locked environment sync,
+  installed FFmpeg, installed GDAL, live OSRM, and the private ride dataset.
+  Each relevant real smoke has passed separately; they were not repeated in the
+  deterministic qualification checkpoint because they require network access,
+  unapproved/installed tools, a live service, or private data.
+- Release qualification: the runtime catalog audit, deterministic York/ONNX
+  artifact tests, release metadata tests, production build, four CV sidecar
+  tests, and five internal-pilot evidence-contract tests pass.
 - The private ride smoke copies only the smallest 128,353,932-byte LRV into an
   isolated temporary project, imports all 4,484 timed `Ride.gpx` points, creates
   a 145.00-second proxy, records 79 conservative CV findings at a 10-second

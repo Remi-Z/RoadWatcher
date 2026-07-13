@@ -1051,6 +1051,24 @@ Both explicit real paths passed: the local approved-archive bootstrap and the
 complete networked download, dual-consent, install, atomic publication,
 reference-resolution, and removal flow. The runtime package audit passes.
 
+The 2026-07-13 deterministic internal qualification checkpoint is green. It
+passes 185 frontend tests across 30 files, the production TypeScript/Vite build,
+the complete runtime/release audit (including all York/ONNX artifact-builder
+tests), 93 default Rust tests, four CV sidecar tests, and five internal-pilot
+evidence-contract tests. `cargo fmt --check` also exits successfully; Cargo emits
+the existing non-fatal warning that it cannot canonicalize the profile path at
+the space in `C:\Users\Remi Z`. Vite likewise retains its existing advisory that
+Tauri core is both statically and dynamically imported.
+
+Seven Rust real smokes stay ignored by default: two approved uv/Python install
+paths, locked environment synchronization, installed FFmpeg, installed GDAL,
+live OSRM, and the private ride dataset. They require network access, external
+or currently unapproved tools, a live service, or private evidence, so this
+checkpoint did not repeat them. Their earlier separate evidence remains in this
+handoff, including the full networked uv/Python manager smoke completed for the
+preceding managed-installer module. This is an intentional test boundary, not a
+claim that the owner clean-machine pilot has run.
+
 Tradeoff: RoadWatcher downloads the Python archive itself before handing it to
 uv, instead of letting uv make an unobservable second network request. This adds
 a second catalog artifact and download progress phase, but makes the executable
