@@ -22,7 +22,6 @@ const MAX_RENDER_DURATION: Duration = Duration::from_secs(4 * 60 * 60);
 #[derive(Clone, Debug)]
 pub struct GpstitchWorkerRequest {
     pub store: GpstitchRenderRequest,
-    pub uv_executable: String,
     pub sidecar_directory: PathBuf,
     pub environment_directory: PathBuf,
 }
@@ -209,12 +208,11 @@ fn run_gpstitch_render(
 }
 
 fn validate_sidecar(request: &GpstitchWorkerRequest) -> Result<(), GpstitchWorkerError> {
-    if request.uv_executable.trim().is_empty()
-        || !request.sidecar_directory.is_dir()
+    if !request.sidecar_directory.is_dir()
         || !environment_ready(&request.environment_directory, "gpstitch-0.18.0")
     {
         return Err(GpstitchWorkerError::InvalidConfiguration(
-            "uv, bundled GPStitch source, and a prepared managed GPStitch environment are required"
+            "bundled GPStitch source and a prepared managed GPStitch environment are required"
                 .to_string(),
         ));
     }
@@ -473,7 +471,6 @@ mod tests {
                 alignment: alignment.to_string(),
                 time_offset_seconds: offset,
             },
-            uv_executable: "uv".to_string(),
             sidecar_directory: root.path.join("sidecar"),
             environment_directory: root.path.join("environment"),
         };

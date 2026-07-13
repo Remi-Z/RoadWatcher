@@ -14,7 +14,7 @@ export type NativeCvReviewResult =
 
 export function createNativeCvRepository(bridge: Pick<NativeCommandBridge, "invoke">, config: {
   sqlitePath: string; projectId: string; mediaId: string; modelPath: string; labelsPath: string;
-  uvExecutable: string; sidecarDirectory: string;
+  sidecarDirectory: string;
 }) {
   return {
     async start(): Promise<NativeCvStartResult> {

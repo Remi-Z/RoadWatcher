@@ -193,7 +193,6 @@ fn real_ride_dataset_exercises_ingest_proxy_cv_and_gpstitch() {
     CvWorkerManager::default()
         .start(CvWorkerRequest {
             store: cv_store.clone(),
-            uv_executable: "uv".to_string(),
             sidecar_directory: cv_source,
             environment_directory: environments.cv,
         })
@@ -222,7 +221,6 @@ fn real_ride_dataset_exercises_ingest_proxy_cv_and_gpstitch() {
     GpstitchWorkerManager::default()
         .start(GpstitchWorkerRequest {
             store: render_store.clone(),
-            uv_executable: "uv".to_string(),
             sidecar_directory: gpstitch_source,
             environment_directory: environments.gpstitch,
         })

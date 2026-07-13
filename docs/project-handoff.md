@@ -1,6 +1,6 @@
 # RoadWatcher Rewrite Handoff
 
-Last updated: 2026-07-11
+Last updated: 2026-07-13
 
 ## Current State
 
@@ -19,9 +19,10 @@ The runnable app today is the React/Vite evidence workstation:
   collections, and returns structured recovery issues.
 - GPStitch is now a pinned upstream submodule at v0.18.0 commit
   `65a560966a72002bcb503e082df089863e0a5d53` (GPL-3.0-or-later). The native
-  manager queues durable schema-v8 jobs, runs locked/offline `uv` without a
-  shell, supports automatic, GPX-timestamp, and integer manual-offset alignment,
-  and never mutates source/proxy timestamps. The frontend queues and polls
+  manager queues durable schema-v8 jobs and invokes the installed module through
+  the prepared managed Python interpreter without a shell. It supports automatic,
+  GPX-timestamp, and integer manual-offset alignment and never mutates source/proxy
+  timestamps. The frontend queues and polls
   identity-matched renders, persists them in snapshot schema v4, and exports the
   confined output path, SHA-256, size, and exact GPStitch version.
 - Windows packaging now carries whitelisted GPStitch/CV source, lockfiles,
@@ -49,8 +50,8 @@ The runnable app today is the React/Vite evidence workstation:
   Tauri's app-local data directory. Two bounded `uv sync --locked --no-dev`
   operations run in parallel, publish only after Python plus the expected
   command entrypoint exist, and use ownership markers/staging directories so
-  unknown folders are never overwritten. Native jobs point
-  `UV_PROJECT_ENVIRONMENT` at these writable locations and remain locked/offline.
+  unknown folders are never overwritten. Native jobs execute the installed
+  modules through these writable environments and remain offline.
 - Browser repository loads now report `loaded`, `missing`, `corrupt`,
   `unsupported`, or `unavailable`; startup keeps seeded state usable while
   showing the precise recovery condition. Schema-declaring project imports no
@@ -615,9 +616,10 @@ external inputs and are not packaged.
 All 23 focused project-store tests pass for schema v7, including v6 migration,
 queued/running/complete/failed transitions, exact source/model/label provenance,
 atomic finding publication, invalid-output rollback, and interrupted-job recovery.
-The asynchronous manager queues before returning, invokes locked/offline `uv`
-without a shell, canonicalizes source/model/label identities, caps process output,
-rejects mismatched aggregates, and records terminal blocked/failed states. Full
+The asynchronous manager queues before returning, invokes the installed CV
+module through the prepared Python interpreter without a shell, canonicalizes
+source/model/label identities, caps process output, rejects mismatched aggregates,
+and records terminal blocked/failed states. Full
 default Rust verification passes 70 tests; the managed-uv, installed-FFmpeg,
 and installed-GDAL smokes also pass when explicitly enabled. The GDAL smoke
 used the 61,735,748-byte GISInternals MSVC 2022 x64 package (download SHA-256
@@ -662,6 +664,16 @@ $env:ROADWATCHER_CV_MODEL='<approved ONNX model>'
 $env:ROADWATCHER_CV_LABELS='<matching labels file>'
 cargo test real_ride_dataset_exercises_ingest_proxy_cv_and_gpstitch -- --ignored --nocapture
 ```
+
+The 2026-07-13 runtime-contract cleanup removes `uvExecutable` from both
+`cv_scan` and `gpstitch_render` across the Tauri handlers, Rust worker requests,
+strict TypeScript command metadata, repositories, React polling/start flows, and
+tests. `uv` remains explicit for `runtime_prepare` and `runtime_preflight`, where
+it is actually used. Prepared jobs therefore cannot be blocked by a dead uv
+argument, and changing the setup slot no longer retriggers active CV/GPStitch
+polling effects. The previously unchecked reviewer-reconciliation plan items
+were audited against implemented adapter, polling, decision persistence,
+snapshot, and export tests and marked complete.
 
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep

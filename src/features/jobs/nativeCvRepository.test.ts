@@ -4,7 +4,7 @@ import { createNativeCvRepository } from "./nativeCvRepository";
 
 const config = {
   sqlitePath: "D:/project/project.sqlite", projectId: "project", mediaId: "media",
-  modelPath: "D:/model.onnx", labelsPath: "D:/labels.txt", uvExecutable: "uv",
+  modelPath: "D:/model.onnx", labelsPath: "D:/labels.txt",
   sidecarDirectory: "D:/roadwatcher-cv"
 };
 

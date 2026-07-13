@@ -246,7 +246,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     command: "cv_scan",
     implementation: "implemented",
     readinessRequired: false,
-    requestFields: ["sqlitePath", "projectId", "mediaId", "modelPath", "labelsPath", "uvExecutable", "sidecarDirectory", "confidenceThreshold", "sampleIntervalSeconds", "maxFindings"],
+    requestFields: ["sqlitePath", "projectId", "mediaId", "modelPath", "labelsPath", "sidecarDirectory", "confidenceThreshold", "sampleIntervalSeconds", "maxFindings"],
     responseFields: ["scanId", "jobId", "status", "findingCount", "reviewRequired"],
     fallback: "editable reviewer notes only",
     ownerAction: "Launch the Python sidecar with configured ONNX model and labels."
@@ -279,7 +279,7 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     command: "gpstitch_render",
     implementation: "implemented",
     readinessRequired: false,
-    requestFields: ["sqlitePath", "projectId", "mediaId", "routeId", "layout", "alignment", "timeOffsetSeconds", "uvExecutable", "sidecarDirectory"],
+    requestFields: ["sqlitePath", "projectId", "mediaId", "routeId", "layout", "alignment", "timeOffsetSeconds", "sidecarDirectory"],
     responseFields: ["renderId", "jobId", "status"],
     fallback: "preserve media, route, and alignment metadata without rendering",
     ownerAction: "Queue a pinned GPStitch render against an immutable review proxy and imported GPX evidence."

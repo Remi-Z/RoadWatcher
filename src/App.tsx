@@ -505,7 +505,6 @@ export function App({
       mediaId: activeCvJob.mediaId,
       modelPath: nativeCvModelPath,
       labelsPath: nativeCvLabelsPath,
-      uvExecutable,
       sidecarDirectory: NATIVE_CV_SIDECAR_DIRECTORY
     });
     const poll = async () => {
@@ -528,7 +527,7 @@ export function App({
     };
     void poll();
     return () => { active = false; if (timer) clearTimeout(timer); };
-  }, [activeCvJob, activeNativeSqlitePath, nativeCommandBridge, nativeCvLabelsPath, nativeCvModelPath, projectId, uvExecutable]);
+  }, [activeCvJob, activeNativeSqlitePath, nativeCommandBridge, nativeCvLabelsPath, nativeCvModelPath, projectId]);
 
   useEffect(() => {
     if (!activeGpstitchJob || !activeNativeSqlitePath) return;
@@ -538,7 +537,7 @@ export function App({
     const repository = createNativeGpstitchRepository(nativeCommandBridge, {
       sqlitePath: activeNativeSqlitePath, projectId, mediaId: monitored.mediaId, routeId: monitored.routeId,
       layout: monitored.layout, alignment: monitored.alignment, timeOffsetSeconds: monitored.timeOffsetSeconds,
-      uvExecutable, sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
+      sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
     });
     const poll = async () => {
       const response = await repository.status(monitored.renderId, monitored.jobId);
@@ -560,7 +559,7 @@ export function App({
     };
     void poll();
     return () => { active = false; if (timer) clearTimeout(timer); };
-  }, [activeGpstitchJob, activeNativeSqlitePath, nativeCommandBridge, projectId, uvExecutable]);
+  }, [activeGpstitchJob, activeNativeSqlitePath, nativeCommandBridge, projectId]);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -933,7 +932,6 @@ export function App({
       mediaId,
       modelPath: nativeCvModelPath,
       labelsPath: nativeCvLabelsPath,
-      uvExecutable,
       sidecarDirectory: NATIVE_CV_SIDECAR_DIRECTORY
     };
     const result = await createNativeCvRepository(nativeCommandBridge, config).start();
@@ -977,7 +975,6 @@ export function App({
       mediaId: finding.mediaId,
       modelPath: finding.modelPath,
       labelsPath: finding.labelsPath,
-      uvExecutable,
       sidecarDirectory: NATIVE_CV_SIDECAR_DIRECTORY
     }).review({ id: finding.id, scanId: finding.scanId, reviewStatus: status, reviewNote: note });
     setAppStatus(result.status === "saved"
@@ -1000,7 +997,7 @@ export function App({
     const config = {
       sqlitePath: activeNativeSqlitePath, projectId, mediaId: mediaAsset.id, routeId: routeJob.routeId,
       layout: gpstitchLayout, alignment: gpstitchAlignment, timeOffsetSeconds: gpstitchTimeOffsetSeconds,
-      uvExecutable, sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
+      sidecarDirectory: NATIVE_GPSTITCH_SIDECAR_DIRECTORY
     };
     const result = await createNativeGpstitchRepository(nativeCommandBridge, config).start();
     const attempt: NativeCommandAttempt = {

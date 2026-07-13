@@ -489,7 +489,7 @@ network/DNS access.
    normalization, local CV, and GPStitch reconciliation are complete:
    verification passes 173 frontend tests, 70 default Rust tests plus the
    explicitly enabled managed-uv, installed-FFmpeg, installed-GDAL, and
-   live-OSRM smokes,
+   live-OSRM and private-ride smokes,
    four locked/offline Python tests, and the
    production build.
 2. Verify toolchain:

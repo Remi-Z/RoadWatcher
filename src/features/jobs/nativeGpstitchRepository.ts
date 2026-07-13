@@ -17,7 +17,6 @@ export interface NativeGpstitchConfig {
   layout: TelemetryRender["layout"];
   alignment: GpstitchAlignment;
   timeOffsetSeconds: number;
-  uvExecutable: string;
   sidecarDirectory: string;
 }
 

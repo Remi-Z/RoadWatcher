@@ -37,16 +37,17 @@ quarantined during replacement and restored if publication fails.
 
 ## Execution and Preflight
 
-CV and GPStitch workers require their managed environment and set
-`UV_PROJECT_ENVIRONMENT` explicitly while continuing to use `uv run --locked
---offline`. Installed-runtime preflight reports both environment identities as
-required components. The strict frontend preparation adapter accepts exactly the
-two known results; after preparation the UI automatically refreshes preflight
-evidence.
+CV and GPStitch workers require their managed environment and invoke the
+installed module through that environment's Python interpreter. This is offline
+and avoids uv's Windows command trampolines, which retain the staging path after
+atomic environment promotion. Installed-runtime preflight reports both
+environment identities as required components. The strict frontend preparation
+adapter accepts exactly the two known results; after preparation the UI
+automatically refreshes preflight evidence.
 
 The editable uv/Python setup slot can contain `uv` on PATH or an explicit
-absolute executable, and the same primitive value feeds preparation, preflight,
-CV, and GPStitch commands.
+absolute executable. It feeds only preparation and preflight; prepared CV and
+GPStitch jobs no longer accept an obsolete per-job uv parameter.
 
 ## Verification
 

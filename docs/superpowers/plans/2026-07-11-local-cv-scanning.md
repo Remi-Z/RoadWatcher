@@ -14,6 +14,6 @@
 
 ### Task 3: Reviewer Reconciliation
 
-- [ ] Add TypeScript adapter, polling, conservative finding rows, and decisions.
-- [ ] Include reviewed CV provenance in snapshots/exports.
-- [ ] Run full verification, update handoff, and commit.
+- [x] Add TypeScript adapter, polling, conservative finding rows, and decisions.
+- [x] Include reviewed CV provenance in snapshots/exports.
+- [x] Run full verification, update handoff, and commit.

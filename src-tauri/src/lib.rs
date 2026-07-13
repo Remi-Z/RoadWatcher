@@ -85,7 +85,6 @@ fn cv_scan(
     media_id: String,
     model_path: String,
     labels_path: String,
-    uv_executable: String,
     sidecar_directory: String,
     confidence_threshold: f64,
     sample_interval_seconds: f64,
@@ -108,7 +107,6 @@ fn cv_scan(
                 sample_interval_seconds,
                 max_findings,
             },
-            uv_executable,
             sidecar_directory,
             environment_directory,
         })
@@ -259,7 +257,6 @@ fn gpstitch_render(
     layout: String,
     alignment: String,
     time_offset_seconds: i64,
-    uv_executable: String,
     sidecar_directory: String,
 ) -> Result<GpstitchStartResponse, String> {
     let sidecar_directory =
@@ -278,7 +275,6 @@ fn gpstitch_render(
                 alignment,
                 time_offset_seconds,
             },
-            uv_executable,
             sidecar_directory,
             environment_directory,
         })

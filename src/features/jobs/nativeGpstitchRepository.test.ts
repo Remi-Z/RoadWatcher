@@ -5,7 +5,7 @@ import { createNativeGpstitchRepository } from "./nativeGpstitchRepository";
 const config = {
   sqlitePath: "D:/project/project.sqlite", projectId: "project", mediaId: "media", routeId: "route",
   layout: "speed-awareness" as const, alignment: "auto" as const, timeOffsetSeconds: 0,
-  uvExecutable: "uv", sidecarDirectory: "D:/roadwatcher-gpstitch"
+  sidecarDirectory: "D:/roadwatcher-gpstitch"
 };
 
 describe("native GPStitch repository", () => {

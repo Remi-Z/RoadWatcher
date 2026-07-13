@@ -1,8 +1,8 @@
 # RoadWatcher Project Completion Audit
 
-Date: 2026-07-11
+Date: 2026-07-13
 Audited branch: `dev`
-Audited implementation baseline: `67e8c93`
+Audited implementation baseline: current `dev` HEAD
 
 ## Result
 
@@ -76,6 +76,10 @@ Python interpreter because uv-generated command launchers retain the temporary
 staging path after atomic environment promotion. CV source/model/labels identity
 validation canonicalizes both returned and claimed files before comparison, so
 equivalent `C:\...` and `\\?\C:\...` paths remain strict but no longer conflict.
+The native CV and GPStitch start contracts now reflect that architecture:
+`uvExecutable` was removed from both per-job APIs, worker requests, frontend
+repositories, and polling dependencies. `uv` remains required only for the
+commands that use it—runtime preparation and preflight.
 
 ## Required External Gates
 

@@ -915,7 +915,7 @@ describe("RoadWatcher workstation", () => {
     expect(nativeInvoke).toHaveBeenCalledWith("cv_scan", {
       sqlitePath, projectId: "native-cv-project", mediaId: "media-front-001",
       modelPath: "D:/Models/traffic.onnx", labelsPath: "D:/Models/labels.txt",
-      uvExecutable: "uv", sidecarDirectory: "sidecars/roadwatcher-cv",
+      sidecarDirectory: "sidecars/roadwatcher-cv",
       confidenceThreshold: 0.5, sampleIntervalSeconds: 1, maxFindings: 500
     });
     expect(screen.getByText(/confidence 91%/)).toBeInTheDocument();
@@ -972,7 +972,7 @@ describe("RoadWatcher workstation", () => {
     expect(nativeInvoke).toHaveBeenCalledWith("gpstitch_render", expect.objectContaining({
       sqlitePath, projectId: "native-gpstitch-project", mediaId: "media-front-001", routeId: "route-1",
       layout: "speed-awareness", alignment: "auto", timeOffsetSeconds: 0,
-      uvExecutable: "uv", sidecarDirectory: "sidecars/roadwatcher-gpstitch"
+      sidecarDirectory: "sidecars/roadwatcher-gpstitch"
     }));
     expect(screen.getByText("GPStitch 0.18.0")).toBeInTheDocument();
     expect(screen.getByText(`Hash ${"a".repeat(64)}`)).toBeInTheDocument();

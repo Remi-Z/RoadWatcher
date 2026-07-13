@@ -13,8 +13,10 @@ license, lockfile, and source history. RoadWatcher invokes the published
 
 `gpstitch_render` validates project/media/route identities and queues SQLite
 state before returning. A serialized background manager claims the job and runs
-`uv run --locked --offline --project <sidecar> gpstitch-dashboard` directly,
-without a shell. Process output is capped at 4 MiB and execution at four hours.
+`<managed-environment>/python -m gpstitch.scripts.gopro_dashboard_wrapper`
+directly, without a shell. The environment is prepared from the pinned lock by
+the explicit `runtime_prepare` command. Process output is capped at 4 MiB and
+execution at four hours.
 
 Only a ready review proxy and the immutable imported GPX path may be inputs.
 GPX-timestamp alignment reads the proxy directly. Automatic and manual alignment
@@ -37,11 +39,15 @@ provenance mismatches. The readiness panel exposes layout/alignment/manual-offse
 controls; polling reconciles job and render state atomically; evidence exports
 include the durable provenance.
 
+## Delivery Status
+
+- Real GPStitch rendering passes both the upstream fixture smoke and the private
+  145-second ride workflow.
+- User-triggered locked environment preparation, packaged source, and
+  GPL-required source/license notices are implemented.
+- `uv` is a preparation/preflight dependency, not a per-render API parameter.
+
 ## Deferred Work
 
-- Run a real GPStitch render smoke on a machine with compatible Python, uv, and
-  FFmpeg available.
-- Define installer initialization/update behavior for the git submodule's
-  Python environment and deliver all GPL-required source/license notices.
 - Decide whether a progress-capable wrapper is worthwhile; the upstream CLI is
   currently represented as queued/running/complete rather than frame progress.

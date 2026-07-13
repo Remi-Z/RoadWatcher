@@ -18,7 +18,6 @@ const MAX_SCAN_DURATION: Duration = Duration::from_secs(4 * 60 * 60);
 #[derive(Clone, Debug)]
 pub struct CvWorkerRequest {
     pub store: CvScanRequest,
-    pub uv_executable: String,
     pub sidecar_directory: PathBuf,
     pub environment_directory: PathBuf,
 }
@@ -61,13 +60,11 @@ impl CvExecutor for ProcessCvExecutor {
         request: &CvWorkerRequest,
         source_path: &Path,
     ) -> Result<String, CvWorkerError> {
-        if request.uv_executable.trim().is_empty()
-            || !request.sidecar_directory.is_dir()
+        if !request.sidecar_directory.is_dir()
             || !environment_ready(&request.environment_directory, "roadwatcher-cv-0.1.0")
         {
             return Err(CvWorkerError::InvalidConfiguration(
-                "uv, bundled CV source, and a prepared managed CV environment are required"
-                    .to_string(),
+                "bundled CV source and a prepared managed CV environment are required".to_string(),
             ));
         }
         // uv's Windows script launchers retain the absolute staging path after a
@@ -395,7 +392,6 @@ mod tests {
                 sample_interval_seconds: 1.0,
                 max_findings: 500,
             },
-            uv_executable: "uv".to_string(),
             sidecar_directory: root.path.join("sidecar"),
             environment_directory: root.path.join("environment"),
         };
