@@ -33,4 +33,27 @@ describe("native runtime preflight repository", () => {
     expect(invoke).toHaveBeenCalledWith("runtime_prepare", { uvExecutable: "uv" });
     expect(result).toMatchObject({ status: "loaded", report: { status: "ready" } });
   });
+
+  it("accepts an incomplete preparation report when the optional CV environment fails", async () => {
+    const environments = [
+      { id: "gpstitch-environment", status: "ready", environmentPath: "D:/app-data/gpstitch-0.18.0", detail: "prepared" },
+      { id: "cv-environment", status: "failed", environmentPath: "D:/app-data/roadwatcher-cv-0.1.0", detail: "module probe failed" }
+    ];
+    const invoke = vi.fn<NativeCommandBridge["invoke"]>().mockResolvedValue({
+      ok: true,
+      status: "invoked",
+      command: "runtime_prepare",
+      response: { preparedAtUnix: 1_788_000_000, status: "incomplete", environments }
+    });
+
+    await expect(createNativeRuntimePreflightRepository({ invoke }, config).prepare()).resolves.toMatchObject({
+      status: "loaded",
+      report: {
+        status: "incomplete",
+        environments: expect.arrayContaining([
+          expect.objectContaining({ id: "cv-environment", status: "failed", detail: "module probe failed" })
+        ])
+      }
+    });
+  });
 });

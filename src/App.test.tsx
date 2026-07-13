@@ -836,7 +836,7 @@ describe("RoadWatcher workstation", () => {
     expect(screen.getByText(/runtime_preflight: invoked/)).toBeInTheDocument();
   });
 
-  it("prepares managed sidecar environments and refreshes preflight with the configured uv executable", async () => {
+  it("refreshes core preflight and preserves evidence when optional CV preparation fails", async () => {
     const sqlitePath = "D:/RoadWatcherProjects/runtime-prepare/project.sqlite";
     const uvExecutable = "D:/Tools/uv.exe";
     const snapshot = createProjectSnapshot({ clips: initialClips,
@@ -846,13 +846,16 @@ describe("RoadWatcher workstation", () => {
     const componentIds = ["gpstitch-source", "cv-source", "gpstitch-environment", "cv-environment", "uv", "python", "ffmpeg", "ffprobe", "ogrinfo", "ogr2ogr"];
     const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
       if (command === "project_load") return { projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion, savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot) };
-      if (command === "runtime_prepare") return { preparedAtUnix: 1_788_000_000, status: "ready", environments: [
+      if (command === "runtime_prepare") return { preparedAtUnix: 1_788_000_000, status: "incomplete", environments: [
         { id: "gpstitch-environment", status: "ready", environmentPath: "D:/AppData/gpstitch-0.18.0", detail: "prepared" },
-        { id: "cv-environment", status: "ready", environmentPath: "D:/AppData/roadwatcher-cv-0.1.0", detail: "prepared" }
+        { id: "cv-environment", status: "failed", environmentPath: "D:/AppData/roadwatcher-cv-0.1.0", detail: "module probe failed" }
       ] };
       if (command === "runtime_preflight") return { checkedAtUnix: 1_788_000_001, status: "ready", components: componentIds.map((id) => ({
-        id, label: id, required: !["uv", "python", "cv-environment", "ogrinfo", "ogr2ogr"].includes(id), status: "ready",
-        executable: `D:/${id}`, version: id.includes("source") || id.includes("environment") ? "0.1.0" : "1.0", detail: "ready"
+        id, label: id, required: !["uv", "python", "cv-environment", "ogrinfo", "ogr2ogr"].includes(id),
+        status: id === "cv-environment" ? "invalid" : "ready",
+        executable: id === "cv-environment" ? "" : `D:/${id}`,
+        version: id === "cv-environment" ? "" : id.includes("source") || id.includes("environment") ? "0.1.0" : "1.0",
+        detail: id === "cv-environment" ? "module probe failed" : "ready"
       })) };
       throw new Error(`Unexpected command ${command}`);
     });
@@ -868,7 +871,9 @@ describe("RoadWatcher workstation", () => {
     expect(nativeInvoke).toHaveBeenCalledWith("runtime_prepare", { uvExecutable });
     expect(nativeInvoke).toHaveBeenCalledWith("runtime_preflight", { uvExecutable, ffmpegBinaryDirectory: "", gdalBinaryDirectory: "" });
     expect(screen.getByText(/runtime_prepare: invoked/)).toBeInTheDocument();
+    expect(screen.getByText(/incomplete; gpstitch-environment: ready, cv-environment: failed/)).toBeInTheDocument();
     expect(screen.getByLabelText("Installed runtime preflight results")).toHaveTextContent("Installed runtime: ready");
+    expect(screen.getByLabelText("Installed runtime preflight results")).toHaveTextContent("module probe failed");
   });
 
   it("starts, reconciles, reviews, and exports native CV findings", async () => {

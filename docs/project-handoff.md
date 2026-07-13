@@ -706,6 +706,16 @@ sources, and FFmpeg rather than optional CV capability. Rust tests distinguish
 optional CV failure from required GPStitch failure, while the strict frontend
 map and App evidence enforce the same aggregate.
 
+The preparation-flow regression follow-up verifies that policy across the full
+user-triggered transition. The strict frontend repository accepts an honest
+`incomplete` preparation response when the optional CV environment probe fails,
+and the App still refreshes installed-runtime preflight instead of treating the
+preparation aggregate as core readiness. The resulting core preflight remains
+ready when every required component passes, while the failed CV environment and
+its diagnostic detail remain visible in both the preflight panel and native
+command history. Frontend verification is now 174 passing tests across 27 files,
+and the production build passes.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

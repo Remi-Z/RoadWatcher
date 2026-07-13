@@ -37,7 +37,7 @@ replaced with mocks or toy files in final release evidence.
 
 ## Current Verification
 
-- Frontend: 27 files / 173 tests pass.
+- Frontend: 27 files / 174 tests pass.
 - App integration: 68 tests pass without React asynchronous-update warnings.
 - Rust: 72 default tests pass; five real smokes are ignored by default. The
   managed-uv, installed-FFmpeg, installed-GDAL, live-OSRM, and private ride
@@ -92,6 +92,10 @@ longer makes aggregate runtime preflight incomplete.
 The CV environment now also follows the established optional-CV policy: a
 missing environment is reported and blocks CV jobs themselves, but it does not
 downgrade core runtime readiness. The required GPStitch environment still does.
+An App integration regression now exercises the corresponding preparation
+failure: an `incomplete` preparation report with a failed optional CV probe is
+retained in command evidence, followed by a core-ready runtime preflight rather
+than a false global failure.
 
 ## Required External Gates
 
