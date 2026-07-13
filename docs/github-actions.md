@@ -18,14 +18,16 @@ The workflow runs:
 
 The workflow has read-only repository permissions, uses a pinned pnpm version
 from `package.json`, and does not download or install RoadWatcher-managed runtime
-components.
+components. It checks out the pinned GPStitch submodule required by the Rust
+build, without leaving repository credentials available to later build steps.
 
 ## Internal package delivery
 
 `.github/workflows/internal-package.yml` is intentionally manual. It requires a
 boolean acknowledgement that the result is an unsigned internal package, runs
 the release-contract verification, builds the Tauri Windows bundles, and uploads
-them as a 14-day workflow artifact.
+them as a 14-day workflow artifact. It also checks out the pinned GPStitch
+submodule needed by the packaged runtime.
 
 It does **not** create a GitHub Release, publish a managed dependency artifact,
 sign an installer, enable automatic application updates, or set

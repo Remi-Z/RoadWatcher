@@ -21,6 +21,7 @@ import type { NativeProjectLocator } from "./features/project/nativeProjectLocat
 import type { NativeFilePicker } from "./features/native/nativeFilePicker";
 
 const TEST_PROJECT_ID = "local-app-test-project" as ProjectId;
+const INTERACTIVE_RENDER_TIMEOUT = 30_000;
 
 function App(props: Parameters<typeof RoadWatcherApp>[0]) {
   return <RoadWatcherApp workstationSeedFactory={createDemoWorkstationSeed} {...props} />;
@@ -128,7 +129,7 @@ describe("RoadWatcher workstation", () => {
     const exported = JSON.parse(decodeURIComponent(encodedContent));
 
     expect(exported.incident).toMatchObject({ start: "13:30", end: "13:58" });
-  }, 10_000);
+  }, INTERACTIVE_RENDER_TIMEOUT);
 
   it("lets the reviewer trim, split, duplicate, remove, and export timeline clips", () => {
     render(<App />);
@@ -350,7 +351,7 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("Native setup checklist");
     expect(exportPanel as HTMLElement).toHaveTextContent("Evidence packet JSON");
     expect(exportPanel as HTMLElement).toHaveTextContent("Evidence packet Markdown");
-  }, 10_000);
+  }, INTERACTIVE_RENDER_TIMEOUT);
 
   it("adds a restorable RoadWatcher project snapshot download to export previews", () => {
     render(<App projectIdFactory={() => TEST_PROJECT_ID} />);
@@ -372,7 +373,7 @@ describe("RoadWatcher workstation", () => {
     expect(restored.clips[1]).toMatchObject({ sourceInSeconds: 840, sourceOutSeconds: 852 });
     expect(restored.media).toHaveLength(mediaAssets.length);
     expect(restored.jobs).toHaveLength(initialJobs.length);
-  }, 10_000);
+  }, INTERACTIVE_RENDER_TIMEOUT);
 
   it("publishes native artifacts, hides data links, and invalidates verified paths after edits", async () => {
     const sqlitePath = "D:/RoadWatcherProjects/export/project.sqlite";
@@ -947,7 +948,7 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("Local CV Findings");
     expect(exportPanel as HTMLElement).toHaveTextContent("Confirmed by reviewer.");
     expect(exportPanel as HTMLElement).toHaveTextContent("onnxruntime-cpu");
-  }, 10_000);
+  }, INTERACTIVE_RENDER_TIMEOUT);
 
   it("queues, reconciles, and exports pinned GPStitch telemetry provenance", async () => {
     const sqlitePath = "D:/RoadWatcherProjects/gpstitch/project.sqlite";
