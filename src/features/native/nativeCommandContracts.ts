@@ -19,7 +19,12 @@ export type NativeCommandName =
   | "gpstitch_render"
   | "gpstitch_job_status"
   | "runtime_preflight"
-  | "runtime_prepare";
+  | "runtime_prepare"
+  | "dependency_catalog"
+  | "dependency_install_start"
+  | "dependency_install_status"
+  | "dependency_install_cancel"
+  | "dependency_remove";
 export type NativeCommandImplementation = "implemented" | "planned";
 
 export interface NativeCommandContract {
@@ -316,5 +321,60 @@ export const nativeCommandContracts: NativeCommandContract[] = [
     responseFields: ["preparedAtUnix", "status", "environments"],
     fallback: "administrator-prepared locked environments",
     ownerAction: "Synchronize versioned sidecar environments into RoadWatcher app-local data through bounded uv processes."
+  },
+  {
+    id: "dependency-catalog",
+    label: "Managed dependency catalog",
+    command: "dependency_catalog",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: [],
+    responseFields: ["schemaVersion", "platform", "catalogVersion", "components"],
+    fallback: "manual prerequisite setup with visible component slots",
+    ownerAction: "List only audited catalog components and their managed installation state."
+  },
+  {
+    id: "dependency-install-start",
+    label: "Managed dependency installation",
+    command: "dependency_install_start",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["componentIds", "acceptedLicenseDigests"],
+    responseFields: ["jobId", "status", "progress", "detail", "componentIds", "currentComponentId"],
+    fallback: "manual prerequisite setup",
+    ownerAction: "Install selected catalog identities through confined verified app-local staging."
+  },
+  {
+    id: "dependency-install-status",
+    label: "Managed dependency status",
+    command: "dependency_install_status",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["jobId"],
+    responseFields: ["jobId", "status", "progress", "detail", "componentIds", "currentComponentId"],
+    fallback: "manual setup progress",
+    ownerAction: "Poll bounded dependency installation without background network access."
+  },
+  {
+    id: "dependency-install-cancel",
+    label: "Managed dependency cancellation",
+    command: "dependency_install_cancel",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["jobId"],
+    responseFields: ["jobId", "status", "progress", "detail", "componentIds", "currentComponentId"],
+    fallback: "close manual installers",
+    ownerAction: "Cancel a running managed installation and remove unpublished staging data."
+  },
+  {
+    id: "dependency-remove",
+    label: "Managed dependency removal",
+    command: "dependency_remove",
+    implementation: "implemented",
+    readinessRequired: false,
+    requestFields: ["componentId"],
+    responseFields: ["id", "label", "version", "state", "installPath", "detail"],
+    fallback: "manual removal",
+    ownerAction: "Remove only exact RoadWatcher-owned managed component directories."
   }
 ];

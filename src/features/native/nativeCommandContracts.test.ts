@@ -25,7 +25,12 @@ describe("native command contracts", () => {
       "gpstitch_render",
       "gpstitch_job_status",
       "runtime_preflight",
-      "runtime_prepare"
+      "runtime_prepare",
+      "dependency_catalog",
+      "dependency_install_start",
+      "dependency_install_status",
+      "dependency_install_cancel",
+      "dependency_remove"
     ]);
 
     expect(nativeCommandContracts.find((contract) => contract.command === "project_create")).toMatchObject({

@@ -33,6 +33,35 @@ The runnable app today is the React/Vite evidence workstation:
   relying on the process working directory. `uv` and its Python resolver remain
   explicit preparation prerequisites; FFmpeg/ffprobe, GDAL/OGR, Valhalla, and
   OSRM remain explicit external runtime/data prerequisites.
+- A bundled, build-validated Windows x64 managed-dependency catalog now exposes
+  seven audited component identities through strict `dependency_catalog`,
+  `dependency_install_start`, `dependency_install_status`,
+  `dependency_install_cancel`, and `dependency_remove` Tauri commands. The
+  frontend can submit only component IDs and accepted license digests. Downloads
+  remain explicit user actions and install below Tauri app-local data without
+  elevation or PATH changes.
+- The managed installer confines HTTPS downloads to catalog allowlisted hosts,
+  enforces size and SHA-256 limits, extracts ZIP entries without traversal,
+  publishes through owned staging/rollback directories, persists job state for
+  restart recovery, refuses unowned removal, and detects installed older
+  versions. Exact artifacts intentionally remain `pendingApproval` or
+  `blockedOnUser` until their sources, licenses, release URLs, and hashes are
+  approved; the Setup Center therefore does not offer a fake installation.
+- The readiness experience now contains an accessible Setup Center with catalog
+  refresh, recommended/individual install selection, exact license consent,
+  progress, safe cancellation, retry, validation, update, removal, and disk-space
+  guidance. Runtime preflight resolves explicit overrides first, valid managed
+  uv/FFmpeg/GDAL paths second, and PATH last.
+- Local route matching can now resolve an app-owned `valhalla_service.exe` and
+  York tile configuration without accepting frontend filesystem paths. It invokes
+  Valhalla in bounded one-shot `trace_attributes` mode, removes bounded
+  request/result staging, preserves configured HTTP Valhalla and OSRM fallback,
+  and stores matcher/tile/config identities plus fallback reason in durable route
+  job provenance.
+- `App.tsx` was reduced from 3,091 to 2,267 lines by moving readiness, route-map,
+  timeline, inspector, job, projected-feature, CV-review, and component-slot
+  views into `src/features/workstation/`. App retains repositories, polling,
+  orchestration, and workstation state ownership.
 - Release governance is machine-readable in the bundled `release-manifest.json`.
   `pnpm verify:release` synchronizes the `0.1.0` identity across Node, Cargo,
   Cargo.lock, Tauri, and that manifest; verifies the manual-update policy; and
@@ -715,6 +744,34 @@ ready when every required component passes, while the failed CV environment and
 its diagnostic detail remain visible in both the preflight panel and native
 command history. Frontend verification is now 174 passing tests across 27 files,
 and the production build passes.
+
+The managed-dependency and Setup Center slice adds a catalog validated both by
+Rust build-time checks and `pnpm verify:runtime`, five strict native commands,
+confined app-local install lifecycle, restart recovery, update detection, and
+the feature-level workstation view split. Managed Valhalla uses the official
+one-shot service contract and persists the exact managed matcher, tile artifact,
+configuration hash, and fallback detail with the route job. Verification on
+2026-07-13 passed 179 frontend tests across 29 files, 77 default Rust tests with
+five real smokes ignored, four CV sidecar tests, the production build, and the
+release/runtime audit. Browser fallback rendered one accessible Setup Center
+region, returned one actionable Refresh status, and logged no console errors.
+
+Tradeoffs and external review requests for this slice:
+
+- HTTP Range/ETag resume is not implemented yet. Interrupted transfers restart
+  inside a new confined staging directory; this is slower but preserves the
+  integrity boundary until stable range semantics are tested.
+- Catalog artifacts remain non-installable placeholders rather than unreviewed
+  binaries. The owner must approve exact sources/licenses and publish the
+  versioned Valhalla/ONNX assets before URLs and SHA-256 values can be promoted.
+- The upstream GPStitch suite is not a clean Windows qualification signal: 771
+  tests passed, 3 skipped, 4 existing POSIX/path assertions failed, and 84 E2E
+  cases lacked the vendored Playwright Chromium. Owner review is needed to choose
+  an internal qualification boundary or authorize a reviewed upstream patch and
+  separate browser installation.
+- Reproducible York-buffered tile and ONNX builders, managed GIS import handoff,
+  and final managed component layouts remain the next agent-owned implementation
+  slices; they are tracked in root `TODO.md`.
 
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep

@@ -6,16 +6,18 @@ Audited implementation baseline: current `dev` HEAD
 
 ## Result
 
-RoadWatcher is feature-complete for its documented development configuration:
-the React/Tauri workstation, durable native workflows, browser fallbacks,
-sidecars, packaging boundary, runtime preparation/preflight, and release-policy
-enforcement are implemented and verified. It is not yet a signed, validated
-public Windows release. `release-manifest.json` correctly keeps
-`publicReleaseReady` false.
+RoadWatcher remains complete for the former external-runtime development
+configuration, but it is not yet complete for the new internal-release roadmap
+in root `TODO.md`. The managed catalog, installer boundary, Setup Center,
+feature-level view split, and one-shot managed Valhalla adapter are implemented.
+Exact installable component artifacts, reproducible tile/model builders,
+managed GIS project handoff, resumable stable transfers, and clean-Windows pilot
+evidence remain incomplete or user-gated.
 
-The remaining acceptance gates require external artifacts or infrastructure
-that are not present in this workspace or on this machine. They must not be
-replaced with mocks or toy files in final release evidence.
+It is also not a signed, validated public Windows release.
+`release-manifest.json` correctly keeps `publicReleaseReady` false. External
+gates must not be replaced with mocks, toy files, guessed licenses, or
+unpublished hashes in final evidence.
 
 ## Requirement Evidence
 
@@ -30,6 +32,10 @@ replaced with mocks or toy files in final release evidence.
 | GPStitch telemetry render and provenance | Pinned v0.18.0 source/license, durable worker tests, real locked/offline fixture render | Proven complete |
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
 | Installed runtime preparation and preflight | Ten-component strict preflight, managed-environment tests, explicitly enabled real uv smoke | Proven complete for external-runtime model |
+| Managed dependency command/security boundary | Build-validated catalog, strict ID/license-only commands, ownership/staging/recovery tests, Setup Center contract tests | Proven complete; exact artifacts intentionally unavailable |
+| Managed one-shot Valhalla adapter | Rust path resolution, bounded process/request/result files, HTTP/OSRM fallback tests, durable provenance | Implementation complete; production York tile artifact missing |
+| Reproducible York/ONNX release-asset production | Root TODO and catalog placeholders | Not achieved |
+| Managed GIS install-to-project handoff | Root TODO; existing manual/native GIS import only | Not achieved |
 | Windows source/license packaging | Runtime verifier, Rust build gate, fresh NSIS archive inspection | Proven complete |
 | Version/signing/update/release policy | Bundled release manifest, Rust build gate, three Node verifier tests, strict installer/executable Authenticode evidence script | Proven complete as development policy |
 | Installed app startup evidence | Fresh debug NSIS build and development-host startup JSON evidence | Tool proven; clean-VM evidence missing |
@@ -37,9 +43,9 @@ replaced with mocks or toy files in final release evidence.
 
 ## Current Verification
 
-- Frontend: 27 files / 174 tests pass.
+- Frontend: 29 files / 179 tests pass.
 - App integration: 68 tests pass without React asynchronous-update warnings.
-- Rust: 72 default tests pass; five real smokes are ignored by default. The
+- Rust: 77 default tests pass; five real smokes are ignored by default. The
   managed-uv, installed-FFmpeg, installed-GDAL, live-OSRM, and private ride
   dataset smokes pass when enabled separately.
 - The private ride smoke copies only the smallest 128,353,932-byte LRV into an

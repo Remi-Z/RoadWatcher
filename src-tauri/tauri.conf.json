@@ -32,6 +32,7 @@
     "resources": {
       "resources/runtime-manifest.json": "runtime-manifest.json",
       "resources/release-manifest.json": "release-manifest.json",
+      "resources/dependency-catalog.json": "dependency-catalog.json",
       "../docs/THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
       "../sidecars/roadwatcher-cv/pyproject.toml": "sidecars/roadwatcher-cv/pyproject.toml",
       "../sidecars/roadwatcher-cv/uv.lock": "sidecars/roadwatcher-cv/uv.lock",

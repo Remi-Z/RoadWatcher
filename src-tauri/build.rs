@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -70,10 +71,220 @@ struct CleanMachineValidation {
     procedure: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependencyCatalog {
+    schema_version: u32,
+    platform: String,
+    catalog_version: String,
+    components: Vec<DependencyComponent>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependencyComponent {
+    id: String,
+    label: String,
+    version: String,
+    purpose: String,
+    license: DependencyLicense,
+    source_url: String,
+    availability: String,
+    artifact: Option<DependencyArtifact>,
+    dependencies: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependencyLicense {
+    id: String,
+    label: String,
+    url: String,
+    digest: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependencyArtifact {
+    url: String,
+    sha256: String,
+    max_bytes: u64,
+    archive: String,
+}
+
 fn main() {
     let distribution_mode = validate_runtime_manifest();
+    validate_dependency_catalog();
     validate_release_manifest(&distribution_mode);
     tauri_build::build();
+}
+
+fn validate_dependency_catalog() {
+    const MANIFEST_PATH: &str = "resources/dependency-catalog.json";
+    const DOWNLOAD_HOSTS: &[&str] = &[
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+        "releases.astral.sh",
+        "files.pythonhosted.org",
+        "download.osgeo.org",
+        "www.gyan.dev",
+    ];
+    println!("cargo:rerun-if-changed={MANIFEST_PATH}");
+    let text = fs::read_to_string(MANIFEST_PATH)
+        .unwrap_or_else(|error| panic!("could not read {MANIFEST_PATH}: {error}"));
+    let catalog: DependencyCatalog = serde_json::from_str(&text)
+        .unwrap_or_else(|error| panic!("invalid {MANIFEST_PATH}: {error}"));
+    assert_eq!(
+        catalog.schema_version, 1,
+        "unsupported dependency catalog schema"
+    );
+    assert_eq!(catalog.platform, "windows-x86_64");
+    assert!(
+        !catalog.catalog_version.trim().is_empty(),
+        "dependency catalog version is blank"
+    );
+    assert!(
+        !catalog.components.is_empty(),
+        "dependency catalog has no components"
+    );
+
+    let mut ids = HashSet::new();
+    let mut licenses: HashMap<&str, &str> = HashMap::new();
+    for component in &catalog.components {
+        assert!(
+            !component.id.is_empty()
+                && component.id.chars().all(|value| value.is_ascii_lowercase()
+                    || value.is_ascii_digit()
+                    || value == '-'),
+            "invalid dependency component id {}",
+            component.id
+        );
+        assert!(
+            ids.insert(component.id.as_str()),
+            "duplicate dependency component {}",
+            component.id
+        );
+        assert!(
+            !component.label.trim().is_empty()
+                && !component.version.trim().is_empty()
+                && !component.purpose.trim().is_empty(),
+            "dependency component {} has blank identity fields",
+            component.id
+        );
+        assert_https(&component.source_url, "source URL", &component.id);
+        assert_https(&component.license.url, "license URL", &component.id);
+        assert!(
+            !component.license.id.trim().is_empty()
+                && !component.license.label.trim().is_empty()
+                && !component.license.digest.trim().is_empty(),
+            "dependency component {} has incomplete license evidence",
+            component.id
+        );
+        if let Some(previous) = licenses.insert(&component.license.id, &component.license.digest) {
+            assert_eq!(
+                previous, component.license.digest,
+                "license {} has inconsistent digests",
+                component.license.id
+            );
+        }
+        assert!(
+            matches!(
+                component.availability.as_str(),
+                "available" | "pendingApproval" | "blockedOnUser"
+            ),
+            "dependency component {} has unsupported availability {}",
+            component.id,
+            component.availability
+        );
+        assert!(
+            component.availability != "available" || component.artifact.is_some(),
+            "available component {} has no artifact",
+            component.id
+        );
+        if let Some(artifact) = &component.artifact {
+            assert_https(&artifact.url, "artifact URL", &component.id);
+            let host = artifact
+                .url
+                .trim_start_matches("https://")
+                .split('/')
+                .next()
+                .unwrap_or_default()
+                .split(':')
+                .next()
+                .unwrap_or_default();
+            assert!(
+                DOWNLOAD_HOSTS.contains(&host),
+                "dependency component {} uses non-allowlisted host {host}",
+                component.id
+            );
+            assert!(
+                artifact.max_bytes > 0,
+                "dependency component {} has no size limit",
+                component.id
+            );
+            assert!(
+                artifact.sha256.len() == 64
+                    && artifact
+                        .sha256
+                        .chars()
+                        .all(|value| value.is_ascii_hexdigit()),
+                "dependency component {} has an invalid SHA-256",
+                component.id
+            );
+            assert!(
+                matches!(artifact.archive.as_str(), "file" | "zip"),
+                "dependency component {} uses an unsupported archive",
+                component.id
+            );
+        }
+    }
+
+    let by_id: HashMap<_, _> = catalog
+        .components
+        .iter()
+        .map(|component| (component.id.as_str(), component))
+        .collect();
+    for component in &catalog.components {
+        for dependency in &component.dependencies {
+            assert!(
+                by_id.contains_key(dependency.as_str()),
+                "{} depends on unknown component {dependency}",
+                component.id
+            );
+        }
+        visit_dependency(
+            &component.id,
+            &by_id,
+            &mut HashSet::new(),
+            &mut HashSet::new(),
+        );
+    }
+}
+
+fn visit_dependency<'a>(
+    id: &'a str,
+    components: &HashMap<&'a str, &'a DependencyComponent>,
+    visiting: &mut HashSet<&'a str>,
+    visited: &mut HashSet<&'a str>,
+) {
+    if visited.contains(id) {
+        return;
+    }
+    assert!(visiting.insert(id), "dependency cycle includes {id}");
+    let component = components.get(id).expect("dependency identity disappeared");
+    for dependency in &component.dependencies {
+        visit_dependency(dependency, components, visiting, visited);
+    }
+    visiting.remove(id);
+    visited.insert(id);
+}
+
+fn assert_https(url: &str, field: &str, component_id: &str) {
+    assert!(
+        url.starts_with("https://") && !url.contains(['\r', '\n']),
+        "dependency component {component_id} has an unsafe {field}"
+    );
 }
 
 fn validate_runtime_manifest() -> String {

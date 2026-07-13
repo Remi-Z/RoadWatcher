@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const tauri = json("src-tauri/tauri.conf.json");
 const manifest = json("src-tauri/resources/runtime-manifest.json");
+const dependencyCatalog = json("src-tauri/resources/dependency-catalog.json");
 const resources = tauri.bundle?.resources;
 assert(manifest.schemaVersion === 1, "runtime manifest schema must be 1");
 assert(manifest.distributionMode === "source_bundle_with_external_tools", "distribution mode must remain explicit");
@@ -12,6 +13,7 @@ assert(resources && !Array.isArray(resources), "Tauri bundle resources must use 
 assert(tauri.bundle.license === "GPL-3.0-or-later", "Tauri bundle SPDX license is missing");
 assert(tauri.bundle.licenseFile === "../sidecars/roadwatcher-gpstitch/LICENSE", "installer must carry the full GPL text");
 assert(resources["../docs/THIRD_PARTY_NOTICES.md"] === "THIRD_PARTY_NOTICES.md", "third-party notices are not bundled");
+assert(resources["resources/dependency-catalog.json"] === "dependency-catalog.json", "managed dependency catalog is not bundled");
 assert(readFileSync(resolve(root, "LICENSE"), "utf8").includes("SPDX-License-Identifier: GPL-3.0-or-later"), "RoadWatcher license identifier does not match");
 
 for (const component of manifest.components) {
@@ -35,9 +37,70 @@ for (const tool of manifest.externalTools) {
   assert(tool.distributed === false, `${tool.id} cannot be marked distributed without a binary/license inventory`);
 }
 
+verifyDependencyCatalog(dependencyCatalog);
+
 const pinned = execFileSync("git", ["rev-parse", "HEAD:sidecars/roadwatcher-gpstitch"], { cwd: root, encoding: "utf8" }).trim();
 assert(pinned === "65a560966a72002bcb503e082df089863e0a5d53", `unexpected GPStitch gitlink ${pinned}`);
-process.stdout.write(`Runtime package verified: ${manifest.components.length} bundled-source components, ${manifest.externalTools.length} declared external tools.\n`);
+process.stdout.write(`Runtime package verified: ${manifest.components.length} bundled-source components, ${manifest.externalTools.length} declared external tools, ${dependencyCatalog.components.length} managed catalog entries.\n`);
+
+function verifyDependencyCatalog(catalog) {
+  const allowedHosts = new Set([
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+    "releases.astral.sh",
+    "files.pythonhosted.org",
+    "download.osgeo.org",
+    "www.gyan.dev"
+  ]);
+  assert(catalog.schemaVersion === 1, "dependency catalog schema must be 1");
+  assert(catalog.platform === "windows-x86_64", "dependency catalog must target Windows x64");
+  assert(typeof catalog.catalogVersion === "string" && catalog.catalogVersion.length > 0, "dependency catalog version is blank");
+  assert(Array.isArray(catalog.components) && catalog.components.length > 0, "dependency catalog has no components");
+  const byId = new Map();
+  const licenses = new Map();
+  for (const component of catalog.components) {
+    assert(/^[a-z0-9-]+$/.test(component.id), `invalid dependency component id ${component.id}`);
+    assert(!byId.has(component.id), `duplicate dependency component ${component.id}`);
+    byId.set(component.id, component);
+    assert(component.label && component.version && component.purpose, `${component.id} has blank identity fields`);
+    assertHttps(component.sourceUrl, `${component.id} source URL`);
+    assertHttps(component.license?.url, `${component.id} license URL`);
+    assert(component.license?.id && component.license?.label && component.license?.digest, `${component.id} has incomplete license evidence`);
+    const priorDigest = licenses.get(component.license.id);
+    assert(!priorDigest || priorDigest === component.license.digest, `${component.license.id} has inconsistent license digests`);
+    licenses.set(component.license.id, component.license.digest);
+    assert(["available", "pendingApproval", "blockedOnUser"].includes(component.availability), `${component.id} has unsupported availability`);
+    assert(component.availability !== "available" || component.artifact, `${component.id} claims availability without an artifact`);
+    if (component.artifact) {
+      assertHttps(component.artifact.url, `${component.id} artifact URL`);
+      assert(allowedHosts.has(new URL(component.artifact.url).hostname), `${component.id} artifact host is not allowlisted`);
+      assert(Number.isSafeInteger(component.artifact.maxBytes) && component.artifact.maxBytes > 0, `${component.id} has no download size limit`);
+      assert(/^[a-fA-F0-9]{64}$/.test(component.artifact.sha256), `${component.id} artifact SHA-256 is invalid`);
+      assert(["file", "zip"].includes(component.artifact.archive), `${component.id} archive type is unsupported`);
+    }
+  }
+  for (const component of catalog.components) {
+    for (const dependency of component.dependencies) {
+      assert(byId.has(dependency), `${component.id} depends on unknown component ${dependency}`);
+    }
+  }
+  const visited = new Set();
+  const visiting = new Set();
+  const visit = (id) => {
+    if (visited.has(id)) return;
+    assert(!visiting.has(id), `dependency cycle includes ${id}`);
+    visiting.add(id);
+    for (const dependency of byId.get(id).dependencies) visit(dependency);
+    visiting.delete(id);
+    visited.add(id);
+  };
+  for (const id of byId.keys()) visit(id);
+}
+
+function assertHttps(url, field) {
+  assert(typeof url === "string" && url.startsWith("https://") && !/[\r\n]/.test(url), `${field} is unsafe`);
+}
 
 function json(relativePath) {
   return JSON.parse(readFileSync(resolve(root, relativePath), "utf8"));

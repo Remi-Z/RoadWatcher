@@ -1,3 +1,4 @@
+use crate::bounded_process::run_bounded_process;
 use crate::project_store::{
     claim_route_match_job, complete_route_match_job, fail_route_match_job, read_route_match_status,
     update_route_match_progress, ProjectStoreError, RouteMatchRequest, RouteMatchStatus,
@@ -5,11 +6,15 @@ use crate::project_store::{
 };
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::path::PathBuf;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use thiserror::Error;
+use uuid::Uuid;
 
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_MATCHED_POINTS: usize = 1_000_000;
@@ -20,6 +25,18 @@ pub struct RouteMatcherRequest {
     pub matcher: String,
     pub valhalla_endpoint: String,
     pub osrm_endpoint: String,
+    pub managed_valhalla: Option<ManagedValhallaRequest>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ManagedValhallaRequest {
+    pub executable: PathBuf,
+    pub config: PathBuf,
+    pub work_root: PathBuf,
+    pub matcher_version: String,
+    pub tile_version: String,
+    pub tile_sha256: String,
+    pub config_sha256: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -175,12 +192,30 @@ pub fn execute_route_match<T: MatcherTransport>(
         update_route_match_progress(&request.store, 10.0, "Preparing matcher request.")?;
         let (matcher_used, coordinates, detail) = match request.matcher.as_str() {
             "Valhalla" => {
-                match attempt_valhalla(transport, &request.valhalla_endpoint, &claimed.raw_route) {
-                    Ok(points) => (
-                        "Valhalla",
-                        points,
-                        "Valhalla route match complete.".to_string(),
-                    ),
+                let valhalla = if !request.valhalla_endpoint.trim().is_empty() {
+                    attempt_valhalla(transport, &request.valhalla_endpoint, &claimed.raw_route).map(
+                        |points| {
+                            (
+                                points,
+                                "Configured HTTP Valhalla route match complete.".to_string(),
+                            )
+                        },
+                    )
+                } else if let Some(managed) = &request.managed_valhalla {
+                    attempt_managed_valhalla(managed, &claimed.raw_route).map(|points| {
+                        (points, format!(
+                            "Managed Valhalla route match complete; matcherVersion={}; tileVersion={}; tileSha256={}; configSha256={}.",
+                            managed.matcher_version, managed.tile_version, managed.tile_sha256, managed.config_sha256
+                        ))
+                    })
+                } else {
+                    Err(RouteMatcherError::Blocked(
+                        "Valhalla endpoint is not configured and managed Valhalla is not ready"
+                            .to_string(),
+                    ))
+                };
+                match valhalla {
+                    Ok((points, detail)) => ("Valhalla", points, detail),
                     Err(valhalla_error) if !request.osrm_endpoint.trim().is_empty() => {
                         update_route_match_progress(
                             &request.store,
@@ -212,7 +247,7 @@ pub fn execute_route_match<T: MatcherTransport>(
         };
         let matched = interpolate_times(&coordinates, &claimed.raw_route)?;
         update_route_match_progress(&request.store, 90.0, &detail)?;
-        complete_route_match_job(&request.store, matcher_used, &matched)?;
+        complete_route_match_job(&request.store, matcher_used, &matched, &detail)?;
         Ok(read_route_match_status(
             &request.store.sqlite_path,
             &request.store.project_id,
@@ -253,6 +288,64 @@ fn attempt_valhalla<T: MatcherTransport>(
     let document: Value = serde_json::from_str(&response)
         .map_err(|error| RouteMatcherError::InvalidResponse(error.to_string()))?;
     coordinates_from_objects(document.get("matched_points"), "lat", "lon")
+}
+
+fn attempt_managed_valhalla(
+    managed: &ManagedValhallaRequest,
+    raw: &[RoutePoint],
+) -> Result<Vec<(f64, f64)>, RouteMatcherError> {
+    if !managed.executable.is_file() || !managed.config.is_file() {
+        return Err(RouteMatcherError::Blocked(
+            "managed Valhalla executable or configuration is missing".to_string(),
+        ));
+    }
+    fs::create_dir_all(&managed.work_root)
+        .map_err(|error| RouteMatcherError::Transport(error.to_string()))?;
+    let work = managed.work_root.join(format!("match-{}", Uuid::new_v4()));
+    fs::create_dir(&work).map_err(|error| RouteMatcherError::Transport(error.to_string()))?;
+    let result = (|| {
+        let request_path = work.join("trace-attributes-request.json");
+        let result_path = work.join("trace-attributes-result.json");
+        let locations: Vec<Value> = raw
+            .iter()
+            .map(|point| json!({ "lat": point.latitude, "lon": point.longitude, "time": point.time_seconds }))
+            .collect();
+        let request = serde_json::to_vec(
+            &json!({ "shape": locations, "costing": "auto", "shape_match": "map_snap" }),
+        )
+        .map_err(|error| RouteMatcherError::InvalidResponse(error.to_string()))?;
+        if request.len() > MAX_RESPONSE_BYTES {
+            return Err(RouteMatcherError::InvalidResponse(
+                "managed Valhalla request exceeds 16 MiB".to_string(),
+            ));
+        }
+        fs::write(&request_path, request)
+            .map_err(|error| RouteMatcherError::Transport(error.to_string()))?;
+        let output = run_bounded_process(
+            Command::new(&managed.executable)
+                .arg(&managed.config)
+                .arg("trace_attributes")
+                .arg(&request_path),
+            Duration::from_secs(90),
+            MAX_RESPONSE_BYTES as u64,
+        )
+        .map_err(|error| RouteMatcherError::Transport(error.to_string()))?;
+        if !output.status.success() {
+            let detail = String::from_utf8_lossy(&output.stderr);
+            return Err(RouteMatcherError::Transport(format!(
+                "managed Valhalla exited with {}; {}",
+                output.status,
+                detail.chars().take(1_000).collect::<String>()
+            )));
+        }
+        fs::write(&result_path, &output.stdout)
+            .map_err(|error| RouteMatcherError::Transport(error.to_string()))?;
+        let document: Value = serde_json::from_slice(&output.stdout)
+            .map_err(|error| RouteMatcherError::InvalidResponse(error.to_string()))?;
+        coordinates_from_objects(document.get("matched_points"), "lat", "lon")
+    })();
+    let _ = fs::remove_dir_all(work);
+    result
 }
 
 fn attempt_osrm<T: MatcherTransport>(
@@ -679,6 +772,7 @@ mod tests {
                 matcher: matcher.to_string(),
                 valhalla_endpoint: valhalla.to_string(),
                 osrm_endpoint: osrm.to_string(),
+                managed_valhalla: None,
             }
         }
 

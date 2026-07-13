@@ -1,4 +1,7 @@
 use cv_worker::{CvStartResponse, CvWorkerManager, CvWorkerRequest};
+use dependency_manager::{
+    DependencyCatalogResponse, DependencyComponentStatus, DependencyInstallJob, DependencyManager,
+};
 use gis_import::{import_gis as store_import_gis, GisImportRequest};
 use gis_projector::GisProjectorManager;
 use gpstitch_worker::{GpstitchStartResponse, GpstitchWorkerManager, GpstitchWorkerRequest};
@@ -13,12 +16,15 @@ use project_store::{
 };
 use proxy_worker::{ProxyStartResponse, ProxyWorkerManager};
 use route_import::{import_gpx as store_import_gpx, GpxImportRequest};
-use route_matcher::{RouteMatcherManager, RouteMatcherRequest};
+use route_matcher::{ManagedValhallaRequest, RouteMatcherManager, RouteMatcherRequest};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::{fs, io};
 use tauri::Manager;
 
 mod bounded_process;
 mod cv_worker;
+mod dependency_manager;
 mod gdal_adapter;
 mod gis_import;
 mod gis_projector;
@@ -332,6 +338,7 @@ fn managed_environments(
 #[tauri::command]
 fn runtime_preflight(
     app: tauri::AppHandle,
+    dependencies: tauri::State<'_, DependencyManager>,
     uv_executable: String,
     ffmpeg_binary_directory: String,
     gdal_binary_directory: String,
@@ -344,11 +351,35 @@ fn runtime_preflight(
     let cv_source =
         resolve_runtime_component(&app, "sidecars/roadwatcher-cv", "sidecars/roadwatcher-cv")?;
     let environments = managed_environments(&app)?;
+    let resolved_uv = if uv_executable.trim().is_empty() {
+        dependencies
+            .managed_executable("uv-python", "uv.exe")
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "uv".to_string())
+    } else {
+        uv_executable
+    };
+    let resolved_ffmpeg_directory = if ffmpeg_binary_directory.trim().is_empty() {
+        dependencies
+            .managed_component_path("ffmpeg")
+            .map(|path| path.display().to_string())
+            .unwrap_or_default()
+    } else {
+        ffmpeg_binary_directory
+    };
+    let resolved_gdal_directory = if gdal_binary_directory.trim().is_empty() {
+        dependencies
+            .managed_component_path("gdal")
+            .map(|path| path.display().to_string())
+            .unwrap_or_default()
+    } else {
+        gdal_binary_directory
+    };
     Ok(runtime_preflight::run_runtime_preflight(
         runtime_preflight::RuntimePreflightRequest {
-            uv_executable,
-            ffmpeg_binary_directory,
-            gdal_binary_directory,
+            uv_executable: resolved_uv,
+            ffmpeg_binary_directory: resolved_ffmpeg_directory,
+            gdal_binary_directory: resolved_gdal_directory,
             gpstitch_source,
             cv_source,
             gpstitch_environment: environments.gpstitch,
@@ -360,6 +391,7 @@ fn runtime_preflight(
 #[tauri::command]
 fn runtime_prepare(
     app: tauri::AppHandle,
+    dependencies: tauri::State<'_, DependencyManager>,
     uv_executable: String,
 ) -> Result<managed_runtime::RuntimePrepareResponse, String> {
     let gpstitch_source = resolve_runtime_component(
@@ -369,9 +401,17 @@ fn runtime_prepare(
     )?;
     let cv_source =
         resolve_runtime_component(&app, "sidecars/roadwatcher-cv", "sidecars/roadwatcher-cv")?;
+    let resolved_uv = if uv_executable.trim().is_empty() {
+        dependencies
+            .managed_executable("uv-python", "uv.exe")
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "uv".to_string())
+    } else {
+        uv_executable
+    };
     Ok(managed_runtime::prepare_runtime_environments(
         managed_runtime::RuntimePrepareRequest {
-            uv_executable,
+            uv_executable: resolved_uv,
             gpstitch_source,
             cv_source,
             environments: managed_environments(&app)?,
@@ -381,7 +421,9 @@ fn runtime_prepare(
 
 #[tauri::command]
 fn gpx_match(
+    app: tauri::AppHandle,
     state: tauri::State<'_, RouteMatcherManager>,
+    dependencies: tauri::State<'_, DependencyManager>,
     sqlite_path: String,
     project_id: String,
     route_id: String,
@@ -390,6 +432,39 @@ fn gpx_match(
     valhalla_endpoint: String,
     osrm_endpoint: String,
 ) -> Result<route_matcher::RouteMatchStartResponse, String> {
+    let managed_valhalla = if valhalla_endpoint.trim().is_empty() {
+        let executable =
+            dependencies.managed_executable("managed-valhalla", "valhalla_service.exe");
+        let config = dependencies.managed_named_file("york-valhalla-tiles", "valhalla.json");
+        let matcher_identity = dependencies.managed_identity("managed-valhalla");
+        let tile_identity = dependencies.managed_identity("york-valhalla-tiles");
+        match (executable, config, matcher_identity, tile_identity) {
+            (Some(executable), Some(config), Some(matcher_identity), Some(tile_identity)) => {
+                let config_bytes = fs::read(&config).map_err(|error| {
+                    format!("could not read managed Valhalla configuration: {error}")
+                })?;
+                if config_bytes.len() > 4 * 1024 * 1024 {
+                    return Err("managed Valhalla configuration exceeds 4 MiB".to_string());
+                }
+                Some(ManagedValhallaRequest {
+                    executable,
+                    config,
+                    work_root: app
+                        .path()
+                        .app_local_data_dir()
+                        .map_err(|error| error.to_string())?
+                        .join("matcher-jobs"),
+                    matcher_version: matcher_identity.version,
+                    tile_version: tile_identity.version,
+                    tile_sha256: tile_identity.artifact_sha256,
+                    config_sha256: hex::encode(Sha256::digest(&config_bytes)),
+                })
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
     state
         .start(RouteMatcherRequest {
             store: project_store::RouteMatchRequest {
@@ -401,6 +476,7 @@ fn gpx_match(
             matcher,
             valhalla_endpoint,
             osrm_endpoint,
+            managed_valhalla,
         })
         .map_err(|error| error.to_string())
 }
@@ -473,9 +549,63 @@ fn job_cancel(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn dependency_catalog(state: tauri::State<'_, DependencyManager>) -> DependencyCatalogResponse {
+    state.catalog()
+}
+
+#[tauri::command]
+fn dependency_install_start(
+    state: tauri::State<'_, DependencyManager>,
+    component_ids: Vec<String>,
+    accepted_license_digests: Vec<String>,
+) -> Result<DependencyInstallJob, String> {
+    state.start(component_ids, accepted_license_digests)
+}
+
+#[tauri::command]
+fn dependency_install_status(
+    state: tauri::State<'_, DependencyManager>,
+    job_id: String,
+) -> Result<DependencyInstallJob, String> {
+    state.status(&job_id)
+}
+
+#[tauri::command]
+fn dependency_install_cancel(
+    state: tauri::State<'_, DependencyManager>,
+    job_id: String,
+) -> Result<DependencyInstallJob, String> {
+    state.cancel(&job_id)
+}
+
+#[tauri::command]
+fn dependency_remove(
+    state: tauri::State<'_, DependencyManager>,
+    component_id: String,
+) -> Result<DependencyComponentStatus, String> {
+    state.remove(&component_id)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let app_local_data = app.path().app_local_data_dir()?;
+            let packaged_catalog = app.path().resource_dir()?.join("dependency-catalog.json");
+            let development_catalog = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("resources")
+                .join("dependency-catalog.json");
+            let catalog_path = if packaged_catalog.is_file() {
+                packaged_catalog
+            } else {
+                development_catalog
+            };
+            let manager = DependencyManager::load(&catalog_path, &app_local_data)
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+            app.manage(manager);
+            Ok(())
+        })
         .manage(ProxyWorkerManager::default())
         .manage(RouteMatcherManager::default())
         .manage(GisProjectorManager::default())
@@ -502,7 +632,12 @@ pub fn run() {
             gpx_job_status,
             ffmpeg_proxy,
             job_status,
-            job_cancel
+            job_cancel,
+            dependency_catalog,
+            dependency_install_start,
+            dependency_install_status,
+            dependency_install_cancel,
+            dependency_remove
         ])
         .run(tauri::generate_context!())
         .expect("error while running RoadWatcher Tauri app");

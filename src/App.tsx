@@ -10,26 +10,19 @@ import {
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   horizontalListSortingStrategy
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
   AlertTriangle,
   Bike,
-  CheckCircle2,
   CircleDot,
-  Clock3,
   Download,
   FileVideo,
   Gauge,
   MapPinned,
   Pause,
   Play,
-  Copy,
-  Split,
   Trash2,
-  Route,
   Scissors,
   Settings,
   ShieldCheck,
@@ -38,9 +31,9 @@ import {
   Upload,
   Video
 } from "lucide-react";
-import { type ChangeEvent, type RefObject, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { defaultComponentSlots } from "./data/defaultComponentSlots";
-import type { ComponentSlot, ComponentSlotStatus, IncidentDraft, MediaAsset, ProjectId } from "./domain/projectModels";
+import type { ComponentSlot, IncidentDraft, MediaAsset, ProjectId } from "./domain/projectModels";
 import { parseOfficialFeaturesFromGeoJson } from "./features/geo/geoJsonImport";
 import { parseGpxTrack } from "./features/geo/gpxImport";
 import { createNativeRouteRepository } from "./features/geo/nativeRouteRepository";
@@ -86,12 +79,15 @@ import {
   type ProjectSnapshot
 } from "./features/project/projectState";
 import {
-  summarizeReviewReadiness,
-  type NativeReadinessChecklistItem,
-  type ReviewReadiness
+  summarizeReviewReadiness
 } from "./features/project/reviewReadiness";
 import { createNativeCommandBridge, type NativeInvoke } from "./features/native/nativeCommandBridge";
 import { createNativeRuntimePreflightRepository, type RuntimePreflightReport } from "./features/native/nativeRuntimePreflightRepository";
+import {
+  createNativeDependencyRepository,
+  type DependencyCatalog,
+  type DependencyInstallJob
+} from "./features/native/nativeDependencyRepository";
 import { createNativeFilePicker, type NativeFilePicker, type NativeFilePurpose } from "./features/native/nativeFilePicker";
 import { detectNativeRuntime, type NativeRuntimeHost, type NativeRuntimeStatus } from "./features/native/runtimeEnvironment";
 import { resolveTauriInvoke } from "./features/native/tauriInvokeAdapter";
@@ -105,6 +101,20 @@ import {
   createEmptyWorkstationSeed,
   type WorkstationSeedFactory
 } from "./features/workstation/workstationSeed";
+import {
+  ComponentSlotList as WorkstationComponentSlotList,
+  CvFindingList as WorkstationCvFindingList,
+  Inspector as WorkstationInspector,
+  JobList as WorkstationJobList,
+  PanelHeader as WorkstationPanelHeader,
+  ProjectedFeatureList as WorkstationProjectedFeatureList,
+  RouteMap as WorkstationRouteMap,
+  SortableClip as WorkstationSortableClip,
+  StatusPill,
+  TimelineEditor as WorkstationTimelineEditor
+} from "./features/workstation/WorkstationViews";
+import { ReviewReadinessPanel as WorkstationReviewReadinessPanel } from "./features/workstation/ReviewReadinessPanel";
+import { SetupCenter } from "./features/workstation/SetupCenter";
 
 const defaultProjectRepository = createBrowserProjectRepository();
 const defaultNativeProjectLocator = createNativeProjectLocator();
@@ -188,6 +198,9 @@ export function App({
   const [appStatus, setAppStatus] = useState(() => initialProjectLoadStatus(initialLoad));
   const [latestNativeExport, setLatestNativeExport] = useState<NativeExportSuccess | null>(null);
   const [runtimePreflightReport, setRuntimePreflightReport] = useState<RuntimePreflightReport | null>(null);
+  const [dependencyCatalog, setDependencyCatalog] = useState<DependencyCatalog | null>(null);
+  const [activeDependencyJob, setActiveDependencyJob] = useState<DependencyInstallJob | null>(null);
+  const [dependencyStatus, setDependencyStatus] = useState("Select Refresh to inspect the app-local dependency catalog.");
   const exportGenerationRef = useRef(0);
   const nativeHydrationPathRef = useRef<string | null>(null);
   const firstSlotReferenceInputRef = useRef<HTMLInputElement>(null);
@@ -200,10 +213,6 @@ export function App({
 
   const selectedClip = clips.find((clip) => clip.id === selectedClipId) ?? clips[0];
   const primaryMedia = media[0];
-  const uvExecutable = configuredExecutableReference(
-    componentSlots.find((slot) => slot.id === "python-runtime")?.reference,
-    "uv"
-  );
   const completedRouteJob = jobs.find((job) => job.type === "valhalla" && job.status === "complete");
   const routeMatchSummary = completedRouteJob
     ? completedRouteJob.detail.includes("OSRM")
@@ -234,6 +243,10 @@ export function App({
   const nativeCommandBridge = useMemo(
     () => createNativeCommandBridge({ runtime: activeNativeRuntimeStatus, invoke: activeNativeInvoke }),
     [activeNativeInvoke, activeNativeRuntimeStatus]
+  );
+  const nativeDependencyRepository = useMemo(
+    () => createNativeDependencyRepository(nativeCommandBridge),
+    [nativeCommandBridge]
   );
   const reviewReadiness = summarizeReviewReadiness({
     clips,
@@ -266,6 +279,27 @@ export function App({
       setLatestNativeExport(null);
     }
   }, [latestPacket, latestProjectSnapshot]);
+
+  useEffect(() => {
+    if (!activeDependencyJob || !["queued", "downloading", "installing"].includes(activeDependencyJob.status)) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void nativeDependencyRepository.status(activeDependencyJob.jobId, activeDependencyJob.componentIds).then(async (result) => {
+        if (cancelled) return;
+        if (result.status === "unavailable") {
+          setDependencyStatus(result.message);
+          return;
+        }
+        setActiveDependencyJob(result.job);
+        setDependencyStatus(result.job.detail);
+        if (result.job.status === "ready") {
+          await refreshDependencyCatalog();
+          await handleRuntimePreflight();
+        }
+      });
+    }, 400);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [activeDependencyJob, nativeDependencyRepository]);
 
   useEffect(() => {
     if (nativeRuntimeStatus) {
@@ -1027,12 +1061,53 @@ export function App({
     setAppStatus(`GPStitch telemetry render queued: ${result.jobId}`);
   }
 
+  async function refreshDependencyCatalog() {
+    const result = await nativeDependencyRepository.catalog();
+    if (result.status === "loaded") {
+      setDependencyCatalog(result.catalog);
+      setDependencyStatus(`Catalog ${result.catalog.catalogVersion}: ${result.catalog.components.length} audited component entries.`);
+    } else {
+      setDependencyCatalog(null);
+      setDependencyStatus(result.message);
+    }
+  }
+
+  async function handleDependencyInstall(componentIds: string[], acceptedLicenseDigests: string[]) {
+    setDependencyStatus("Validating selected catalog identities and license consent.");
+    const result = await nativeDependencyRepository.install(componentIds, acceptedLicenseDigests);
+    if (result.status === "loaded") {
+      setActiveDependencyJob(result.job);
+      setDependencyStatus(result.job.detail);
+    } else {
+      setDependencyStatus(result.message);
+    }
+  }
+
+  async function handleDependencyCancel() {
+    if (!activeDependencyJob) return;
+    const result = await nativeDependencyRepository.cancel(activeDependencyJob.jobId, activeDependencyJob.componentIds);
+    if (result.status === "loaded") {
+      setActiveDependencyJob(result.job);
+      setDependencyStatus(result.job.detail);
+    } else {
+      setDependencyStatus(result.message);
+    }
+  }
+
+  async function handleDependencyRemove(componentId: string) {
+    const result = await nativeDependencyRepository.remove(componentId);
+    setDependencyStatus(result.status === "removed" ? `${result.component.label}: ${result.component.detail}` : result.message);
+    await refreshDependencyCatalog();
+    await handleRuntimePreflight();
+  }
+
   async function handleRuntimePreflight() {
     const requestedAtIso = new Date().toISOString();
+    const uvReference = componentSlots.find((slot) => slot.id === "python-runtime")?.reference ?? "";
     const ffmpegReference = componentSlots.find((slot) => slot.id === "ffmpeg")?.reference ?? "";
     const gdalReference = componentSlots.find((slot) => slot.id === "gdal")?.reference ?? "";
     const config = {
-      uvExecutable,
+      uvExecutable: uvReference.startsWith("slot:") ? "" : uvReference,
       ffmpegBinaryDirectory: ffmpegReference.startsWith("slot:") ? "" : ffmpegReference,
       gdalBinaryDirectory: gdalReference.startsWith("slot:") ? "" : gdalReference
     };
@@ -1061,8 +1136,9 @@ export function App({
 
   async function handleRuntimePrepare() {
     const requestedAtIso = new Date().toISOString();
+    const uvReference = componentSlots.find((slot) => slot.id === "python-runtime")?.reference ?? "";
     const result = await createNativeRuntimePreflightRepository(nativeCommandBridge, {
-      uvExecutable,
+      uvExecutable: uvReference.startsWith("slot:") ? "" : uvReference,
       ffmpegBinaryDirectory: "",
       gdalBinaryDirectory: ""
     }).prepare();
@@ -1071,7 +1147,7 @@ export function App({
       command: "runtime_prepare",
       status: result.status === "loaded" ? "invoked" : result.commandStatus,
       requestedAtIso,
-      requestSummary: `uv: ${uvExecutable}; targets: GPStitch 0.18.0 and RoadWatcher CV 0.1.0`,
+      requestSummary: `uv: ${uvReference.startsWith("slot:") ? "managed install or PATH" : uvReference}; targets: GPStitch 0.18.0 and RoadWatcher CV 0.1.0`,
       resultSummary: result.status === "loaded"
         ? `${result.report.status}; ${result.report.environments.map((environment) => `${environment.id}: ${environment.status}`).join(", ")}`
         : result.message
@@ -1521,7 +1597,7 @@ export function App({
 
       <section className="workspace-grid">
         <section className="preview-panel panel" aria-label="Dashcam preview">
-          <PanelHeader icon={<Video size={18} />} title="Dashcam preview" meta="Proxy preview · original referenced" />
+          <WorkstationPanelHeader icon={<Video size={18} />} title="Dashcam preview" meta="Proxy preview · original referenced" />
           <div className="video-frame">
             <div className="road-scene">
               <div className="skyline" />
@@ -1555,13 +1631,13 @@ export function App({
         </section>
 
         <section className="map-panel panel" aria-label="Matched route map">
-          <PanelHeader icon={<MapPinned size={18} />} title="Matched route map" meta="MapLibre slot · Valhalla first" />
-          <RouteMap route={route} projectedFeatures={projectedRoadFeatures} matchSummary={routeMatchSummary} />
+          <WorkstationPanelHeader icon={<MapPinned size={18} />} title="Matched route map" meta="MapLibre slot · Valhalla first" />
+          <WorkstationRouteMap route={route} projectedFeatures={projectedRoadFeatures} matchSummary={routeMatchSummary} />
         </section>
 
         <aside className="inspector-panel panel">
-          <PanelHeader icon={<TrafficCone size={18} />} title="Incident inspector" meta="Conservative suggestions" />
-          <Inspector
+          <WorkstationPanelHeader icon={<TrafficCone size={18} />} title="Incident inspector" meta="Conservative suggestions" />
+          <WorkstationInspector
             draft={draft}
             onDraftChange={handleDraftChange}
             onSaveDraft={handleSaveDraft}
@@ -1569,7 +1645,7 @@ export function App({
         </aside>
 
         <section className="timeline-panel panel" aria-label="Evidence reel timeline">
-          <PanelHeader
+          <WorkstationPanelHeader
             icon={<Scissors size={18} />}
             title="Evidence reel timeline"
             meta={`${clips.length} clips · ${Math.round(totalDuration)}s reel`}
@@ -1579,7 +1655,7 @@ export function App({
               <div className="timeline-track">
                 {clips.length === 0 && <p className="empty-state">Import media to create the first evidence clip.</p>}
                 {clips.map((clip) => (
-                  <SortableClip
+                  <WorkstationSortableClip
                     key={clip.id}
                     clip={clip}
                     totalDuration={totalDuration}
@@ -1597,7 +1673,7 @@ export function App({
               </span>
             ))}
           </div>
-          <TimelineEditor
+          <WorkstationTimelineEditor
             clip={selectedClip}
             clipCount={clips.length}
             onTrim={handleSelectedClipTrim}
@@ -1608,19 +1684,19 @@ export function App({
         </section>
 
         <aside className="jobs-panel panel">
-          <PanelHeader icon={<Gauge size={18} />} title="Processing jobs" meta="Runnable slots are explicit" />
-          <JobList jobs={jobs} nativeChecklist={reviewReadiness.nativeChecklist} onCancelProxy={handleCancelProxyJob} />
+          <WorkstationPanelHeader icon={<Gauge size={18} />} title="Processing jobs" meta="Runnable slots are explicit" />
+          <WorkstationJobList jobs={jobs} nativeChecklist={reviewReadiness.nativeChecklist} onCancelProxy={handleCancelProxyJob} />
         </aside>
       </section>
 
       <section className="lower-grid">
         <section className="panel">
-          <PanelHeader
+          <WorkstationPanelHeader
             icon={<ShieldCheck size={18} />}
             title="Review readiness"
             meta={reviewReadiness.native.status === "ready" ? "Native workflow verified" : reviewReadiness.packet.status === "ready" ? "Browser packet ready" : "Packet blocked"}
           />
-          <ReviewReadinessPanel
+          <WorkstationReviewReadinessPanel
             nativeCommandAttempts={nativeCommandAttempts}
             nativeCvModelPath={nativeCvModelPath}
             nativeCvLabelsPath={nativeCvLabelsPath}
@@ -1663,11 +1739,22 @@ export function App({
             runtimePreflightReport={runtimePreflightReport}
             onRuntimePreflight={() => void handleRuntimePreflight()}
             onRuntimePrepare={() => void handleRuntimePrepare()}
+            setupCenter={
+              <SetupCenter
+                catalog={dependencyCatalog}
+                activeJob={activeDependencyJob}
+                message={dependencyStatus}
+                onRefresh={() => void refreshDependencyCatalog()}
+                onInstall={(componentIds, acceptedLicenseDigests) => void handleDependencyInstall(componentIds, acceptedLicenseDigests)}
+                onCancel={() => void handleDependencyCancel()}
+                onRemove={(componentId) => void handleDependencyRemove(componentId)}
+              />
+            }
           />
         </section>
 
         <section className="panel">
-          <PanelHeader icon={<FileVideo size={18} />} title="Session media" meta="Referenced originals" />
+          <WorkstationPanelHeader icon={<FileVideo size={18} />} title="Session media" meta="Referenced originals" />
           <div className="media-list">
             {media.length === 0 && <p className="empty-state">No media referenced. Choose or import a source video to begin.</p>}
             {media.map((asset) => (
@@ -1691,14 +1778,14 @@ export function App({
         </section>
 
         <section className="panel">
-          <PanelHeader icon={<CircleDot size={18} />} title="Local CV findings" meta="Suggestions require reviewer decisions" />
-          <CvFindingList findings={cvFindings}
+          <WorkstationPanelHeader icon={<CircleDot size={18} />} title="Local CV findings" meta="Suggestions require reviewer decisions" />
+          <WorkstationCvFindingList findings={cvFindings}
             onReview={(findingId, status, note) => void handleCvFindingReview(findingId, status, note, false)}
             onPersist={(findingId, status, note) => void handleCvFindingReview(findingId, status, note, true)} />
         </section>
 
         <section className="panel">
-          <PanelHeader icon={<Gauge size={18} />} title="Telemetry renders" meta="Pinned GPStitch output provenance" />
+          <WorkstationPanelHeader icon={<Gauge size={18} />} title="Telemetry renders" meta="Pinned GPStitch output provenance" />
           <div className="media-list">
             {telemetryRenders.length === 0 && <p className="empty-state">No telemetry overlay renders queued.</p>}
             {telemetryRenders.map((render) => (
@@ -1721,8 +1808,8 @@ export function App({
         </section>
 
         <section className="panel">
-          <PanelHeader icon={<AlertTriangle size={18} />} title="Install and data slots" meta="No hidden placeholders" />
-          <ComponentSlotList
+          <WorkstationPanelHeader icon={<AlertTriangle size={18} />} title="Install and data slots" meta="No hidden placeholders" />
+          <WorkstationComponentSlotList
             checklist={reviewReadiness.nativeChecklist}
             slots={componentSlots}
             firstReferenceInputRef={firstSlotReferenceInputRef}
@@ -1731,8 +1818,8 @@ export function App({
         </section>
 
         <section className="panel">
-          <PanelHeader icon={<Bike size={18} />} title="Projected road features" meta="Review before export" />
-          <ProjectedFeatureList
+          <WorkstationPanelHeader icon={<Bike size={18} />} title="Projected road features" meta="Review before export" />
+          <WorkstationProjectedFeatureList
             projectedFeatures={projectedRoadFeatures}
             officialFeatures={officialFeatures}
             onFeatureReviewChange={handleProjectedFeatureReviewChange}
@@ -1741,7 +1828,7 @@ export function App({
 
         {latestPacket && (
           <section className="panel export-panel">
-            <PanelHeader icon={<Download size={18} />} title="Latest export packet" meta="Browser-local preview" />
+            <WorkstationPanelHeader icon={<Download size={18} />} title="Latest export packet" meta="Browser-local preview" />
             <p>Markdown and JSON packet preview generated locally.</p>
             <div className="artifact-summary" aria-label="Generated artifacts">
               <strong>Generated artifacts</strong>
@@ -1817,926 +1904,6 @@ function buildGeneratedArtifactManifest({
       label: artifact.fileName.endsWith(".json") ? "Evidence packet JSON" : "Evidence packet Markdown"
     }))
   );
-}
-
-function ReviewReadinessPanel({
-  nativeCommandAttempts,
-  nativeCvModelPath,
-  nativeCvLabelsPath,
-  nativeGisSourceCrs,
-  nativeGisLayerName,
-  nativeGisLayerKind,
-  nativeGisSourcePath,
-  nativeGpxSourcePath,
-  nativeMediaSourcePath,
-  nativeProjectRoot,
-  gpstitchLayout,
-  gpstitchAlignment,
-  gpstitchTimeOffsetSeconds,
-  runtimePreflightReport,
-  onNativeGisImport,
-  onNativeCvModelPathChange,
-  onNativeCvLabelsPathChange,
-  onNativeGisSelect,
-  onNativeGisDirectorySelect,
-  onNativeGisSourceCrsChange,
-  onNativeGisLayerNameChange,
-  onNativeGisLayerKindChange,
-  onNativeGisSourcePathChange,
-  onNativeGpxImport,
-  onNativeGpxSelect,
-  onNativeGpxSourcePathChange,
-  onNativeMediaSourcePathChange,
-  onNativeMediaSelect,
-  onNativeProjectRootChange,
-  onProbeCvScan,
-  onGpstitchLayoutChange,
-  onGpstitchAlignmentChange,
-  onGpstitchTimeOffsetSecondsChange,
-  onGpstitchRender,
-  onRuntimePreflight,
-  onRuntimePrepare,
-  onProbeFfmpegProxy,
-  onProbeGisProjection,
-  onProbeGpxMatch,
-  onProbeMediaImport,
-  onProbeNativeProjectStore,
-  readiness
-}: {
-  nativeCommandAttempts: NativeCommandAttempt[];
-  nativeCvModelPath: string;
-  nativeCvLabelsPath: string;
-  nativeGisSourceCrs: string;
-  nativeGisLayerName: string;
-  nativeGisLayerKind: "mixed" | RoadFeatureKind;
-  nativeGisSourcePath: string;
-  nativeGpxSourcePath: string;
-  nativeMediaSourcePath: string;
-  nativeProjectRoot: string;
-  gpstitchLayout: TelemetryRender["layout"];
-  gpstitchAlignment: GpstitchAlignment;
-  gpstitchTimeOffsetSeconds: number;
-  runtimePreflightReport: RuntimePreflightReport | null;
-  onNativeGisImport: () => void;
-  onNativeCvModelPathChange: (value: string) => void;
-  onNativeCvLabelsPathChange: (value: string) => void;
-  onNativeGisSelect: () => void;
-  onNativeGisDirectorySelect: () => void;
-  onNativeGisSourceCrsChange: (value: string) => void;
-  onNativeGisLayerNameChange: (value: string) => void;
-  onNativeGisLayerKindChange: (value: "mixed" | RoadFeatureKind) => void;
-  onNativeGisSourcePathChange: (value: string) => void;
-  onNativeGpxImport: () => void;
-  onNativeGpxSelect: () => void;
-  onNativeGpxSourcePathChange: (value: string) => void;
-  onNativeMediaSourcePathChange: (value: string) => void;
-  onNativeMediaSelect: () => void;
-  onNativeProjectRootChange: (value: string) => void;
-  onProbeCvScan: () => void;
-  onGpstitchLayoutChange: (value: TelemetryRender["layout"]) => void;
-  onGpstitchAlignmentChange: (value: GpstitchAlignment) => void;
-  onGpstitchTimeOffsetSecondsChange: (value: number) => void;
-  onGpstitchRender: () => void;
-  onRuntimePreflight: () => void;
-  onRuntimePrepare: () => void;
-  onProbeFfmpegProxy: () => void;
-  onProbeGisProjection: () => void;
-  onProbeGpxMatch: () => void;
-  onProbeMediaImport: () => void;
-  onProbeNativeProjectStore: () => void;
-  readiness: ReviewReadiness;
-}) {
-  return (
-    <div className="readiness-panel">
-      <p>{readiness.summary}</p>
-      <div className="readiness-metrics">
-        <span>
-          <StatusPill status={readiness.packet.status === "ready" ? "ready" : "blocked"} label={readiness.packet.status} />
-          Packet readiness {readiness.packet.status}
-        </span>
-        <span>
-          <StatusPill
-            status={readiness.native.status === "ready" ? "ready" : readiness.native.status === "unverified" ? "queued" : "blocked"}
-            label={readiness.native.status}
-          />
-          Native workflow {readiness.native.status}
-        </span>
-        <span>
-          <StatusPill status={readiness.openComponentSlots.length === 0 ? "ready" : "blocked"} label={readiness.openComponentSlots.length === 0 ? "clear" : "open"} />
-          {readiness.openComponentSlots.length} native {readiness.openComponentSlots.length === 1 ? "slot needs" : "slots need"} attention
-        </span>
-      </div>
-      <div className="readiness-blockers">
-        <strong>Open blockers</strong>
-        <ul>
-          {[...readiness.openComponentSlots, ...readiness.blockedJobs].map((label) => (
-            <li key={label}>{label}</li>
-          ))}
-          {readiness.openComponentSlots.length === 0 && readiness.blockedJobs.length === 0 && <li>None recorded.</li>}
-        </ul>
-      </div>
-      <div className="runtime-status">
-        <strong>Runtime mode</strong>
-        <p>{readiness.runtime.summary}</p>
-        <p>
-          <StatusPill
-            status={readiness.runtime.bridgeStatus === "ready" ? "ready" : readiness.runtime.bridgeStatus === "bridge_unavailable" ? "blocked" : "queued"}
-            label={readiness.runtime.bridgeStatus}
-          />{" "}
-          {readiness.runtime.bridgeSummary}
-        </p>
-        <button type="button" className="button secondary native-probe-button" onClick={onRuntimePreflight}>
-          <ShieldCheck size={15} />
-          Check installed runtime
-        </button>
-        <button type="button" className="button secondary native-probe-button" onClick={onRuntimePrepare}>
-          <Settings size={15} />
-          Prepare sidecar environments
-        </button>
-        {runtimePreflightReport ? (
-          <div className="native-attempt-list" aria-label="Installed runtime preflight results">
-            <strong>Installed runtime: {runtimePreflightReport.status}</strong>
-            {runtimePreflightReport.components.map((component) => (
-              <article className="native-attempt-row" key={component.id}>
-                <strong>{component.label}</strong>
-                <span><StatusPill status={component.status === "ready" ? "ready" : "blocked"} label={component.status} /> {component.required ? "required" : "optional"}</span>
-                <span>{component.version || component.detail}</span>
-                <span>{component.executable || "not resolved"}</span>
-              </article>
-            ))}
-          </div>
-        ) : null}
-        <label className="native-root-field">
-          <span>Native project root</span>
-          <input
-            aria-label="Native project root"
-            value={nativeProjectRoot}
-            onChange={(event) => onNativeProjectRootChange(event.target.value)}
-          />
-        </label>
-        <button type="button" className="button secondary native-probe-button" onClick={onProbeNativeProjectStore}>
-          <Settings size={15} />
-          Probe native project store
-        </button>
-        <label className="native-root-field">
-          <span>Native media source path</span>
-          <input
-            aria-label="Native media source path"
-            value={nativeMediaSourcePath}
-            onChange={(event) => onNativeMediaSourcePathChange(event.target.value)}
-          />
-        </label>
-        <button type="button" className="button secondary native-probe-button" onClick={onNativeMediaSelect}>
-          <Upload size={15} />
-          Choose media file
-        </button>
-        <button type="button" className="button secondary native-probe-button" onClick={onProbeMediaImport}>
-          <Upload size={15} />
-          Import native media
-        </button>
-        <label className="native-root-field">
-          <span>Native GPX source path</span>
-          <input
-            aria-label="Native GPX source path"
-            value={nativeGpxSourcePath}
-            onChange={(event) => onNativeGpxSourcePathChange(event.target.value)}
-          />
-        </label>
-        <button type="button" className="button secondary native-probe-button" onClick={onNativeGpxSelect}>
-          <Upload size={15} />
-          Choose GPX file
-        </button>
-        <button type="button" className="button secondary native-probe-button" onClick={onNativeGpxImport}>
-          <Upload size={15} />
-          Import native GPX
-        </button>
-        <button type="button" className="button secondary native-probe-button" onClick={onProbeGpxMatch}>
-          <Route size={15} />
-          Start GPX matcher
-        </button>
-        <label className="native-root-field">
-          <span>Native GIS source path</span>
-          <input
-            aria-label="Native GIS source path"
-            value={nativeGisSourcePath}
-            onChange={(event) => onNativeGisSourcePathChange(event.target.value)}
-          />
-        </label>
-        <button type="button" className="button secondary native-probe-button" onClick={onNativeGisSelect}>
-          <Upload size={15} />
-          Choose GIS file
-        </button>
-        <button type="button" className="button secondary native-probe-button" onClick={onNativeGisDirectorySelect}>
-          <Upload size={15} />
-          Choose FileGDB directory
-        </button>
-        <label className="native-root-field">
-          <span>Native GIS source CRS</span>
-          <input
-            aria-label="Native GIS source CRS"
-            value={nativeGisSourceCrs}
-            placeholder="AUTO or EPSG:26917"
-            onChange={(event) => onNativeGisSourceCrsChange(event.target.value)}
-          />
-        </label>
-        <label className="native-root-field">
-          <span>Native GIS layer name</span>
-          <input
-            aria-label="Native GIS layer name"
-            value={nativeGisLayerName}
-            placeholder="blank for a single-layer dataset"
-            onChange={(event) => onNativeGisLayerNameChange(event.target.value)}
-          />
-        </label>
-        <label className="native-root-field">
-          <span>Native GIS feature kind</span>
-          <select
-            aria-label="Native GIS feature kind"
-            value={nativeGisLayerKind}
-            onChange={(event) => onNativeGisLayerKindChange(event.target.value as "mixed" | RoadFeatureKind)}
-          >
-            <option value="mixed">Read kind from each feature</option>
-            <option value="traffic_light">Traffic lights</option>
-            <option value="stop_sign">Stop signs</option>
-            <option value="bike_lane">Bike lanes</option>
-            <option value="crosswalk">Crosswalks</option>
-          </select>
-        </label>
-        <button type="button" className="button secondary native-probe-button" onClick={onNativeGisImport}>
-          <Upload size={15} />
-          Import native GIS
-        </button>
-        <button type="button" className="button secondary native-probe-button" onClick={onProbeGisProjection}>
-          <MapPinned size={15} />
-          Start GIS projection
-        </button>
-        <button type="button" className="button secondary native-probe-button" onClick={onProbeFfmpegProxy}>
-          <FileVideo size={15} />
-          Start native proxy
-        </button>
-        <label className="native-root-field">
-          <span>Native CV model path</span>
-          <input aria-label="Native CV model path" value={nativeCvModelPath} onChange={(event) => onNativeCvModelPathChange(event.target.value)} />
-        </label>
-        <label className="native-root-field">
-          <span>Native CV labels path</span>
-          <input aria-label="Native CV labels path" value={nativeCvLabelsPath} onChange={(event) => onNativeCvLabelsPathChange(event.target.value)} />
-        </label>
-        <button type="button" className="button secondary native-probe-button" onClick={onProbeCvScan}>
-          <Gauge size={15} />
-          Probe local CV scan
-        </button>
-        <label className="native-root-field">
-          <span>GPStitch layout</span>
-          <select aria-label="GPStitch layout" value={gpstitchLayout}
-            onChange={(event) => onGpstitchLayoutChange(event.target.value as TelemetryRender["layout"])}>
-            <option value="speed-awareness">Speed awareness</option>
-            <option value="default">Default dashboard</option>
-          </select>
-        </label>
-        <label className="native-root-field">
-          <span>GPStitch alignment</span>
-          <select aria-label="GPStitch alignment" value={gpstitchAlignment}
-            onChange={(event) => onGpstitchAlignmentChange(event.target.value as GpstitchAlignment)}>
-            <option value="auto">Video detected start</option>
-            <option value="gpx_timestamps">GPX timestamps</option>
-            <option value="manual">Manual offset</option>
-          </select>
-        </label>
-        {gpstitchAlignment === "manual" ? (
-          <label className="native-root-field">
-            <span>GPStitch time offset (seconds)</span>
-            <input aria-label="GPStitch time offset seconds" type="number" step="1"
-              value={gpstitchTimeOffsetSeconds}
-              onChange={(event) => onGpstitchTimeOffsetSecondsChange(Math.trunc(Number(event.target.value) || 0))} />
-          </label>
-        ) : null}
-        <button type="button" className="button secondary native-probe-button" onClick={onGpstitchRender}>
-          <Gauge size={15} />
-          Render telemetry overlay
-        </button>
-        <div className="native-attempt-list">
-          <strong>Native capability evidence</strong>
-          {readiness.native.capabilities.map((capability) => (
-            <article className="native-attempt-row" key={capability.id}>
-              <strong>{`${capability.command} ${capability.evidence}`}</strong>
-              <span>{capability.required ? "required" : "optional"}</span>
-              <span>
-                {capability.lastAttemptStatus
-                  ? `latest attempt: ${capability.lastAttemptStatus} at ${capability.lastAttemptAtIso}`
-                  : "no native attempt recorded"}
-              </span>
-            </article>
-          ))}
-        </div>
-        <div className="native-attempt-list">
-          <strong>Native command attempts</strong>
-          {nativeCommandAttempts.length === 0 ? (
-            <small>No native command attempts yet.</small>
-          ) : (
-            nativeCommandAttempts.map((attempt) => (
-              <article className="native-attempt-row" key={attempt.id}>
-                <strong>{`${attempt.command}: ${attempt.status}`}</strong>
-                <span>{attempt.requestSummary}</span>
-                <span>{attempt.resultSummary}</span>
-              </article>
-            ))
-          )}
-        </div>
-        <div className="runtime-command-list">
-          {readiness.runtime.commandSlots.map((slot) => (
-            <article className="runtime-command-row" key={slot.id}>
-              <div>
-                <StatusPill
-                  status={slot.state === "implemented_tauri_command" ? "ready" : slot.state === "planned_tauri_command" ? "queued" : "optional"}
-                  label={slot.state}
-                />
-                <strong>{slot.label}</strong>
-              </div>
-              <code>{slot.tauriCommand}</code>
-              <span>
-                request: {slot.requestFields.join(", ")}
-                <br />
-                response: {slot.responseFields.join(", ")}
-                <br />
-                fallback: {slot.fallback}
-              </span>
-            </article>
-          ))}
-        </div>
-      </div>
-      <div className="native-checklist">
-        <strong>Native setup checklist</strong>
-        <div className="native-checklist-list">
-          {readiness.nativeChecklist.map((item) => (
-            <article className="native-checklist-row" key={item.id}>
-              <div>
-                <StatusPill status={item.state === "ready" ? "ready" : item.state === "blocked" ? "blocked" : "queued"} label={item.state} />
-                <strong>{item.label}</strong>
-              </div>
-              <span>{item.reference}</span>
-              <code>{item.verifyCommand}</code>
-              {item.blockingJobs.length > 0 && <small>jobs: {item.blockingJobs.join(", ")}</small>}
-            </article>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PanelHeader({ icon, title, meta }: { icon: React.ReactNode; title: string; meta: string }) {
-  return (
-    <div className="panel-header">
-      <div>
-        <span className="header-icon" aria-hidden="true">
-          {icon}
-        </span>
-        <h2>{title}</h2>
-      </div>
-      <span>{meta}</span>
-    </div>
-  );
-}
-
-function SortableClip({
-  clip,
-  totalDuration,
-  selected,
-  onSelect
-}: {
-  clip: TimelineClip;
-  totalDuration: number;
-  selected: boolean;
-  onSelect: (id: string) => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: clip.id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    flexBasis: `${Math.max(18, (clipDurationSeconds(clip) / Math.max(totalDuration, 1)) * 100)}%`
-  };
-
-  return (
-    <button
-      ref={setNodeRef}
-      style={style}
-      type="button"
-      aria-label={`${clip.label} ${formatSeconds(clip.sourceInSeconds)} - ${formatSeconds(clip.sourceOutSeconds)}`}
-      className={`timeline-clip${selected ? " selected" : ""}`}
-      onClick={() => onSelect(clip.id)}
-      onFocus={() => onSelect(clip.id)}
-      onPointerDown={() => onSelect(clip.id)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          onSelect(clip.id);
-        }
-      }}
-      {...attributes}
-      {...listeners}
-    >
-      <span>{clip.label}</span>
-      <strong>
-        {formatSeconds(clip.sourceInSeconds)} - {formatSeconds(clip.sourceOutSeconds)}
-      </strong>
-    </button>
-  );
-}
-
-function RouteMap({
-  route,
-  projectedFeatures,
-  matchSummary
-}: {
-  route: TimedRoutePoint[];
-  projectedFeatures: ProjectedRoadFeature[];
-  matchSummary: string;
-}) {
-  const routePath = useMemo(
-    () =>
-      route
-        .map((point, index) => {
-          const x = 12 + index * (76 / Math.max(route.length - 1, 1));
-          const y = 72 - index * (38 / Math.max(route.length - 1, 1)) + (index % 2) * 4;
-          return `${index === 0 ? "M" : "L"} ${x} ${y}`;
-        })
-        .join(" "),
-    [route]
-  );
-  const routeEndpoints = useMemo(() => summarizeRouteEndpoints(route), [route]);
-
-  return (
-    <div className="map-canvas">
-      <svg viewBox="0 0 100 100" role="img" aria-label="Route with projected official road features">
-        <path className="map-grid-line" d="M0 30H100 M0 60H100 M25 0V100 M55 0V100 M82 0V100" />
-        {route.length > 0 && <path className="raw-gpx" d="M12 74 L29 62 L48 58 L67 42 L86 34" />}
-        <path className="matched-route" d={routePath} />
-        {projectedFeatures.map((feature, index) => (
-          <g key={feature.featureId} transform={`translate(${29 + index * 20} ${62 - index * 12})`}>
-            <circle className={`feature-dot ${feature.kind}`} r="3.8" />
-            <text x="6" y="2.5">
-              {feature.kind === "traffic_light" ? "signal" : feature.kind.replace("_", " ")}
-            </text>
-          </g>
-        ))}
-      </svg>
-      <div className="map-legend">
-        <span aria-label="Route point count">
-          <Clock3 size={14} />
-          {route.length} timed points
-        </span>
-        <span>
-          <Route size={14} />
-          {matchSummary}
-        </span>
-        <span>
-          <CircleDot size={14} />
-          Raw GPX
-        </span>
-        <span>
-          <Bike size={14} />
-          Official GIS projection
-        </span>
-      </div>
-      <div className="route-endpoint-summary" aria-label="Route endpoint summary">
-        {routeEndpoints.map((endpoint) => (
-          <span key={endpoint.label}>
-            <strong>{endpoint.label}</strong> {endpoint.value}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function summarizeRouteEndpoints(route: TimedRoutePoint[]): { label: string; value: string }[] {
-  if (route.length === 0) {
-    return [{ label: "Route", value: "No timed points imported" }];
-  }
-
-  const firstPoint = route[0];
-  const lastPoint = route[route.length - 1];
-
-  return [
-    { label: "First point", value: formatRoutePoint(firstPoint) },
-    { label: "Last point", value: formatRoutePoint(lastPoint) }
-  ];
-}
-
-function formatRoutePoint(point: TimedRoutePoint): string {
-  return `${formatCoordinate(point.latitude)}, ${formatCoordinate(point.longitude)} at ${Math.round(point.timeSeconds)}s`;
-}
-
-function formatCoordinate(value: number): string {
-  return value.toFixed(6);
-}
-
-function TimelineEditor({
-  clip,
-  clipCount,
-  onTrim,
-  onSplit,
-  onDuplicate,
-  onRemove
-}: {
-  clip?: TimelineClip;
-  clipCount: number;
-  onTrim: (field: "sourceInSeconds" | "sourceOutSeconds", value: string) => void;
-  onSplit: () => void;
-  onDuplicate: () => void;
-  onRemove: () => void;
-}) {
-  if (!clip) {
-    return null;
-  }
-
-  const canSplit = clipDurationSeconds(clip) >= 2;
-  function runPointerCommand(event: React.PointerEvent<HTMLButtonElement>, command: () => void) {
-    event.currentTarget.dataset.pointerHandled = "true";
-    command();
-  }
-
-  function runClickCommand(event: React.MouseEvent<HTMLButtonElement>, command: () => void) {
-    if (event.currentTarget.dataset.pointerHandled === "true") {
-      delete event.currentTarget.dataset.pointerHandled;
-      return;
-    }
-
-    command();
-  }
-
-  function handleActionMenu(value: string) {
-    if (value === "split") {
-      onSplit();
-    }
-
-    if (value === "duplicate") {
-      onDuplicate();
-    }
-
-    if (value === "remove") {
-      onRemove();
-    }
-  }
-
-  return (
-    <div className="timeline-editor" aria-label="Selected clip editor">
-      <div>
-        <strong>{clip.label}</strong>
-        <span>{Math.round(clipDurationSeconds(clip))}s selected clip</span>
-      </div>
-      <label>
-        <span>Source in</span>
-        <input
-          aria-label="Selected clip source in seconds"
-          min={0}
-          step={1}
-          type="number"
-          value={Math.round(clip.sourceInSeconds)}
-          onChange={(event) => onTrim("sourceInSeconds", event.target.value)}
-        />
-      </label>
-      <label>
-        <span>Source out</span>
-        <input
-          aria-label="Selected clip source out seconds"
-          min={1}
-          step={1}
-          type="number"
-          value={Math.round(clip.sourceOutSeconds)}
-          onChange={(event) => onTrim("sourceOutSeconds", event.target.value)}
-        />
-      </label>
-      <label>
-        <span>Action</span>
-        <select aria-label="Selected clip action" value="" onChange={(event) => handleActionMenu(event.target.value)}>
-          <option value="">Choose</option>
-          <option value="split" disabled={!canSplit}>
-            Split
-          </option>
-          <option value="duplicate">Duplicate</option>
-          <option value="remove" disabled={clipCount <= 1}>
-            Remove
-          </option>
-        </select>
-      </label>
-      <div className="timeline-edit-actions">
-        <button
-          type="button"
-          className="button secondary timeline-command-button"
-          aria-label="Split selected clip"
-          onPointerDown={(event) => runPointerCommand(event, onSplit)}
-          onClick={(event) => runClickCommand(event, onSplit)}
-          disabled={!canSplit}
-        >
-          <Split size={15} />
-          Split
-        </button>
-        <button
-          type="button"
-          className="button secondary timeline-command-button"
-          aria-label="Duplicate selected clip"
-          onPointerDown={(event) => runPointerCommand(event, onDuplicate)}
-          onClick={(event) => runClickCommand(event, onDuplicate)}
-        >
-          <Copy size={15} />
-          Duplicate
-        </button>
-        <button
-          type="button"
-          className="button secondary timeline-command-button"
-          aria-label="Remove selected clip"
-          onPointerDown={(event) => runPointerCommand(event, onRemove)}
-          onClick={(event) => runClickCommand(event, onRemove)}
-          disabled={clipCount <= 1}
-        >
-          <Trash2 size={15} />
-          Remove
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Inspector({
-  draft,
-  onDraftChange,
-  onSaveDraft
-}: {
-  draft: IncidentDraft;
-  onDraftChange: (field: keyof IncidentDraft, value: string) => void;
-  onSaveDraft: () => void;
-}) {
-  return (
-    <form className="inspector-form">
-      <InspectorField label="Category" value={draft.category} onChange={(value) => onDraftChange("category", value)} />
-      <InspectorField label="Start" value={draft.start} onChange={(value) => onDraftChange("start", value)} />
-      <InspectorField label="End" value={draft.end} onChange={(value) => onDraftChange("end", value)} />
-      <InspectorField label="Plate" value={draft.plate} placeholder="manual entry needed" onChange={(value) => onDraftChange("plate", value)} />
-      <InspectorField
-        label="Vehicle notes"
-        value={draft.vehicleNotes}
-        onChange={(value) => onDraftChange("vehicleNotes", value)}
-      />
-      <InspectorField
-        label="Location notes"
-        value={draft.locationNotes}
-        onChange={(value) => onDraftChange("locationNotes", value)}
-      />
-      <InspectorField label="Provenance" value={draft.provenance} onChange={(value) => onDraftChange("provenance", value)} />
-      <label>
-        <span>Narrative</span>
-        <textarea value={draft.narrative} onChange={(event) => onDraftChange("narrative", event.target.value)} />
-      </label>
-      <button type="button" className="button primary full-width" onClick={onSaveDraft}>
-        <CheckCircle2 size={16} />
-        Save draft incident
-      </button>
-    </form>
-  );
-}
-
-function InspectorField({
-  label,
-  value,
-  placeholder,
-  onChange
-}: {
-  label: string;
-  value: string;
-  placeholder?: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label>
-      <span>{label}</span>
-      <input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
-    </label>
-  );
-}
-
-function JobList({
-  jobs,
-  nativeChecklist,
-  onCancelProxy
-}: {
-  jobs: WorkstationJob[];
-  nativeChecklist: NativeReadinessChecklistItem[];
-  onCancelProxy: (job: WorkstationJob) => void;
-}) {
-  return (
-    <div className="job-list">
-      {jobs.length === 0 && <p className="empty-state">No processing jobs. Import media, GPX, or GIS data to queue work.</p>}
-      {jobs.map((job) => {
-        const blockers = nativeChecklist.filter((item) => item.blockingJobs.includes(job.label));
-
-        return (
-          <article className="job-row" key={job.id}>
-            <div>
-              <StatusPill status={job.status} label={job.status} />
-              <strong>{job.label}</strong>
-            </div>
-            <div className="progress-line" aria-label={`${job.label} progress`}>
-              <span style={{ width: `${job.progress}%` }} />
-            </div>
-            <p>{job.detail}</p>
-            {job.type === "proxy" && job.status === "running" && job.mediaId && (
-              <button type="button" className="button secondary" onClick={() => onCancelProxy(job)}>
-                Cancel {job.label}
-              </button>
-            )}
-            {blockers.length > 0 && (
-              <div className="job-blocker-list">
-                {blockers.map((blocker) => (
-                  <div className="job-blocker" key={blocker.id}>
-                    <span>Unblock with {blocker.label}</span>
-                    <code>{blocker.verifyCommand}</code>
-                  </div>
-                ))}
-              </div>
-            )}
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-function ProjectedFeatureList({
-  projectedFeatures,
-  officialFeatures,
-  onFeatureReviewChange
-}: {
-  projectedFeatures: ProjectedRoadFeature[];
-  officialFeatures: import("./features/geo/projection").OfficialRoadFeature[];
-  onFeatureReviewChange: (featureId: string, field: keyof Pick<ProjectedRoadFeature, "reviewStatus" | "reviewNote">, value: string) => void;
-}) {
-  return (
-    <div className="feature-review-list">
-      {projectedFeatures.length === 0 && <p className="empty-state">No projected official features to review.</p>}
-      {projectedFeatures.map((feature) => {
-        const source = officialFeatures.find((candidate) => candidate.id === feature.featureId);
-        return <article className="feature-review-row" key={feature.featureId}>
-          <div>
-            <strong>{formatFeatureKind(feature.kind)}</strong>
-            <span>{feature.sourceLayer}</span>
-            {source?.sourceCrs && <small>{`${source.sourceCrs} → ${source.normalizedCrs} · ${source.sourcePath}`}</small>}
-          </div>
-          <div>
-            <span>{Math.round(feature.timeSeconds)}s</span>
-            <StatusPill status={feature.confidence >= 0.8 ? "ready" : "queued"} label={`${Math.round(feature.confidence * 100)}%`} />
-          </div>
-          <div className="feature-review-controls">
-            <label>
-              <span>Status</span>
-              <select
-                aria-label={`${formatFeatureKind(feature.kind)} ${feature.featureId} review status`}
-                value={feature.reviewStatus}
-                onChange={(event) => onFeatureReviewChange(feature.featureId, "reviewStatus", event.target.value)}
-              >
-                <option value="needs_review">needs review</option>
-                <option value="included">included</option>
-                <option value="excluded">excluded</option>
-              </select>
-            </label>
-            <label>
-              <span>Note</span>
-              <textarea
-                aria-label={`${formatFeatureKind(feature.kind)} ${feature.featureId} review note`}
-                value={feature.reviewNote}
-                onChange={(event) => onFeatureReviewChange(feature.featureId, "reviewNote", event.target.value)}
-              />
-            </label>
-          </div>
-        </article>;
-      })}
-    </div>
-  );
-}
-
-function CvFindingList({ findings, onReview, onPersist }: {
-  findings: CvFindingReview[];
-  onReview: (findingId: string, status: CvFindingReviewStatus, note: string) => void;
-  onPersist: (findingId: string, status: CvFindingReviewStatus, note: string) => void;
-}) {
-  if (findings.length === 0) {
-    return <p className="empty-state">No local CV findings. Configure a model and scan imported media.</p>;
-  }
-  return <div className="feature-review-list" aria-label="CV finding reviews">
-    {findings.map((finding) => <article className="feature-review-row" key={finding.id}>
-      <div>
-        <strong>{finding.label}</strong>
-        <span>{finding.timeSeconds.toFixed(1)}s · confidence {Math.round(finding.confidence * 100)}%</span>
-        <small>{finding.engine} · {finding.modelPath}</small>
-        <small>Box {Math.round(finding.x)},{Math.round(finding.y)} {Math.round(finding.width)}×{Math.round(finding.height)} / {finding.frameWidth}×{finding.frameHeight}</small>
-      </div>
-      <label>
-        <span>Decision</span>
-        <select aria-label={`${finding.label} ${finding.id} CV review status`} value={finding.reviewStatus}
-          onChange={(event) => onPersist(finding.id, event.target.value as CvFindingReviewStatus, finding.reviewNote)}>
-          <option value="needs_review">needs review</option>
-          <option value="included">included</option>
-          <option value="excluded">excluded</option>
-        </select>
-      </label>
-      <label>
-        <span>Review note</span>
-        <input aria-label={`${finding.label} ${finding.id} CV review note`} value={finding.reviewNote}
-          onChange={(event) => onReview(finding.id, finding.reviewStatus, event.target.value)}
-          onBlur={(event) => onPersist(finding.id, finding.reviewStatus, event.target.value)} />
-      </label>
-    </article>)}
-  </div>;
-}
-
-function formatFeatureKind(kind: string): string {
-  return kind.replace("_", " ");
-}
-
-function ComponentSlotList({
-  checklist,
-  firstReferenceInputRef,
-  slots,
-  onSlotChange
-}: {
-  checklist: NativeReadinessChecklistItem[];
-  firstReferenceInputRef?: RefObject<HTMLInputElement | null>;
-  slots: ComponentSlot[];
-  onSlotChange: (id: string, field: keyof Pick<ComponentSlot, "status" | "reference" | "notes">, value: string) => void;
-}) {
-  const checklistBySlotId = new Map(checklist.map((item) => [item.id, item]));
-
-  return (
-    <div className="slot-list">
-      {slots.map((slot, index) => {
-        const checklistItem = checklistBySlotId.get(slot.id);
-
-        return (
-          <article className="slot-row component-slot-row" key={slot.id}>
-            <div className="slot-summary">
-              <StatusPill status={componentSlotPillStatus(slot.status)} label={slot.status} />
-              <div>
-                <strong>{slot.label}</strong>
-                <span>{slot.ownerAction}</span>
-              </div>
-            </div>
-            <div className="slot-fields">
-              <label>
-                <span>Reference</span>
-                <input
-                  aria-label={`${slot.label} reference`}
-                  ref={index === 0 ? firstReferenceInputRef : undefined}
-                  value={slot.reference}
-                  onChange={(event) => onSlotChange(slot.id, "reference", event.target.value)}
-                />
-              </label>
-              <label>
-                <span>Status</span>
-                <select
-                  aria-label={`${slot.label} status`}
-                  value={slot.status}
-                  onChange={(event) => onSlotChange(slot.id, "status", event.target.value)}
-                >
-                  <option value="needed">needed</option>
-                  <option value="configured">configured</option>
-                  <option value="optional">optional</option>
-                  <option value="later">later</option>
-                </select>
-              </label>
-              <div className="slot-verify-command">
-                <span>Verify</span>
-                <code>{checklistItem?.verifyCommand ?? "manual verification required"}</code>
-              </div>
-              <label className="slot-notes-field">
-                <span>Notes</span>
-                <textarea
-                  aria-label={`${slot.label} notes`}
-                  value={slot.notes}
-                  onChange={(event) => onSlotChange(slot.id, "notes", event.target.value)}
-                />
-              </label>
-            </div>
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-function StatusPill({ status, label }: { status: string; label: string }) {
-  return <span className={`status-pill ${status}`}>{label}</span>;
-}
-
-function componentSlotPillStatus(status: ComponentSlotStatus): string {
-  if (status === "configured") {
-    return "ready";
-  }
-
-  if (status === "needed") {
-    return "blocked";
-  }
-
-  return "queued";
 }
 
 function isGpxFile(file: File): boolean {

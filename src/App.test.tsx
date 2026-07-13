@@ -827,7 +827,7 @@ describe("RoadWatcher workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check installed runtime" }));
 
     await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("preflight passed"));
-    expect(nativeInvoke).toHaveBeenCalledWith("runtime_preflight", { uvExecutable: "uv", ffmpegBinaryDirectory: "", gdalBinaryDirectory: "" });
+    expect(nativeInvoke).toHaveBeenCalledWith("runtime_preflight", { uvExecutable: "", ffmpegBinaryDirectory: "", gdalBinaryDirectory: "" });
     const results = screen.getByLabelText("Installed runtime preflight results");
     expect(results).toHaveTextContent("Installed runtime: ready");
     expect(results).toHaveTextContent("Python resolver through uv");

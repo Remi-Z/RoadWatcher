@@ -1482,11 +1482,17 @@ pub fn complete_route_match_job(
     request: &RouteMatchRequest,
     matcher_used: &str,
     matched_route: &[RoutePoint],
+    provenance_detail: &str,
 ) -> Result<(), ProjectStoreError> {
     validate_route_points(matched_route)?;
     if !matches!(matcher_used, "Valhalla" | "OSRM") {
         return Err(ProjectStoreError::InvalidRouteMatchState(
             "unsupported matcher completion".to_string(),
+        ));
+    }
+    if provenance_detail.trim().is_empty() || provenance_detail.len() > 8_192 {
+        return Err(ProjectStoreError::InvalidRouteMatchState(
+            "route provenance detail is invalid".to_string(),
         ));
     }
     let mut connection = open_project_database(&request.sqlite_path)?;
@@ -1530,7 +1536,7 @@ pub fn complete_route_match_job(
         "UPDATE jobs SET status = 'complete', progress = 100, detail = ?1
          WHERE id = ?2 AND project_id = ?3 AND route_id = ?4 AND status = 'running'",
         params![
-            format!("Route matched with {matcher_used}."),
+            provenance_detail,
             request.job_id,
             request.project_id,
             request.route_id
@@ -3698,7 +3704,8 @@ mod tests {
                 time_seconds: 6.0,
             },
         ];
-        complete_route_match_job(&request, "Valhalla", &matched).unwrap();
+        complete_route_match_job(&request, "Valhalla", &matched, "Valhalla test provenance.")
+            .unwrap();
         let complete = read_route_match_status(
             &request.sqlite_path,
             &request.project_id,
