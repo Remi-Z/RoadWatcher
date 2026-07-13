@@ -44,6 +44,66 @@ or make an artifact installable. Those remain explicit owner gates. Definitions
 and produced artifacts are intentionally absent until exact sources and terms
 are approved; builders must never substitute toy data or placeholder hashes.
 
+## Managed-installer delivery contract
+
+When an approved York tile or ONNX asset is eventually promoted, the catalog
+must use the fixed `roadwatcher-release-archive` strategy. This is the only
+strategy that accepts an `artifactManifest` descriptor, and it is limited to
+`york-valhalla-tiles` (`tiles`) and `cv-yolo11n` (`model`). It is not enabled by
+the current blocked catalog entries.
+
+The approved catalog entry will pin both sibling release assets from the same
+canonical `https://github.com/Remi-Z/RoadWatcher/releases/download/<tag>/`
+path:
+
+```json
+{
+  "artifact": {
+    "url": ".../<id>-<version>-windows-x86_64.zip",
+    "sha256": "<archive SHA-256>",
+    "maxBytes": 123456789,
+    "sizeBytes": 123456789,
+    "archive": "zip",
+    "fileName": "<id>-<version>-windows-x86_64.zip"
+  },
+  "artifactManifest": {
+    "url": ".../<id>-<version>-windows-x86_64.manifest.json",
+    "sha256": "<manifest SHA-256>",
+    "maxBytes": 4194304,
+    "kind": "tiles or model"
+  },
+  "installStrategy": { "kind": "roadwatcher-release-archive" }
+}
+```
+
+The numbers above are only structural examples. Replace every URL, hash, and
+byte value with the published release evidence; zero and placeholder values are
+rejected by catalog validation.
+
+Both files are separately downloaded through the existing HTTPS allowlist,
+size limit, resumable-transfer policy, and SHA-256 verifier into one unique
+staging directory. Before ZIP extraction, Rust strictly parses the companion
+manifest and requires exact agreement with the catalog on component ID,
+version, `windows-x86_64`, kind, archive file name, exact byte size, SHA-256,
+and artifact license ID/URL. The canonical release tag and companion file names
+are also checked, so a manifest from another release cannot be paired with the
+archive. The verified manifest hash is recorded in the managed ownership marker
+and contributes to subsequent ready/invalid state checks.
+
+The manifest's artifact-license ID and URL must therefore exactly equal the
+approved catalog license record. Use the generator's lowercase-hyphen artifact
+identifier form when preparing that record; do not rely on a display label or
+silently normalize it at install time.
+
+After the identity check, release ZIPs have a 250,000-entry and 32 GiB unpacked
+cap in addition to their catalog download cap. CV payloads may contain only a
+non-empty `yolo11n.onnx` and newline-terminated, UTF-8, unique `labels.txt`.
+York payloads may contain only `valhalla.json` and regular non-empty `.gph`
+tiles; the configuration must preserve the RoadWatcher tile token and cannot
+bake `tile_extract`, admin, timezone, traffic, transit, or incident paths.
+Any failure leaves only unpublished staging data, so retry is safe and an
+existing owned component remains intact.
+
 ## Deterministic packaging
 
 `scripts/deterministic_artifact_zip.py` packages the already-built output tree

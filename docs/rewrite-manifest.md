@@ -469,6 +469,14 @@ network/DNS access.
 - Managed one-shot Valhalla and configured HTTP Valhalla/OSRM fallbacks are
   implemented; live OSRM service evidence passes. Production York/GTA tiles and
   their approved inputs/publication remain deployment gates.
+- Future RoadWatcher-hosted York tile and ONNX installs cannot use generic ZIP
+  extraction. Their blocked catalog entries must be promoted only with the
+  fixed `roadwatcher-release-archive` contract: exact GitHub Release archive
+  URL/hash/size/file name, separately SHA-256-verified companion manifest from
+  the same tag, exact manifest identity/license match, bounded extraction, and
+  the audited York/CV payload layout. This delivery boundary is implemented;
+  publishing an asset, selecting data/model licenses, or changing availability
+  remains owner work.
 - Shapefile, GeoPackage, FlatGeobuf, FileGDB, and arbitrary CRS normalization
   work through an explicit/PATH GDAL/OGR override. Managed GDAL layout and
   child-process containment are implemented; a source-only fixed-profile asset

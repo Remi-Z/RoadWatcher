@@ -2,7 +2,7 @@ use crate::bounded_process::run_bounded_process_cancellable;
 use crate::managed_runtime;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -23,6 +23,17 @@ const MANAGED_ENVIRONMENT_MARKER: &str = ".roadwatcher-managed-environment";
 const FFMPEG_ARCHIVE_ROOT: &str = "ffmpeg-8.1.1-full_build";
 const FFMPEG_VERSION_PREFIX: &str = "ffmpeg version 8.1.1-full_build-www.gyan.dev";
 const FFPROBE_VERSION_PREFIX: &str = "ffprobe version 8.1.1-full_build-www.gyan.dev";
+const ROADWATCHER_RELEASE_OWNER: &str = "Remi-Z";
+const ROADWATCHER_RELEASE_REPOSITORY: &str = "RoadWatcher";
+const ROADWATCHER_RELEASE_MANIFEST_MAX_BYTES: u64 = 4 * 1024 * 1024;
+const ROADWATCHER_RELEASE_ARCHIVE_MAX_BYTES: u64 = 16 * 1024 * 1024 * 1024;
+const ROADWATCHER_RELEASE_MAX_ZIP_ENTRIES: usize = 250_000;
+const ROADWATCHER_RELEASE_MAX_UNPACKED_BYTES: u64 = 32 * 1024 * 1024 * 1024;
+const ROADWATCHER_VALHALLA_CONFIG_MAX_BYTES: u64 = 4 * 1024 * 1024;
+const ROADWATCHER_VALHALLA_TILE_MAX_FILES: usize = 200_000;
+const ROADWATCHER_VALHALLA_TILE_MAX_BYTES: u64 = 24 * 1024 * 1024 * 1024;
+const ROADWATCHER_CV_LABELS_MAX_BYTES: u64 = 2 * 1024 * 1024;
+const ROADWATCHER_TILE_DIRECTORY_TOKEN: &str = "${ROADWATCHER_TILE_DIR}";
 const ALLOWED_DOWNLOAD_HOSTS: &[&str] = &[
     "github.com",
     "objects.githubusercontent.com",
@@ -55,6 +66,8 @@ pub struct DependencyComponent {
     pub source_url: String,
     pub availability: String,
     pub artifact: Option<DependencyArtifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_manifest: Option<DependencyArtifactManifestDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bootstrap: Option<DependencyBootstrap>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -124,8 +137,19 @@ pub struct DependencyArtifact {
     pub url: String,
     pub sha256: String,
     pub max_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
     pub archive: String,
     pub file_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependencyArtifactManifestDescriptor {
+    pub url: String,
+    pub sha256: String,
+    pub max_bytes: u64,
+    pub kind: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -185,8 +209,75 @@ struct ManagedComponentMarker {
     artifact_sha256: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     bootstrap_artifact_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    artifact_manifest_sha256: Option<String>,
     source_url: String,
     installed_at_unix: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RoadWatcherReleaseManifest {
+    schema_version: u32,
+    id: String,
+    kind: String,
+    version: String,
+    platform: String,
+    generated_at: String,
+    artifact: RoadWatcherReleaseArtifactIdentity,
+    sources: Vec<RoadWatcherReleaseSource>,
+    tools: Vec<RoadWatcherReleaseTool>,
+    build: RoadWatcherReleaseBuild,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RoadWatcherReleaseArtifactIdentity {
+    file_name: String,
+    size_bytes: u64,
+    sha256: String,
+    license: RoadWatcherReleaseLicense,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RoadWatcherReleaseLicense {
+    id: String,
+    name: String,
+    url: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RoadWatcherReleaseSource {
+    id: String,
+    url: String,
+    version: String,
+    license: RoadWatcherReleaseLicense,
+    downloaded_sha256: String,
+    #[serde(default)]
+    publisher_sha256: Option<String>,
+    retrieved_at: String,
+    size_bytes: u64,
+    #[serde(default)]
+    etag: Option<String>,
+    #[serde(default)]
+    last_modified: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RoadWatcherReleaseTool {
+    name: String,
+    version: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RoadWatcherReleaseBuild {
+    recipe: String,
+    recipe_version: String,
+    parameters: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone)]
@@ -450,8 +541,10 @@ impl DependencyManager {
                 job.status = "installing".to_string();
                 job.detail = format!("Installing and validating {}.", component.label);
             });
-            if let Some(strategy) = &component.install_strategy {
-                self.install_strategy(job_id, strategy, &download, &payload, &staging)?;
+            let artifact_manifest_sha256 = if let Some(strategy) = &component.install_strategy {
+                self.install_strategy(
+                    job_id, component, artifact, strategy, &download, &payload, &staging,
+                )?
             } else {
                 match artifact.archive.as_str() {
                     "file" => {
@@ -463,7 +556,8 @@ impl DependencyManager {
                     "zip" => extract_zip(&download, &payload, || self.is_cancelled(job_id))?,
                     other => return Err(format!("unsupported dependency archive type {other}")),
                 }
-            }
+                None
+            };
             if let Some(bootstrap) = &component.bootstrap {
                 self.install_bootstrap(job_id, bootstrap, &payload, &staging)?;
             }
@@ -479,6 +573,7 @@ impl DependencyManager {
                     .as_ref()
                     .and_then(|bootstrap| bootstrap.artifact.as_ref())
                     .map(|artifact| artifact.sha256.clone()),
+                artifact_manifest_sha256,
                 source_url: artifact.url.clone(),
                 installed_at_unix: now_unix(),
             };
@@ -501,11 +596,13 @@ impl DependencyManager {
     fn install_strategy(
         &self,
         job_id: &str,
+        component: &DependencyComponent,
+        artifact: &DependencyArtifact,
         strategy: &DependencyInstallStrategy,
         download: &Path,
         payload: &Path,
         staging: &Path,
-    ) -> Result<(), String> {
+    ) -> Result<Option<String>, String> {
         match strategy.kind.as_str() {
             "uv-wheel-environment" => {
                 let uv = self
@@ -524,10 +621,57 @@ impl DependencyManager {
                     strategy,
                     || self.is_cancelled(job_id),
                 )
+                .map(|_| None)
             }
             "verified-ffmpeg-archive" => {
                 extract_zip(download, payload, || self.is_cancelled(job_id))?;
-                validate_ffmpeg_payload(payload, || self.is_cancelled(job_id))
+                validate_ffmpeg_payload(payload, || self.is_cancelled(job_id)).map(|_| None)
+            }
+            "roadwatcher-release-archive" => {
+                let descriptor = component.artifact_manifest.as_ref().ok_or_else(|| {
+                    "RoadWatcher release archive is missing its verified manifest descriptor"
+                        .to_string()
+                })?;
+                let manifest_path = staging.join("artifact.manifest.json");
+                self.update_job(job_id, |job| {
+                    job.status = "downloading".to_string();
+                    job.detail = format!(
+                        "Downloading the verified build manifest for {}.",
+                        component.label
+                    );
+                });
+                download_verified(
+                    &descriptor.url,
+                    &manifest_path,
+                    descriptor.max_bytes,
+                    &descriptor.sha256,
+                    || self.is_cancelled(job_id),
+                )?;
+                self.update_job(job_id, |job| {
+                    job.status = "installing".to_string();
+                    job.detail = format!(
+                        "Verifying the release manifest and installing {}.",
+                        component.label
+                    );
+                });
+                verify_roadwatcher_release_manifest(
+                    component,
+                    artifact,
+                    descriptor,
+                    download,
+                    &manifest_path,
+                )?;
+                extract_zip_bounded(
+                    download,
+                    payload,
+                    ROADWATCHER_RELEASE_MAX_ZIP_ENTRIES,
+                    ROADWATCHER_RELEASE_MAX_UNPACKED_BYTES,
+                    || self.is_cancelled(job_id),
+                )?;
+                validate_roadwatcher_release_payload(component, payload, || {
+                    self.is_cancelled(job_id)
+                })?;
+                Ok(Some(descriptor.sha256.clone()))
             }
             other => Err(format!("unsupported dependency install strategy {other}")),
         }
@@ -611,7 +755,8 @@ impl DependencyManager {
         matches!(read_marker(&self.component_path(component)), Ok(marker) if marker.id == component.id
             && marker.version == component.version
             && component.artifact.as_ref().is_some_and(|artifact| marker.artifact_sha256 == artifact.sha256)
-            && marker.bootstrap_artifact_sha256 == component.bootstrap.as_ref().and_then(|bootstrap| bootstrap.artifact.as_ref()).map(|artifact| artifact.sha256.clone()))
+            && marker.bootstrap_artifact_sha256 == component.bootstrap.as_ref().and_then(|bootstrap| bootstrap.artifact.as_ref()).map(|artifact| artifact.sha256.clone())
+            && marker.artifact_manifest_sha256 == component.artifact_manifest.as_ref().map(|manifest| manifest.sha256.clone()))
     }
 
     fn resolve_references(
@@ -1315,6 +1460,11 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
             if artifact.max_bytes == 0 {
                 return Err(format!("{} has no download size limit", component.id));
             }
+            if let Some(size_bytes) = artifact.size_bytes {
+                if size_bytes == 0 || size_bytes > artifact.max_bytes {
+                    return Err(format!("{} artifact exact size is invalid", component.id));
+                }
+            }
             if artifact.sha256.len() != 64
                 || !artifact
                     .sha256
@@ -1444,6 +1594,16 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
                             == Some("ffmpeg-8.1.1-full_build.zip")
                         && component.dependencies.is_empty()
                 }
+                "roadwatcher-release-archive" => {
+                    let descriptor = component.artifact_manifest.as_ref().ok_or_else(|| {
+                        format!(
+                            "{} RoadWatcher release archive has no manifest descriptor",
+                            component.id
+                        )
+                    })?;
+                    validate_roadwatcher_release_catalog_contract(component, artifact, descriptor)?;
+                    true
+                }
                 _ => false,
             };
             if !valid {
@@ -1452,6 +1612,25 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
                     component.id
                 ));
             }
+        } else if component.artifact_manifest.is_some() {
+            return Err(format!(
+                "{} manifest descriptor is only valid for a fixed RoadWatcher release archive",
+                component.id
+            ));
+        }
+        if component
+            .artifact
+            .as_ref()
+            .is_some_and(|artifact| artifact.size_bytes.is_some())
+            && component
+                .install_strategy
+                .as_ref()
+                .is_none_or(|strategy| strategy.kind != "roadwatcher-release-archive")
+        {
+            return Err(format!(
+                "{} exact artifact size is only valid for a fixed RoadWatcher release archive",
+                component.id
+            ));
         }
         let mut reference_ids = HashSet::new();
         for reference in &component.references {
@@ -1492,20 +1671,54 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
             ));
         }
         if let Some(strategy) = &component.install_strategy {
-            let valid_reference = component.references.len() == 1
-                && match strategy.kind.as_str() {
-                    "uv-wheel-environment" => component.references.iter().any(|reference| {
-                        reference.id == "service-executable"
-                            && reference.path == "Scripts/valhalla_service.exe"
-                            && reference.kind == "file"
-                    }),
-                    "verified-ffmpeg-archive" => component.references.iter().any(|reference| {
-                        reference.id == "binary-directory"
-                            && reference.path == "ffmpeg-8.1.1-full_build/bin"
-                            && reference.kind == "directory"
-                    }),
+            let valid_reference = match strategy.kind.as_str() {
+                "uv-wheel-environment" => {
+                    component.references.len() == 1
+                        && component.references.iter().any(|reference| {
+                            reference.id == "service-executable"
+                                && reference.path == "Scripts/valhalla_service.exe"
+                                && reference.kind == "file"
+                        })
+                }
+                "verified-ffmpeg-archive" => {
+                    component.references.len() == 1
+                        && component.references.iter().any(|reference| {
+                            reference.id == "binary-directory"
+                                && reference.path == "ffmpeg-8.1.1-full_build/bin"
+                                && reference.kind == "directory"
+                        })
+                }
+                "roadwatcher-release-archive" => match component.id.as_str() {
+                    "york-valhalla-tiles" => {
+                        component.references.len() == 2
+                            && component.references.iter().any(|reference| {
+                                reference.id == "config"
+                                    && reference.path == "valhalla.json"
+                                    && reference.kind == "file"
+                            })
+                            && component.references.iter().any(|reference| {
+                                reference.id == "tiles"
+                                    && reference.path == "tiles"
+                                    && reference.kind == "directory"
+                            })
+                    }
+                    "cv-yolo11n" => {
+                        component.references.len() == 2
+                            && component.references.iter().any(|reference| {
+                                reference.id == "model"
+                                    && reference.path == "yolo11n.onnx"
+                                    && reference.kind == "file"
+                            })
+                            && component.references.iter().any(|reference| {
+                                reference.id == "labels"
+                                    && reference.path == "labels.txt"
+                                    && reference.kind == "file"
+                            })
+                    }
                     _ => false,
-                };
+                },
+                _ => false,
+            };
             if !valid_reference {
                 return Err(format!(
                     "{} managed reference drifted from its fixed backend contract",
@@ -1555,6 +1768,166 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
         )?;
     }
     Ok(())
+}
+
+fn validate_roadwatcher_release_catalog_contract(
+    component: &DependencyComponent,
+    artifact: &DependencyArtifact,
+    descriptor: &DependencyArtifactManifestDescriptor,
+) -> Result<(), String> {
+    let expected_kind = match component.id.as_str() {
+        "york-valhalla-tiles" => "tiles",
+        "cv-yolo11n" => "model",
+        _ => {
+            return Err(format!(
+                "{} is not an approved RoadWatcher-generated release component",
+                component.id
+            ))
+        }
+    };
+    if component.source_url != "https://github.com/Remi-Z/RoadWatcher/releases" {
+        return Err(format!(
+            "{} release source must be the canonical RoadWatcher releases page",
+            component.id
+        ));
+    }
+    if component.bootstrap.is_some()
+        || !component.project_imports.is_empty()
+        || !component.license.consent_required
+    {
+        return Err(format!(
+            "{} release component drifted from the fixed owner-approved contract",
+            component.id
+        ));
+    }
+    let expected_dependencies: &[&str] = match component.id.as_str() {
+        "york-valhalla-tiles" => &["managed-valhalla"],
+        "cv-yolo11n" => &[],
+        _ => unreachable!("release component ID was checked above"),
+    };
+    if component
+        .dependencies
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        != expected_dependencies
+    {
+        return Err(format!(
+            "{} release component has unexpected dependencies",
+            component.id
+        ));
+    }
+    if artifact.archive != "zip" || artifact.max_bytes > ROADWATCHER_RELEASE_ARCHIVE_MAX_BYTES {
+        return Err(format!(
+            "{} release archive has an unsupported size or format",
+            component.id
+        ));
+    }
+    let exact_size = artifact.size_bytes.ok_or_else(|| {
+        format!(
+            "{} release archive must record its exact verified byte size",
+            component.id
+        )
+    })?;
+    if exact_size > artifact.max_bytes {
+        return Err(format!(
+            "{} release archive exact size exceeds its download limit",
+            component.id
+        ));
+    }
+    let archive_name = artifact
+        .file_name
+        .as_deref()
+        .ok_or_else(|| format!("{} release archive file name is missing", component.id))?;
+    validate_release_file_name(archive_name, ".zip")?;
+    let (archive_tag, archive_url_name) = parse_roadwatcher_release_download(&artifact.url)?;
+    if archive_url_name != archive_name {
+        return Err(format!(
+            "{} release archive URL file name does not match the catalog",
+            component.id
+        ));
+    }
+    if descriptor.kind != expected_kind
+        || descriptor.max_bytes == 0
+        || descriptor.max_bytes > ROADWATCHER_RELEASE_MANIFEST_MAX_BYTES
+        || !is_sha256(&descriptor.sha256)
+    {
+        return Err(format!(
+            "{} release manifest descriptor is invalid",
+            component.id
+        ));
+    }
+    let expected_manifest_name = archive_name
+        .strip_suffix(".zip")
+        .map(|stem| format!("{stem}.manifest.json"))
+        .ok_or_else(|| format!("{} release archive file name is invalid", component.id))?;
+    let (manifest_tag, manifest_url_name) = parse_roadwatcher_release_download(&descriptor.url)?;
+    if archive_tag != manifest_tag || manifest_url_name != expected_manifest_name {
+        return Err(format!(
+            "{} release manifest must be a companion asset from the same release tag",
+            component.id
+        ));
+    }
+    Ok(())
+}
+
+fn validate_release_file_name(file_name: &str, extension: &str) -> Result<(), String> {
+    validate_relative_path(Path::new(file_name))?;
+    if Path::new(file_name).components().count() != 1
+        || file_name.len() > 200
+        || !file_name.is_ascii()
+        || !file_name.ends_with(extension)
+    {
+        return Err("RoadWatcher release asset file name is unsafe".to_string());
+    }
+    Ok(())
+}
+
+fn parse_roadwatcher_release_download(url: &str) -> Result<(String, String), String> {
+    validate_download_url(url)?;
+    let parsed = Url::parse(url)
+        .map_err(|error| format!("RoadWatcher release asset URL is invalid: {error}"))?;
+    if parsed.scheme() != "https"
+        || parsed.host_str() != Some("github.com")
+        || parsed.port().is_some()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err("RoadWatcher release asset URL is not canonical".to_string());
+    }
+    let segments = parsed
+        .path_segments()
+        .ok_or_else(|| "RoadWatcher release asset URL has no path".to_string())?
+        .collect::<Vec<_>>();
+    let [owner, repository, releases, download, tag, file_name] = segments.as_slice() else {
+        return Err("RoadWatcher release asset URL has an unexpected path".to_string());
+    };
+    if *owner != ROADWATCHER_RELEASE_OWNER
+        || *repository != ROADWATCHER_RELEASE_REPOSITORY
+        || *releases != "releases"
+        || *download != "download"
+        || !valid_release_tag(tag)
+    {
+        return Err(
+            "RoadWatcher release asset URL is not an approved release download".to_string(),
+        );
+    }
+    validate_release_file_name(file_name, "")?;
+    Ok(((*tag).to_string(), (*file_name).to_string()))
+}
+
+fn valid_release_tag(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 100
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+        })
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64 && value.chars().all(|character| character.is_ascii_hexdigit())
 }
 
 fn visit_dependencies(
@@ -1862,9 +2235,23 @@ fn extract_zip(
     destination: &Path,
     cancelled: impl Fn() -> bool,
 ) -> Result<(), String> {
+    extract_zip_bounded(archive_path, destination, usize::MAX, u64::MAX, cancelled)
+}
+
+fn extract_zip_bounded(
+    archive_path: &Path,
+    destination: &Path,
+    max_entries: usize,
+    max_unpacked_bytes: u64,
+    cancelled: impl Fn() -> bool,
+) -> Result<(), String> {
     let file = File::open(archive_path).map_err(|error| error.to_string())?;
     let mut archive =
         ZipArchive::new(file).map_err(|error| format!("dependency ZIP is invalid: {error}"))?;
+    if archive.len() > max_entries {
+        return Err("dependency ZIP exceeds its entry-count limit".to_string());
+    }
+    let mut unpacked_bytes = 0_u64;
     for index in 0..archive.len() {
         if cancelled() {
             return Err("dependency extraction cancelled".to_string());
@@ -1878,14 +2265,426 @@ fn extract_zip(
         if entry.is_dir() {
             fs::create_dir_all(&output_path).map_err(|error| error.to_string())?;
         } else {
+            let remaining = max_unpacked_bytes.saturating_sub(unpacked_bytes);
+            if entry.size() > remaining {
+                return Err("dependency ZIP exceeds its unpacked-size limit".to_string());
+            }
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
             let mut output = File::create(&output_path).map_err(|error| error.to_string())?;
-            io::copy(&mut entry, &mut output).map_err(|error| error.to_string())?;
+            let copied = {
+                let mut bounded_entry = (&mut entry).take(remaining.saturating_add(1));
+                io::copy(&mut bounded_entry, &mut output).map_err(|error| error.to_string())?
+            };
+            if copied > remaining {
+                return Err("dependency ZIP exceeds its unpacked-size limit".to_string());
+            }
+            unpacked_bytes = unpacked_bytes
+                .checked_add(copied)
+                .ok_or_else(|| "dependency ZIP unpacked-size overflow".to_string())?;
         }
     }
     Ok(())
+}
+
+fn verify_roadwatcher_release_manifest(
+    component: &DependencyComponent,
+    artifact: &DependencyArtifact,
+    descriptor: &DependencyArtifactManifestDescriptor,
+    archive_path: &Path,
+    manifest_path: &Path,
+) -> Result<(), String> {
+    let exact_size = artifact.size_bytes.ok_or_else(|| {
+        "RoadWatcher release archive is missing its exact catalog byte size".to_string()
+    })?;
+    let metadata = fs::metadata(archive_path)
+        .map_err(|error| format!("could not inspect verified release archive: {error}"))?;
+    if !metadata.is_file() || metadata.len() != exact_size {
+        return Err(
+            "verified release archive does not match its exact catalog byte size".to_string(),
+        );
+    }
+    let bytes = read_bounded_file(manifest_path, descriptor.max_bytes, "release manifest")?;
+    let manifest: RoadWatcherReleaseManifest = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("RoadWatcher release manifest is invalid JSON: {error}"))?;
+    validate_roadwatcher_release_manifest(&manifest, component, artifact, descriptor)
+}
+
+fn validate_roadwatcher_release_manifest(
+    manifest: &RoadWatcherReleaseManifest,
+    component: &DependencyComponent,
+    artifact: &DependencyArtifact,
+    descriptor: &DependencyArtifactManifestDescriptor,
+) -> Result<(), String> {
+    if manifest.schema_version != 1
+        || manifest.id != component.id
+        || manifest.kind != descriptor.kind
+        || manifest.version != component.version
+        || manifest.platform != "windows-x86_64"
+    {
+        return Err("RoadWatcher release manifest identity does not match the catalog".to_string());
+    }
+    validate_iso_utc(&manifest.generated_at, "release manifest generatedAt")?;
+    let file_name = artifact.file_name.as_deref().ok_or_else(|| {
+        "RoadWatcher release archive file name is missing from the catalog".to_string()
+    })?;
+    let exact_size = artifact.size_bytes.ok_or_else(|| {
+        "RoadWatcher release archive exact byte size is missing from the catalog".to_string()
+    })?;
+    validate_release_file_name(&manifest.artifact.file_name, ".zip")?;
+    if manifest.artifact.file_name != file_name
+        || manifest.artifact.size_bytes != exact_size
+        || !manifest
+            .artifact
+            .sha256
+            .eq_ignore_ascii_case(&artifact.sha256)
+        || manifest.artifact.license.id != component.license.id
+        || manifest.artifact.license.url != component.license.url
+    {
+        return Err(
+            "RoadWatcher release manifest artifact identity does not match the catalog".to_string(),
+        );
+    }
+    validate_release_license(&manifest.artifact.license, "release artifact license")?;
+    if manifest.sources.is_empty() || manifest.tools.is_empty() {
+        return Err("RoadWatcher release manifest lacks required build provenance".to_string());
+    }
+    let mut source_ids = HashSet::new();
+    for source in &manifest.sources {
+        if !valid_component_id(&source.id) || !source_ids.insert(source.id.clone()) {
+            return Err(
+                "RoadWatcher release manifest has an invalid or duplicate source ID".to_string(),
+            );
+        }
+        validate_https_url(&source.url)?;
+        validate_bounded_text(&source.version, "release source version", 200)?;
+        validate_release_license(&source.license, "release source license")?;
+        if !is_sha256(&source.downloaded_sha256) || source.size_bytes == 0 {
+            return Err("RoadWatcher release manifest source identity is invalid".to_string());
+        }
+        if let Some(publisher_sha256) = &source.publisher_sha256 {
+            if !is_sha256(publisher_sha256) {
+                return Err("RoadWatcher release manifest publisher hash is invalid".to_string());
+            }
+        }
+        if let Some(etag) = &source.etag {
+            validate_bounded_text(etag, "release source ETag", 512)?;
+        }
+        if let Some(last_modified) = &source.last_modified {
+            validate_bounded_text(last_modified, "release source Last-Modified", 512)?;
+        }
+        let has_retrieval_identity = source.etag.is_some() || source.last_modified.is_some();
+        if source.publisher_sha256.is_none() && !has_retrieval_identity {
+            return Err(
+                "RoadWatcher release manifest source lacks publisher or retrieval identity"
+                    .to_string(),
+            );
+        }
+        validate_iso_utc(&source.retrieved_at, "release source retrievedAt")?;
+    }
+    let mut tool_names = HashSet::new();
+    for tool in &manifest.tools {
+        validate_bounded_text(&tool.name, "release build tool name", 100)?;
+        validate_bounded_text(&tool.version, "release build tool version", 100)?;
+        if !tool_names.insert(tool.name.clone()) {
+            return Err("RoadWatcher release manifest has duplicate build tools".to_string());
+        }
+    }
+    validate_bounded_text(&manifest.build.recipe, "release build recipe", 260)?;
+    validate_bounded_text(
+        &manifest.build.recipe_version,
+        "release build recipe version",
+        100,
+    )?;
+    for (key, value) in &manifest.build.parameters {
+        if !valid_build_parameter_name(key)
+            || !matches!(
+                value,
+                serde_json::Value::String(_)
+                    | serde_json::Value::Number(_)
+                    | serde_json::Value::Bool(_)
+            )
+        {
+            return Err("RoadWatcher release manifest build parameters are invalid".to_string());
+        }
+        if let serde_json::Value::String(value) = value {
+            validate_bounded_text(value, "release build parameter", 512)?;
+        }
+    }
+    Ok(())
+}
+
+fn read_bounded_file(path: &Path, max_bytes: u64, label: &str) -> Result<Vec<u8>, String> {
+    let metadata =
+        fs::metadata(path).map_err(|error| format!("could not inspect {label}: {error}"))?;
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return Err(format!("{label} exceeds its bounded size limit"));
+    }
+    let capacity = usize::try_from(metadata.len()).unwrap_or(0);
+    let mut bytes = Vec::with_capacity(capacity);
+    let mut input = File::open(path).map_err(|error| format!("could not read {label}: {error}"))?;
+    Read::take(&mut input, max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("could not read {label}: {error}"))?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(format!("{label} exceeds its bounded size limit"));
+    }
+    Ok(bytes)
+}
+
+fn validate_roadwatcher_release_payload(
+    component: &DependencyComponent,
+    payload: &Path,
+    cancelled: impl Fn() -> bool + Copy,
+) -> Result<(), String> {
+    match component.id.as_str() {
+        "york-valhalla-tiles" => validate_york_valhalla_payload(payload, cancelled),
+        "cv-yolo11n" => validate_cv_yolo_payload(payload),
+        _ => Err("RoadWatcher release payload has an unsupported component identity".to_string()),
+    }
+}
+
+fn validate_cv_yolo_payload(payload: &Path) -> Result<(), String> {
+    validate_exact_payload_root(payload, &[("yolo11n.onnx", "file"), ("labels.txt", "file")])?;
+    validate_regular_nonempty_file(&payload.join("yolo11n.onnx"), "RoadWatcher CV model")?;
+    let labels = read_bounded_file(
+        &payload.join("labels.txt"),
+        ROADWATCHER_CV_LABELS_MAX_BYTES,
+        "RoadWatcher CV labels",
+    )?;
+    let labels = std::str::from_utf8(&labels)
+        .map_err(|_| "RoadWatcher CV labels are not UTF-8".to_string())?;
+    if !labels.ends_with('\n') {
+        return Err("RoadWatcher CV labels must end with a newline".to_string());
+    }
+    let mut known = HashSet::new();
+    let mut count = 0_usize;
+    for label in labels.lines() {
+        validate_bounded_text(label, "RoadWatcher CV label", 200)?;
+        if !known.insert(label.to_string()) {
+            return Err("RoadWatcher CV labels contain duplicates".to_string());
+        }
+        count += 1;
+        if count > 10_000 {
+            return Err("RoadWatcher CV labels exceed their count limit".to_string());
+        }
+    }
+    if count == 0 {
+        return Err("RoadWatcher CV labels are empty".to_string());
+    }
+    Ok(())
+}
+
+fn validate_york_valhalla_payload(
+    payload: &Path,
+    cancelled: impl Fn() -> bool + Copy,
+) -> Result<(), String> {
+    validate_exact_payload_root(
+        payload,
+        &[("valhalla.json", "file"), ("tiles", "directory")],
+    )?;
+    let config = read_bounded_file(
+        &payload.join("valhalla.json"),
+        ROADWATCHER_VALHALLA_CONFIG_MAX_BYTES,
+        "RoadWatcher Valhalla configuration",
+    )?;
+    let config: serde_json::Value = serde_json::from_slice(&config)
+        .map_err(|error| format!("RoadWatcher Valhalla configuration is invalid JSON: {error}"))?;
+    validate_portable_valhalla_config(&config)?;
+    let mut file_count = 0_usize;
+    let mut total_bytes = 0_u64;
+    validate_valhalla_tile_tree(
+        &payload.join("tiles"),
+        0,
+        &mut file_count,
+        &mut total_bytes,
+        cancelled,
+    )?;
+    if file_count == 0 {
+        return Err("RoadWatcher Valhalla tiles contain no tile files".to_string());
+    }
+    Ok(())
+}
+
+fn validate_exact_payload_root(payload: &Path, expected: &[(&str, &str)]) -> Result<(), String> {
+    let mut entries = HashMap::new();
+    for entry in
+        fs::read_dir(payload).map_err(|error| format!("could not inspect payload: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("could not inspect payload entry: {error}"))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let fold = name.to_ascii_lowercase();
+        if entries
+            .insert(
+                fold,
+                (
+                    name,
+                    entry.path(),
+                    entry.file_type().map_err(|error| error.to_string())?,
+                ),
+            )
+            .is_some()
+        {
+            return Err("RoadWatcher release payload contains a case-colliding entry".to_string());
+        }
+    }
+    if entries.len() != expected.len() {
+        return Err("RoadWatcher release payload has unexpected root entries".to_string());
+    }
+    for (name, kind) in expected {
+        let (actual_name, path, file_type) = entries
+            .get(&name.to_ascii_lowercase())
+            .ok_or_else(|| format!("RoadWatcher release payload is missing {name}"))?;
+        if actual_name != name
+            || file_type.is_symlink()
+            || !matches!(
+                (*kind, file_type.is_file(), file_type.is_dir()),
+                ("file", true, _) | ("directory", _, true)
+            )
+        {
+            return Err(format!(
+                "RoadWatcher release payload entry {name} has the wrong type"
+            ));
+        }
+        if *kind == "file" {
+            validate_regular_nonempty_file(path, "RoadWatcher release payload file")?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_regular_nonempty_file(path: &Path, label: &str) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("could not inspect {label}: {error}"))?;
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() || metadata.len() == 0 {
+        return Err(format!("{label} is not a non-empty regular file"));
+    }
+    Ok(())
+}
+
+fn validate_portable_valhalla_config(config: &serde_json::Value) -> Result<(), String> {
+    let mjolnir = config
+        .as_object()
+        .and_then(|value| value.get("mjolnir"))
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "RoadWatcher Valhalla configuration is missing mjolnir".to_string())?;
+    if mjolnir.get("tile_dir").and_then(serde_json::Value::as_str)
+        != Some(ROADWATCHER_TILE_DIRECTORY_TOKEN)
+    {
+        return Err("RoadWatcher Valhalla configuration is not portable".to_string());
+    }
+    for key in [
+        "tile_extract",
+        "admin",
+        "admins",
+        "incident_dir",
+        "timezones",
+        "timezone",
+        "traffic_extract",
+        "transit_dir",
+    ] {
+        if mjolnir
+            .get(key)
+            .is_some_and(|value| !value.is_null() && value.as_str() != Some(""))
+        {
+            return Err(format!(
+                "RoadWatcher Valhalla configuration cannot select mjolnir.{key}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_valhalla_tile_tree(
+    root: &Path,
+    depth: usize,
+    file_count: &mut usize,
+    total_bytes: &mut u64,
+    cancelled: impl Fn() -> bool + Copy,
+) -> Result<(), String> {
+    if depth > 16 {
+        return Err("RoadWatcher Valhalla tiles exceed their directory-depth limit".to_string());
+    }
+    for entry in
+        fs::read_dir(root).map_err(|error| format!("could not inspect Valhalla tiles: {error}"))?
+    {
+        if cancelled() {
+            return Err("dependency installation cancelled".to_string());
+        }
+        let entry =
+            entry.map_err(|error| format!("could not inspect Valhalla tile entry: {error}"))?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|error| format!("could not inspect Valhalla tile entry: {error}"))?;
+        if metadata.file_type().is_symlink() {
+            return Err("RoadWatcher Valhalla tiles contain a link".to_string());
+        }
+        if metadata.file_type().is_dir() {
+            validate_valhalla_tile_tree(&path, depth + 1, file_count, total_bytes, cancelled)?;
+            continue;
+        }
+        if !metadata.file_type().is_file()
+            || metadata.len() == 0
+            || path.extension().and_then(|value| value.to_str()) != Some("gph")
+        {
+            return Err("RoadWatcher Valhalla tiles contain an invalid tile file".to_string());
+        }
+        *file_count = file_count
+            .checked_add(1)
+            .ok_or_else(|| "RoadWatcher Valhalla tile count overflow".to_string())?;
+        *total_bytes = total_bytes
+            .checked_add(metadata.len())
+            .ok_or_else(|| "RoadWatcher Valhalla tile size overflow".to_string())?;
+        if *file_count > ROADWATCHER_VALHALLA_TILE_MAX_FILES
+            || *total_bytes > ROADWATCHER_VALHALLA_TILE_MAX_BYTES
+        {
+            return Err(
+                "RoadWatcher Valhalla tiles exceed their bounded payload limit".to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_release_license(
+    license: &RoadWatcherReleaseLicense,
+    label: &str,
+) -> Result<(), String> {
+    if !valid_component_id(&license.id) {
+        return Err(format!("{label} ID is invalid"));
+    }
+    validate_bounded_text(&license.name, label, 200)?;
+    validate_https_url(&license.url)
+}
+
+fn validate_iso_utc(value: &str, label: &str) -> Result<(), String> {
+    if value.len() > 64 || !value.ends_with('Z') {
+        return Err(format!("{label} is not an ISO UTC timestamp"));
+    }
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map_err(|_| format!("{label} is not an ISO UTC timestamp"))?;
+    Ok(())
+}
+
+fn validate_bounded_text(value: &str, label: &str, max_length: usize) -> Result<(), String> {
+    if value.trim().is_empty() || value.len() > max_length || value.contains(['\r', '\n', '\0']) {
+        return Err(format!("{label} is invalid"));
+    }
+    Ok(())
+}
+
+fn valid_component_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        })
+}
+
+fn valid_build_parameter_name(value: &str) -> bool {
+    let mut characters = value.chars();
+    matches!(characters.next(), Some(character) if character.is_ascii_alphabetic())
+        && characters.all(|character| character.is_ascii_alphanumeric())
 }
 
 fn validate_relative_path(path: &Path) -> Result<(), String> {
@@ -2025,9 +2824,11 @@ mod tests {
                     url: "https://github.com/example/tool.zip".to_string(),
                     sha256: "a".repeat(64),
                     max_bytes: 100,
+                    size_bytes: None,
                     archive: "zip".to_string(),
                     file_name: None,
                 }),
+                artifact_manifest: None,
                 bootstrap: None,
                 install_strategy: None,
                 dependencies: vec![],
@@ -2127,6 +2928,7 @@ mod tests {
                 url: "https://releases.astral.sh/python.tar.gz".to_string(),
                 sha256: "b".repeat(64),
                 max_bytes: 22_000_000,
+                size_bytes: None,
                 archive: "file".to_string(),
                 file_name: Some("20260610/python.tar.gz".to_string()),
             }),
@@ -2239,6 +3041,7 @@ mod tests {
             url: "https://files.pythonhosted.org/packages/49/bd/pyvalhalla.whl".to_string(),
             sha256: "e".repeat(64),
             max_bytes: 24_298_623,
+            size_bytes: None,
             archive: "file".to_string(),
             file_name: Some("pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl".to_string()),
         });
@@ -2340,6 +3143,7 @@ mod tests {
             url: "https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-full_build.zip".to_string(),
             sha256: "49b28c5f16addd40239a66949973458769b7056fb7752c30ac0d53389d09a552".to_string(),
             max_bytes: 252_194_496,
+            size_bytes: None,
             archive: "zip".to_string(),
             file_name: Some("ffmpeg-8.1.1-full_build.zip".to_string()),
         });
@@ -2377,6 +3181,402 @@ mod tests {
         assert!(validate_catalog(&arbitrary_reference)
             .unwrap_err()
             .contains("managed reference drifted"));
+    }
+
+    fn roadwatcher_release_catalog(component_id: &str) -> DependencyCatalog {
+        let mut value = catalog();
+        let mut managed_valhalla_support = value.components[0].clone();
+        let component = &mut value.components[0];
+        let (kind, file_name, references, dependencies) = match component_id {
+            "york-valhalla-tiles" => (
+                "tiles",
+                "york-valhalla-tiles-2026.07.13-test.1-windows-x86_64.zip",
+                vec![
+                    DependencyReference {
+                        id: "config".to_string(),
+                        path: "valhalla.json".to_string(),
+                        kind: "file".to_string(),
+                    },
+                    DependencyReference {
+                        id: "tiles".to_string(),
+                        path: "tiles".to_string(),
+                        kind: "directory".to_string(),
+                    },
+                ],
+                vec!["managed-valhalla".to_string()],
+            ),
+            "cv-yolo11n" => (
+                "model",
+                "cv-yolo11n-2026.07.13-test.1-windows-x86_64.zip",
+                vec![
+                    DependencyReference {
+                        id: "model".to_string(),
+                        path: "yolo11n.onnx".to_string(),
+                        kind: "file".to_string(),
+                    },
+                    DependencyReference {
+                        id: "labels".to_string(),
+                        path: "labels.txt".to_string(),
+                        kind: "file".to_string(),
+                    },
+                ],
+                vec![],
+            ),
+            other => panic!("unsupported fixture component {other}"),
+        };
+        let tag = "internal-test";
+        let manifest_name = file_name
+            .strip_suffix(".zip")
+            .map(|stem| format!("{stem}.manifest.json"))
+            .unwrap();
+        component.id = component_id.to_string();
+        component.label = format!("Test {component_id}");
+        component.version = "2026.07.13-test.1".to_string();
+        component.source_url = "https://github.com/Remi-Z/RoadWatcher/releases".to_string();
+        component.license = DependencyLicense {
+            id: "agpl-3-0".to_string(),
+            label: "AGPL-3.0".to_string(),
+            url: "https://example.com/approved-license".to_string(),
+            digest: "approved-license-digest".to_string(),
+            consent_required: true,
+        };
+        component.artifact = Some(DependencyArtifact {
+            url: format!(
+                "https://github.com/Remi-Z/RoadWatcher/releases/download/{tag}/{file_name}"
+            ),
+            sha256: "d".repeat(64),
+            max_bytes: 100_000,
+            size_bytes: Some(64),
+            archive: "zip".to_string(),
+            file_name: Some(file_name.to_string()),
+        });
+        component.artifact_manifest = Some(DependencyArtifactManifestDescriptor {
+            url: format!(
+                "https://github.com/Remi-Z/RoadWatcher/releases/download/{tag}/{manifest_name}"
+            ),
+            sha256: "e".repeat(64),
+            max_bytes: 100_000,
+            kind: kind.to_string(),
+        });
+        component.install_strategy = Some(DependencyInstallStrategy {
+            kind: "roadwatcher-release-archive".to_string(),
+            python_version: String::new(),
+            package: String::new(),
+            package_version: String::new(),
+            wheel_file_name: String::new(),
+        });
+        component.bootstrap = None;
+        component.dependencies = dependencies;
+        component.references = references;
+        component.project_imports = vec![];
+        if component_id == "york-valhalla-tiles" {
+            managed_valhalla_support.id = "managed-valhalla".to_string();
+            managed_valhalla_support.label = "Managed Valhalla support fixture".to_string();
+            managed_valhalla_support.version = "fixture".to_string();
+            managed_valhalla_support.dependencies = vec![];
+            managed_valhalla_support.references = vec![];
+            managed_valhalla_support.install_strategy = None;
+            managed_valhalla_support.artifact_manifest = None;
+            value.components.push(managed_valhalla_support);
+        }
+        value
+    }
+
+    #[test]
+    fn validates_only_manifest_bound_roadwatcher_release_archives() {
+        validate_catalog(&roadwatcher_release_catalog("york-valhalla-tiles")).unwrap();
+        assert!(validate_catalog(&roadwatcher_release_catalog("cv-yolo11n")).is_ok());
+
+        let mut missing_descriptor = roadwatcher_release_catalog("cv-yolo11n");
+        missing_descriptor.components[0].artifact_manifest = None;
+        assert!(validate_catalog(&missing_descriptor)
+            .unwrap_err()
+            .contains("manifest descriptor"));
+
+        let mut missing_exact_size = roadwatcher_release_catalog("cv-yolo11n");
+        missing_exact_size.components[0]
+            .artifact
+            .as_mut()
+            .unwrap()
+            .size_bytes = None;
+        assert!(validate_catalog(&missing_exact_size)
+            .unwrap_err()
+            .contains("exact verified byte size"));
+
+        let mut wrong_release = roadwatcher_release_catalog("cv-yolo11n");
+        wrong_release.components[0].artifact.as_mut().unwrap().url =
+            "https://github.com/Remi-Z/RoadWatcher/releases/download/internal-test/other.zip"
+                .to_string();
+        assert!(validate_catalog(&wrong_release)
+            .unwrap_err()
+            .contains("file name"));
+
+        let mut wrong_manifest = roadwatcher_release_catalog("cv-yolo11n");
+        wrong_manifest.components[0]
+            .artifact_manifest
+            .as_mut()
+            .unwrap()
+            .kind = "tiles".to_string();
+        assert!(validate_catalog(&wrong_manifest)
+            .unwrap_err()
+            .contains("manifest descriptor"));
+
+        let mut wrong_reference = roadwatcher_release_catalog("york-valhalla-tiles");
+        wrong_reference.components[0].references[1].path = "other".to_string();
+        assert!(validate_catalog(&wrong_reference)
+            .unwrap_err()
+            .contains("reference drifted"));
+
+        let mut arbitrary_component = roadwatcher_release_catalog("cv-yolo11n");
+        arbitrary_component.components[0].id = "arbitrary".to_string();
+        assert!(validate_catalog(&arbitrary_component)
+            .unwrap_err()
+            .contains("not an approved"));
+    }
+
+    #[test]
+    fn verifies_exact_roadwatcher_release_manifest_identity() {
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-release-manifest-test-{}",
+            Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let mut catalog = roadwatcher_release_catalog("cv-yolo11n");
+        let archive_name = catalog.components[0]
+            .artifact
+            .as_ref()
+            .unwrap()
+            .file_name
+            .clone()
+            .unwrap();
+        let archive_path = root.join(archive_name);
+        fs::write(
+            &archive_path,
+            b"RoadWatcher generated release archive fixture",
+        )
+        .unwrap();
+        {
+            let artifact = catalog.components[0].artifact.as_mut().unwrap();
+            artifact.size_bytes = Some(fs::metadata(&archive_path).unwrap().len());
+            artifact.sha256 = hex::encode(Sha256::digest(fs::read(&archive_path).unwrap()));
+        }
+        let manifest_path = root.join("artifact.manifest.json");
+        let manifest = release_manifest_fixture(
+            &catalog.components[0],
+            catalog.components[0].artifact.as_ref().unwrap(),
+        );
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+        let component = &catalog.components[0];
+        let artifact = component.artifact.as_ref().unwrap();
+        let descriptor = component.artifact_manifest.as_ref().unwrap();
+        verify_roadwatcher_release_manifest(
+            component,
+            artifact,
+            descriptor,
+            &archive_path,
+            &manifest_path,
+        )
+        .unwrap();
+
+        let mut wrong_id = manifest.clone();
+        wrong_id["id"] = serde_json::Value::String("other".to_string());
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&wrong_id).unwrap(),
+        )
+        .unwrap();
+        assert!(verify_roadwatcher_release_manifest(
+            component,
+            artifact,
+            descriptor,
+            &archive_path,
+            &manifest_path,
+        )
+        .unwrap_err()
+        .contains("identity"));
+
+        let mut wrong_license = manifest.clone();
+        wrong_license["artifact"]["license"]["id"] =
+            serde_json::Value::String("different-license".to_string());
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&wrong_license).unwrap(),
+        )
+        .unwrap();
+        assert!(verify_roadwatcher_release_manifest(
+            component,
+            artifact,
+            descriptor,
+            &archive_path,
+            &manifest_path,
+        )
+        .unwrap_err()
+        .contains("artifact identity"));
+
+        let mut malformed_source = manifest.clone();
+        malformed_source["sources"][0]["etag"] =
+            serde_json::Value::String("unsafe\nETag".to_string());
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&malformed_source).unwrap(),
+        )
+        .unwrap();
+        assert!(verify_roadwatcher_release_manifest(
+            component,
+            artifact,
+            descriptor,
+            &archive_path,
+            &manifest_path,
+        )
+        .unwrap_err()
+        .contains("ETag"));
+
+        let mut unsafe_shape = manifest;
+        unsafe_shape["unexpected"] = serde_json::Value::Bool(true);
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&unsafe_shape).unwrap(),
+        )
+        .unwrap();
+        assert!(verify_roadwatcher_release_manifest(
+            component,
+            artifact,
+            descriptor,
+            &archive_path,
+            &manifest_path,
+        )
+        .unwrap_err()
+        .contains("invalid JSON"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn validates_release_payload_layouts_and_bounded_extraction() {
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-release-payload-test-{}",
+            Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let cv_payload = root.join("cv");
+        fs::create_dir_all(&cv_payload).unwrap();
+        fs::write(cv_payload.join("yolo11n.onnx"), b"fixture-model").unwrap();
+        fs::write(cv_payload.join("labels.txt"), b"car\nbicycle\n").unwrap();
+        validate_roadwatcher_release_payload(
+            &roadwatcher_release_catalog("cv-yolo11n").components[0],
+            &cv_payload,
+            || false,
+        )
+        .unwrap();
+        fs::write(cv_payload.join("unexpected.txt"), b"nope").unwrap();
+        assert!(validate_roadwatcher_release_payload(
+            &roadwatcher_release_catalog("cv-yolo11n").components[0],
+            &cv_payload,
+            || false,
+        )
+        .unwrap_err()
+        .contains("unexpected root"));
+        fs::remove_file(cv_payload.join("unexpected.txt")).unwrap();
+
+        let york_payload = root.join("york");
+        fs::create_dir_all(york_payload.join("tiles/0/000")).unwrap();
+        fs::write(
+            york_payload.join("valhalla.json"),
+            br#"{"mjolnir":{"tile_dir":"${ROADWATCHER_TILE_DIR}"}}"#,
+        )
+        .unwrap();
+        fs::write(york_payload.join("tiles/0/000/000.gph"), b"tile").unwrap();
+        validate_roadwatcher_release_payload(
+            &roadwatcher_release_catalog("york-valhalla-tiles").components[0],
+            &york_payload,
+            || false,
+        )
+        .unwrap();
+        fs::write(
+            york_payload.join("valhalla.json"),
+            br#"{"mjolnir":{"tile_dir":"${ROADWATCHER_TILE_DIR}","tile_extract":"elsewhere"}}"#,
+        )
+        .unwrap();
+        assert!(validate_roadwatcher_release_payload(
+            &roadwatcher_release_catalog("york-valhalla-tiles").components[0],
+            &york_payload,
+            || false,
+        )
+        .unwrap_err()
+        .contains("tile_extract"));
+
+        let archive_path = root.join("bounded.zip");
+        let archive = File::create(&archive_path).unwrap();
+        let mut writer = ZipWriter::new(archive);
+        writer
+            .start_file("one.txt", SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"12345").unwrap();
+        writer
+            .start_file("two.txt", SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"67890").unwrap();
+        writer.finish().unwrap();
+        let extraction = root.join("extracted");
+        fs::create_dir_all(&extraction).unwrap();
+        assert!(
+            extract_zip_bounded(&archive_path, &extraction, 1, 100, || false)
+                .unwrap_err()
+                .contains("entry-count")
+        );
+        assert!(
+            extract_zip_bounded(&archive_path, &extraction, 10, 4, || false)
+                .unwrap_err()
+                .contains("unpacked-size")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn release_manifest_fixture(
+        component: &DependencyComponent,
+        artifact: &DependencyArtifact,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "schemaVersion": 1,
+            "id": component.id,
+            "kind": component.artifact_manifest.as_ref().unwrap().kind,
+            "version": component.version,
+            "platform": "windows-x86_64",
+            "generatedAt": "2026-07-13T12:00:00Z",
+            "artifact": {
+                "fileName": artifact.file_name,
+                "sizeBytes": artifact.size_bytes,
+                "sha256": artifact.sha256,
+                "license": {
+                    "id": component.license.id,
+                    "name": "Approved test license",
+                    "url": component.license.url
+                }
+            },
+            "sources": [{
+                "id": "approved-source",
+                "url": "https://example.com/source",
+                "version": "v1",
+                "license": {
+                    "id": "approved-source-license",
+                    "name": "Approved source license",
+                    "url": "https://example.com/source-license"
+                },
+                "downloadedSha256": "a".repeat(64),
+                "publisherSha256": "b".repeat(64),
+                "retrievedAt": "2026-07-13T12:00:00Z",
+                "sizeBytes": 1
+            }],
+            "tools": [{ "name": "fixture-builder", "version": "1" }],
+            "build": {
+                "recipe": "scripts/fixture.py",
+                "recipeVersion": "1",
+                "parameters": { "bufferKm": 10 }
+            }
+        })
     }
 
     #[test]
@@ -2654,6 +3854,7 @@ mod tests {
                 version: "1".to_string(),
                 artifact_sha256: "a".repeat(64),
                 bootstrap_artifact_sha256: None,
+                artifact_manifest_sha256: None,
                 source_url: "https://github.com/example/tool.zip".to_string(),
                 installed_at_unix: 1,
             })
@@ -3017,6 +4218,7 @@ mod tests {
                 version: "1".to_string(),
                 artifact_sha256: "a".repeat(64),
                 bootstrap_artifact_sha256: None,
+                artifact_manifest_sha256: None,
                 source_url: "https://github.com/example/tool.zip".to_string(),
                 installed_at_unix: 1,
             })

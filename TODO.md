@@ -151,6 +151,14 @@ later agent does not mistake an intentional boundary for an unfinished feature.
     `sourceDateEpoch` generation time for every managed artifact manifest; GDAL
     records its retained source archive size/hash and canonical regular-file
     totals for local prefix/notice build inputs.
+- [x] `[AGENT]` Bind every future RoadWatcher-hosted York tile or ONNX archive
+  to a separately SHA-256-verified companion manifest before extraction or
+  promotion. The fixed installer contract requires exact component ID, version,
+  Windows platform, artifact kind, archive file name/size/hash, and artifact
+  license ID/URL from the same canonical `Remi-Z/RoadWatcher` release tag;
+  manifest hash is retained in the ownership marker. It also rejects unsafe or
+  over-large ZIPs and payload layouts before atomic promotion. No blocked
+  catalog component was promoted by this implementation.
 - [x] `[AGENT]` Add bounded one-shot managed Valhalla matching without Docker or
   a persistent service.
 - [x] `[AGENT]` Preserve configured HTTP Valhalla and OSRM fallbacks.

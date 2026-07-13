@@ -35,9 +35,9 @@ unpublished hashes in final evidence.
 | GPStitch telemetry render and provenance | Pinned v0.18.0 source/license, durable worker tests, real locked/offline fixture render | Proven complete |
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
 | Installed runtime preparation and preflight | Owner-approved uv 0.11.23 and CPython 3.12.13 exact artifacts, app-local Python/cache roots, locked GPStitch/CV sync, exact managed Python resolver root, rollback/probe tests, real full manager smoke | Proven complete for managed uv/Python and external-override models |
-| Managed dependency command/security boundary | Build-validated catalog, strict ID/license commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, manual allowlisted redirects, backend-resolved reference contracts, Setup Center dependency-order tests | Proven complete; uv/Python, pyvalhalla, and FFmpeg are available while data/model artifacts stay gated |
+| Managed dependency command/security boundary | Build-validated catalog, strict ID/license commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, manual allowlisted redirects, backend-resolved reference contracts, manifest-bound release archive contract, Setup Center dependency-order tests | Proven complete; uv/Python, pyvalhalla, and FFmpeg are available while data/model artifacts stay gated |
 | Managed one-shot Valhalla adapter | Exact Python 3.12/pyvalhalla 3.7.0 wheel, offline uv environment install, exact package/Python/service probe, ownership-resolved config/tile references, bounded process/request/result files, HTTP/OSRM fallback tests, durable provenance | Managed runtime complete; production York tile artifact missing |
-| Managed artifact provenance manifests | Strict generator/verifier, three Node tests, release-audit integration, manifest documentation | Proven complete; every source now carries a positive byte size and release builders use `sourceDateEpoch` rather than wall-clock manifest time |
+| Managed artifact provenance manifests | Strict generator/verifier, manifest-bound installer verification, focused Rust contract tests, release-audit integration, manifest documentation | Proven complete; every source carries a positive byte size, release builders use `sourceDateEpoch`, and a future hosted archive cannot be promoted without its separately hash-verified matching manifest |
 | Deterministic release-asset packaging | Exact-tree/SHA lock, normalized stored ZIPs, atomic no-overwrite publication, three Python tests | Proven complete as shared packaging foundation; York/ONNX/GDAL builders are fake-tool qualified, while real owner-approved input recipes and resulting assets remain absent |
 | Reproducible York/ONNX release-asset production | Strict York boundary/OSM/config/tool recipe and strict weights/labels/exporter ONNX recipe; coverage/tensor validation, fixed bounded commands, deterministic archives and verified manifest publication; catalog placeholders | Both builders proven with fake tools/workers; real approved recipes/assets remain owner-gated |
 | Source-only minimal GDAL/OGR asset production | Retained GDAL source-archive hash/size/tree binding, locked local prefix/notice trees and CMake/Ninja/MSVC/dumpbin/Node identities; fixed profile; constrained discovery/cache, exact OGR/GDAL inventories, notice, CRS, layout, and PE-closure checks; six fake-tool tests | Staging boundary proven; publisher evidence, actual link-input review, real toolchain/prefix recipe, notices, PE artifact, real-build inventory, second-build comparison, release URL, and catalog promotion remain open |
@@ -64,6 +64,11 @@ unpublished hashes in final evidence.
 - Release qualification: the runtime catalog audit, deterministic York/ONNX
   artifact tests, release metadata tests, production build, four CV sidecar
   tests, and five internal-pilot evidence-contract tests pass.
+- Managed release-archive boundary: three focused Rust tests pass for fixed
+  catalog/release-tag contracts, strict manifest identity/provenance parsing,
+  CV/York payload layouts, portable Valhalla configuration, and bounded ZIP
+  extraction. The entries remain blocked until owner-approved data/model assets
+  are built and published.
 - The private ride smoke copies only the smallest 128,353,932-byte LRV into an
   isolated temporary project, imports all 4,484 timed `Ride.gpx` points, creates
   a 145.00-second proxy, records 79 conservative CV findings at a 10-second

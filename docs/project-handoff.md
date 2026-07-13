@@ -1204,6 +1204,29 @@ unreviewed static dependency; actual link-input review, a real-build driver
 inventory, and the second clean Windows MSVC/vcpkg comparison remain required
 before any release asset or catalog promotion.
 
+### Manifest-bound RoadWatcher release archives (unpublished)
+
+The managed installer now has a separate fixed delivery boundary for future
+RoadWatcher-built York tiles and ONNX assets. A component can use
+`roadwatcher-release-archive` only for `york-valhalla-tiles` or `cv-yolo11n`.
+The future catalog must pin an exact archive size/hash/file name plus a separate
+`artifactManifest` URL/hash/size cap from the same canonical
+`Remi-Z/RoadWatcher` GitHub Release tag. The backend downloads and hash-verifies
+both before extraction, then strictly compares the generated manifest's ID,
+version, Windows platform, artifact kind, filename, exact size, hash, and
+artifact-license ID/URL with the catalog. Its manifest hash is retained in the
+ownership marker, so a legacy marker cannot appear ready after this contract is
+introduced.
+
+The release ZIP is also bounded to 250,000 entries and 32 GiB unpacked bytes.
+Before promotion, the York path accepts only a portable `valhalla.json` and
+regular bounded `.gph` tile tree; the CV path accepts only the locked ONNX and
+normalized labels pair. Focused Rust tests cover catalog drift, malformed or
+mismatched manifests, invalid source metadata, unexpected payload entries,
+portable-config rejection, and bounded extraction. The current catalog stays
+blocked: no data/model source, license decision, generated release asset, or
+publication authority was inferred from this work.
+
 ### GitHub Actions CI/CD (awaiting first remote run)
 
 `.github/workflows/ci.yml` now runs the supported Windows x64 checks on every

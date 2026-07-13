@@ -91,6 +91,7 @@ struct DependencyComponent {
     source_url: String,
     availability: String,
     artifact: Option<DependencyArtifact>,
+    artifact_manifest: Option<DependencyArtifactManifestDescriptor>,
     bootstrap: Option<DependencyBootstrap>,
     install_strategy: Option<DependencyInstallStrategy>,
     dependencies: Vec<String>,
@@ -138,6 +139,7 @@ struct DependencyLicense {
     label: String,
     url: String,
     digest: String,
+    consent_required: bool,
 }
 
 #[derive(Deserialize)]
@@ -146,8 +148,18 @@ struct DependencyArtifact {
     url: String,
     sha256: String,
     max_bytes: u64,
+    size_bytes: Option<u64>,
     archive: String,
     file_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependencyArtifactManifestDescriptor {
+    url: String,
+    sha256: String,
+    max_bytes: u64,
+    kind: String,
 }
 
 #[derive(Deserialize)]
@@ -271,6 +283,13 @@ fn validate_dependency_catalog() {
                 "dependency component {} has no size limit",
                 component.id
             );
+            if let Some(size_bytes) = artifact.size_bytes {
+                assert!(
+                    size_bytes > 0 && size_bytes <= artifact.max_bytes,
+                    "dependency component {} has an invalid exact artifact size",
+                    component.id
+                );
+            }
             assert!(
                 artifact.sha256.len() == 64
                     && artifact
@@ -401,11 +420,35 @@ fn validate_dependency_catalog() {
                             == Some("ffmpeg-8.1.1-full_build.zip")
                         && component.dependencies.is_empty()
                 }
+                "roadwatcher-release-archive" => {
+                    let descriptor = component.artifact_manifest.as_ref().expect(
+                        "RoadWatcher release archive install strategy requires a manifest descriptor",
+                    );
+                    assert_roadwatcher_release_contract(component, artifact, descriptor);
+                    true
+                }
                 _ => false,
             };
             assert!(
                 valid,
                 "dependency component {} install strategy drifted from the fixed backend contract",
+                component.id
+            );
+        } else {
+            assert!(
+                component.artifact_manifest.is_none(),
+                "dependency component {} manifest descriptor requires a fixed RoadWatcher release strategy",
+                component.id
+            );
+        }
+        if component
+            .artifact
+            .as_ref()
+            .is_some_and(|artifact| artifact.size_bytes.is_some())
+        {
+            assert!(
+                component.install_strategy.as_ref().is_some_and(|strategy| strategy.kind == "roadwatcher-release-archive"),
+                "dependency component {} exact artifact size is only valid for a fixed RoadWatcher release archive",
                 component.id
             );
         }
@@ -455,20 +498,54 @@ fn validate_dependency_catalog() {
             );
         }
         if let Some(strategy) = &component.install_strategy {
-            let valid_reference = component.references.len() == 1
-                && match strategy.kind.as_str() {
-                    "uv-wheel-environment" => component.references.iter().any(|reference| {
-                        reference.id == "service-executable"
-                            && reference.path == "Scripts/valhalla_service.exe"
-                            && reference.kind == "file"
-                    }),
-                    "verified-ffmpeg-archive" => component.references.iter().any(|reference| {
-                        reference.id == "binary-directory"
-                            && reference.path == "ffmpeg-8.1.1-full_build/bin"
-                            && reference.kind == "directory"
-                    }),
+            let valid_reference = match strategy.kind.as_str() {
+                "uv-wheel-environment" => {
+                    component.references.len() == 1
+                        && component.references.iter().any(|reference| {
+                            reference.id == "service-executable"
+                                && reference.path == "Scripts/valhalla_service.exe"
+                                && reference.kind == "file"
+                        })
+                }
+                "verified-ffmpeg-archive" => {
+                    component.references.len() == 1
+                        && component.references.iter().any(|reference| {
+                            reference.id == "binary-directory"
+                                && reference.path == "ffmpeg-8.1.1-full_build/bin"
+                                && reference.kind == "directory"
+                        })
+                }
+                "roadwatcher-release-archive" => match component.id.as_str() {
+                    "york-valhalla-tiles" => {
+                        component.references.len() == 2
+                            && component.references.iter().any(|reference| {
+                                reference.id == "config"
+                                    && reference.path == "valhalla.json"
+                                    && reference.kind == "file"
+                            })
+                            && component.references.iter().any(|reference| {
+                                reference.id == "tiles"
+                                    && reference.path == "tiles"
+                                    && reference.kind == "directory"
+                            })
+                    }
+                    "cv-yolo11n" => {
+                        component.references.len() == 2
+                            && component.references.iter().any(|reference| {
+                                reference.id == "model"
+                                    && reference.path == "yolo11n.onnx"
+                                    && reference.kind == "file"
+                            })
+                            && component.references.iter().any(|reference| {
+                                reference.id == "labels"
+                                    && reference.path == "labels.txt"
+                                    && reference.kind == "file"
+                            })
+                    }
                     _ => false,
-                };
+                },
+                _ => false,
+            };
             assert!(
                 valid_reference,
                 "managed dependency reference drifted from the fixed backend contract"
@@ -531,6 +608,119 @@ fn validate_dependency_catalog() {
             &mut HashSet::new(),
         );
     }
+}
+
+fn assert_roadwatcher_release_contract(
+    component: &DependencyComponent,
+    artifact: &DependencyArtifact,
+    descriptor: &DependencyArtifactManifestDescriptor,
+) {
+    const MAX_ARCHIVE_BYTES: u64 = 16 * 1024 * 1024 * 1024;
+    const MAX_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
+    let expected_kind = match component.id.as_str() {
+        "york-valhalla-tiles" => "tiles",
+        "cv-yolo11n" => "model",
+        _ => panic!(
+            "dependency component {} is not an approved RoadWatcher-generated release component",
+            component.id
+        ),
+    };
+    assert_eq!(
+        component.source_url, "https://github.com/Remi-Z/RoadWatcher/releases",
+        "RoadWatcher release component must use the canonical releases page"
+    );
+    assert!(
+        component.bootstrap.is_none()
+            && component.project_imports.is_empty()
+            && component.license.consent_required,
+        "RoadWatcher release component drifted from the fixed consent/import contract"
+    );
+    match component.id.as_str() {
+        "york-valhalla-tiles" => {
+            assert_eq!(component.dependencies.as_slice(), ["managed-valhalla"])
+        }
+        "cv-yolo11n" => assert!(component.dependencies.is_empty()),
+        _ => unreachable!("component ID was checked above"),
+    }
+    assert!(
+        artifact.archive == "zip" && artifact.max_bytes <= MAX_ARCHIVE_BYTES,
+        "RoadWatcher release archive has unsupported format or size"
+    );
+    let size_bytes = artifact
+        .size_bytes
+        .expect("RoadWatcher release archive requires an exact byte size");
+    assert!(
+        size_bytes <= artifact.max_bytes,
+        "RoadWatcher release archive exact size exceeds its download limit"
+    );
+    let archive_name = artifact
+        .file_name
+        .as_deref()
+        .expect("RoadWatcher release archive requires a file name");
+    assert_release_file_name(archive_name, ".zip");
+    let (archive_tag, archive_url_name) = parse_roadwatcher_release_download(&artifact.url);
+    assert_eq!(
+        archive_url_name, archive_name,
+        "RoadWatcher release archive URL file name does not match the catalog"
+    );
+    assert!(
+        descriptor.kind == expected_kind
+            && descriptor.max_bytes > 0
+            && descriptor.max_bytes <= MAX_MANIFEST_BYTES
+            && is_sha256(&descriptor.sha256),
+        "RoadWatcher release manifest descriptor is invalid"
+    );
+    let expected_manifest_name = archive_name
+        .strip_suffix(".zip")
+        .map(|stem| format!("{stem}.manifest.json"))
+        .expect("RoadWatcher release archive file name must end with .zip");
+    let (manifest_tag, manifest_url_name) = parse_roadwatcher_release_download(&descriptor.url);
+    assert!(
+        archive_tag == manifest_tag && manifest_url_name == expected_manifest_name,
+        "RoadWatcher release manifest must be a companion asset from the same release tag"
+    );
+}
+
+fn parse_roadwatcher_release_download(url: &str) -> (String, String) {
+    const PREFIX: &str = "https://github.com/Remi-Z/RoadWatcher/releases/download/";
+    assert!(
+        url.starts_with(PREFIX) && !url.contains(['\r', '\n', '?', '#']),
+        "RoadWatcher release asset URL is not canonical"
+    );
+    let parts = url[PREFIX.len()..].split('/').collect::<Vec<_>>();
+    let [tag, file_name] = parts.as_slice() else {
+        panic!("RoadWatcher release asset URL has an unexpected path");
+    };
+    assert!(
+        !tag.is_empty()
+            && tag.len() <= 100
+            && tag
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric()
+                    || matches!(character, '.' | '_' | '-')),
+        "RoadWatcher release asset URL has an invalid release tag"
+    );
+    assert_release_file_name(file_name, "");
+    ((*tag).to_string(), (*file_name).to_string())
+}
+
+fn assert_release_file_name(value: &str, extension: &str) {
+    assert_safe_relative(
+        value,
+        "RoadWatcher release asset file name",
+        "release asset",
+    );
+    assert!(
+        Path::new(value).components().count() == 1
+            && value.is_ascii()
+            && value.len() <= 200
+            && value.ends_with(extension),
+        "RoadWatcher release asset file name is invalid"
+    );
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64 && value.chars().all(|character| character.is_ascii_hexdigit())
 }
 
 fn visit_dependency<'a>(
