@@ -9,6 +9,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const PREPARE_TIMEOUT: Duration = Duration::from_secs(20 * 60);
 const PREPARE_OUTPUT_LIMIT: u64 = 16 * 1024 * 1024;
+const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+const PROBE_OUTPUT_LIMIT: u64 = 64 * 1024;
 const MANAGED_MARKER: &str = ".roadwatcher-managed-environment";
 
 #[derive(Clone, Debug)]
@@ -45,6 +47,7 @@ pub struct RuntimePrepareResponse {
 
 trait EnvironmentSyncExecutor: Send + Sync {
     fn sync(&self, uv_executable: &str, source: &Path, staging: &Path) -> Result<String, String>;
+    fn validate(&self, environment: &Path, marker: &str) -> Result<String, String>;
 }
 
 struct ProcessEnvironmentSyncExecutor;
@@ -75,6 +78,10 @@ impl EnvironmentSyncExecutor for ProcessEnvironmentSyncExecutor {
                 detail
             })
         }
+    }
+
+    fn validate(&self, environment: &Path, marker: &str) -> Result<String, String> {
+        probe_managed_environment(environment, marker)
     }
 }
 
@@ -159,8 +166,10 @@ fn prepare_one(
 ) -> RuntimeEnvironmentPreparation {
     let result = (|| -> Result<String, String> {
         fs::create_dir_all(root).map_err(|error| error.to_string())?;
-        if environment_ready(target, marker) {
-            return Ok("managed environment is already ready".to_string());
+        if environment_structure_ready(target, marker) {
+            if let Ok(detail) = executor.validate(target, marker) {
+                return Ok(format!("managed environment is already ready; {detail}"));
+            }
         }
         if target.exists()
             && !matches!(
@@ -189,9 +198,13 @@ fn prepare_one(
             let _ = remove_owned_staging(root, &staging);
             return Err(error.to_string());
         }
-        if !environment_ready(&staging, marker) {
+        if !environment_structure_ready(&staging, marker) {
             let _ = remove_owned_staging(root, &staging);
             return Err("uv sync did not produce the expected managed environment".to_string());
+        }
+        if let Err(error) = executor.validate(&staging, marker) {
+            let _ = remove_owned_staging(root, &staging);
+            return Err(format!("staged environment module probe failed: {error}"));
         }
         let had_target = target.exists();
         if had_target {
@@ -203,6 +216,21 @@ fn prepare_one(
             }
             let _ = remove_owned_staging(root, &staging);
             return Err(error.to_string());
+        }
+        if let Err(error) = executor.validate(target, marker) {
+            let rollback =
+                rollback_failed_promotion(root, target, &staging, &quarantined, had_target);
+            return Err(match rollback {
+                Ok(()) if had_target => format!(
+                    "promoted environment module probe failed; previous environment restored: {error}"
+                ),
+                Ok(()) => format!(
+                    "promoted environment module probe failed; invalid environment removed: {error}"
+                ),
+                Err(rollback_error) => format!(
+                    "promoted environment module probe failed: {error}; rollback failed: {rollback_error}"
+                ),
+            });
         }
         if had_target {
             let _ = remove_owned_staging(root, &quarantined);
@@ -217,15 +245,66 @@ fn prepare_one(
     }
 }
 
-pub fn environment_ready(environment: &Path, marker: &str) -> bool {
-    fs::read_to_string(environment.join(MANAGED_MARKER)).is_ok_and(|value| value == marker)
+pub(crate) fn environment_structure_ready(environment: &Path, marker: &str) -> bool {
+    environment_probe_code(marker).is_some()
+        && fs::read_to_string(environment.join(MANAGED_MARKER)).is_ok_and(|value| value == marker)
         && environment.join("pyvenv.cfg").is_file()
         && environment.join(python_relative_path()).is_file()
-        && environment.join(entrypoint_relative_path(marker)).is_file()
 }
 
-pub fn environment_python(environment: &Path) -> PathBuf {
+pub(crate) fn environment_python(environment: &Path) -> PathBuf {
     environment.join(python_relative_path())
+}
+
+pub(crate) fn environment_probe_code(marker: &str) -> Option<&'static str> {
+    match marker {
+        "gpstitch-0.18.0" => Some(
+            "from importlib.metadata import version; import gpstitch; print(version('gpstitch'))",
+        ),
+        "roadwatcher-cv-0.1.0" => Some(
+            "from importlib.metadata import version; import roadwatcher_cv; print(version('roadwatcher-cv'))",
+        ),
+        _ => None,
+    }
+}
+
+pub(crate) fn environment_version(marker: &str) -> Option<&'static str> {
+    match marker {
+        "gpstitch-0.18.0" => Some("0.18.0"),
+        "roadwatcher-cv-0.1.0" => Some("0.1.0"),
+        _ => None,
+    }
+}
+
+pub(crate) fn probe_managed_environment(
+    environment: &Path,
+    marker: &str,
+) -> Result<String, String> {
+    if !environment_structure_ready(environment, marker) {
+        return Err("managed environment structure or ownership marker is invalid".to_string());
+    }
+    let code = environment_probe_code(marker)
+        .ok_or_else(|| "managed environment identity is unsupported".to_string())?;
+    let mut command = Command::new(environment_python(environment));
+    command.arg("-c").arg(code);
+    let output = run_bounded_process(&mut command, PROBE_TIMEOUT, PROBE_OUTPUT_LIMIT)
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        let detail = bounded_detail(&output.stderr, &output.stdout);
+        return Err(if detail.is_empty() {
+            "managed Python module probe returned a non-zero exit status".to_string()
+        } else {
+            detail
+        });
+    }
+    let expected = environment_version(marker).unwrap_or_default();
+    let actual = first_nonblank_line(&output.stdout).unwrap_or_default();
+    if actual != expected {
+        return Err(format!(
+            "managed Python module probe returned version {actual:?}; expected {expected}"
+        ));
+    }
+    Ok(format!("managed Python module {expected} probe succeeded"))
 }
 
 fn python_relative_path() -> PathBuf {
@@ -233,19 +312,6 @@ fn python_relative_path() -> PathBuf {
         PathBuf::from("Scripts/python.exe")
     } else {
         PathBuf::from("bin/python")
-    }
-}
-
-fn entrypoint_relative_path(marker: &str) -> PathBuf {
-    let command = if marker.starts_with("gpstitch-") {
-        "gpstitch-dashboard"
-    } else {
-        "roadwatcher-cv"
-    };
-    if cfg!(windows) {
-        PathBuf::from(format!("Scripts/{command}.exe"))
-    } else {
-        PathBuf::from(format!("bin/{command}"))
     }
 }
 
@@ -263,6 +329,24 @@ fn remove_owned_staging(root: &Path, candidate: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn rollback_failed_promotion(
+    root: &Path,
+    target: &Path,
+    staging: &Path,
+    quarantined: &Path,
+    had_target: bool,
+) -> Result<(), String> {
+    fs::rename(target, staging)
+        .map_err(|error| format!("could not quarantine failed promoted environment: {error}"))?;
+    if had_target {
+        if let Err(error) = fs::rename(quarantined, target) {
+            let _ = fs::rename(staging, target);
+            return Err(format!("could not restore previous environment: {error}"));
+        }
+    }
+    remove_owned_staging(root, staging)
+}
+
 fn bounded_detail(stderr: &[u8], stdout: &[u8]) -> String {
     let bytes = if stderr.is_empty() { stdout } else { stderr };
     String::from_utf8_lossy(bytes)
@@ -272,10 +356,18 @@ fn bounded_detail(stderr: &[u8], stdout: &[u8]) -> String {
         .collect()
 }
 
+fn first_nonblank_line(bytes: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(bytes)
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(|line| line.chars().take(512).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        environment_ready, managed_environment_paths, prepare_with_executor,
+        environment_structure_ready, managed_environment_paths, prepare_with_executor,
         EnvironmentSyncExecutor, RuntimePrepareRequest,
     };
     use std::fs;
@@ -297,21 +389,29 @@ mod tests {
                 "python",
             )
             .unwrap();
-            let command = if staging.to_string_lossy().contains("gpstitch") {
-                "gpstitch-dashboard"
-            } else {
-                "roadwatcher-cv"
-            };
-            fs::write(
-                staging.join(if cfg!(windows) {
-                    format!("Scripts/{command}.exe")
-                } else {
-                    format!("bin/{command}")
-                }),
-                "command",
-            )
-            .unwrap();
             Ok("prepared".to_string())
+        }
+
+        fn validate(&self, _environment: &Path, marker: &str) -> Result<String, String> {
+            Ok(format!("{marker} module probe succeeded"))
+        }
+    }
+
+    struct FailAfterPromotion;
+    impl EnvironmentSyncExecutor for FailAfterPromotion {
+        fn sync(&self, uv: &str, source: &Path, staging: &Path) -> Result<String, String> {
+            FakeSync.sync(uv, source, staging)
+        }
+
+        fn validate(&self, environment: &Path, marker: &str) -> Result<String, String> {
+            if environment
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with('.'))
+            {
+                Ok(format!("{marker} staged module probe succeeded"))
+            } else {
+                Err("simulated post-promotion import failure".to_string())
+            }
         }
     }
 
@@ -330,8 +430,14 @@ mod tests {
         };
         let first = prepare_with_executor(request.clone(), Arc::new(FakeSync));
         assert_eq!(first.status, "ready");
-        assert!(environment_ready(&paths.gpstitch, "gpstitch-0.18.0"));
-        assert!(environment_ready(&paths.cv, "roadwatcher-cv-0.1.0"));
+        assert!(environment_structure_ready(
+            &paths.gpstitch,
+            "gpstitch-0.18.0"
+        ));
+        assert!(environment_structure_ready(
+            &paths.cv,
+            "roadwatcher-cv-0.1.0"
+        ));
         let second = prepare_with_executor(request, Arc::new(FakeSync));
         assert!(second
             .environments
@@ -376,6 +482,62 @@ mod tests {
     }
 
     #[test]
+    fn restores_the_previous_owned_environment_when_post_promotion_probe_fails() {
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-promotion-rollback-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let paths = managed_environment_paths(&root);
+        fs::create_dir_all(
+            paths
+                .gpstitch
+                .join(if cfg!(windows) { "Scripts" } else { "bin" }),
+        )
+        .unwrap();
+        fs::write(
+            paths.gpstitch.join(".roadwatcher-managed-environment"),
+            "gpstitch-0.18.0",
+        )
+        .unwrap();
+        fs::write(paths.gpstitch.join("pyvenv.cfg"), "previous").unwrap();
+        fs::write(
+            paths.gpstitch.join(if cfg!(windows) {
+                "Scripts/python.exe"
+            } else {
+                "bin/python"
+            }),
+            "previous-python",
+        )
+        .unwrap();
+        fs::write(paths.gpstitch.join("previous.txt"), "preserve").unwrap();
+
+        let response = prepare_with_executor(
+            RuntimePrepareRequest {
+                uv_executable: "uv".to_string(),
+                gpstitch_source: root.join("gp-source"),
+                cv_source: root.join("cv-source"),
+                environments: paths.clone(),
+            },
+            Arc::new(FailAfterPromotion),
+        );
+
+        assert_eq!(response.status, "incomplete");
+        assert!(response
+            .environments
+            .iter()
+            .any(|item| item.id == "gpstitch-environment"
+                && item.detail.contains("previous environment restored")));
+        assert!(response
+            .environments
+            .iter()
+            .any(|item| item.id == "cv-environment"
+                && item.detail.contains("invalid environment removed")));
+        assert!(paths.gpstitch.join("previous.txt").is_file());
+        assert!(!paths.cv.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     #[ignore = "requires installed uv and may populate its dependency cache"]
     fn real_uv_smoke_prepares_both_locked_environments() {
         let root = std::env::temp_dir().join(format!(
@@ -394,8 +556,24 @@ mod tests {
             environments: paths.clone(),
         });
         assert_eq!(response.status, "ready", "{response:?}");
-        assert!(environment_ready(&paths.gpstitch, "gpstitch-0.18.0"));
-        assert!(environment_ready(&paths.cv, "roadwatcher-cv-0.1.0"));
+        assert!(environment_structure_ready(
+            &paths.gpstitch,
+            "gpstitch-0.18.0"
+        ));
+        assert!(environment_structure_ready(
+            &paths.cv,
+            "roadwatcher-cv-0.1.0"
+        ));
+        assert!(
+            super::probe_managed_environment(&paths.gpstitch, "gpstitch-0.18.0")
+                .unwrap()
+                .contains("0.18.0")
+        );
+        assert!(
+            super::probe_managed_environment(&paths.cv, "roadwatcher-cv-0.1.0")
+                .unwrap()
+                .contains("0.1.0")
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }

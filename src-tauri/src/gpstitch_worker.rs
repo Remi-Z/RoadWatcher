@@ -1,5 +1,5 @@
 use crate::bounded_process::run_bounded_process;
-use crate::managed_runtime::{environment_python, environment_ready};
+use crate::managed_runtime::{environment_python, probe_managed_environment};
 use crate::project_store::{
     claim_gpstitch_render, complete_gpstitch_render, fail_gpstitch_render, queue_gpstitch_render,
     ClaimedGpstitchRender, GpstitchRenderRequest, ProjectStoreError,
@@ -208,14 +208,19 @@ fn run_gpstitch_render(
 }
 
 fn validate_sidecar(request: &GpstitchWorkerRequest) -> Result<(), GpstitchWorkerError> {
-    if !request.sidecar_directory.is_dir()
-        || !environment_ready(&request.environment_directory, "gpstitch-0.18.0")
-    {
+    if !request.sidecar_directory.is_dir() {
         return Err(GpstitchWorkerError::InvalidConfiguration(
             "bundled GPStitch source and a prepared managed GPStitch environment are required"
                 .to_string(),
         ));
     }
+    probe_managed_environment(&request.environment_directory, "gpstitch-0.18.0").map_err(
+        |error| {
+            GpstitchWorkerError::InvalidConfiguration(format!(
+                "managed GPStitch environment module probe failed: {error}"
+            ))
+        },
+    )?;
     let pyproject = fs::read_to_string(request.sidecar_directory.join("pyproject.toml"))?;
     let license = fs::read_to_string(request.sidecar_directory.join("LICENSE"))?;
     if !pyproject.contains(&format!("version = \"{PINNED_GPSTITCH_VERSION}\""))

@@ -211,10 +211,10 @@ Build a Windows-first, local-first evidence workstation:
 
 ## Current Verification
 
-Latest module verification on 2026-07-11: 173 frontend tests across 27 files,
-TypeScript compilation, production Vite build, and 70 default Rust tests passed.
-The ignored managed-uv, installed-FFmpeg, installed-GDAL, and live-OSRM smokes
-also pass when explicitly enabled. Release-governance verification passes the runtime audit, three
+Latest module verification on 2026-07-13: 173 frontend tests across 27 files,
+TypeScript compilation, production Vite build, and 72 default Rust tests passed.
+The ignored managed-uv, installed-FFmpeg, installed-GDAL, live-OSRM, and private
+ride smokes also pass when explicitly enabled. Release-governance verification passes the runtime audit, three
 positive/negative release metadata tests, the repository release audit,
 PowerShell smoke-script syntax parsing, and `cargo check` with the Rust build
 gate enabled.
@@ -258,8 +258,9 @@ real HTTP/durable route-match smoke with monotonic persisted timing.
 
 `runtime_prepare` now uses external uv to build both locked environments in
 parallel under versioned app-local paths. Unique staging directories, explicit
-ownership markers, entrypoint validation, and atomic renames prevent partial or
-foreign environment replacement. CV/GPStitch execution uses the Python
+ownership markers, exact Python package import/version probes before and after
+promotion, rollback, and atomic renames prevent partial or foreign environment
+replacement. CV/GPStitch execution uses the Python
 interpreter inside those prepared writable environments; this avoids stale
 absolute paths in uv's Windows command launchers after atomic promotion. A real
 ignored Rust smoke prepared and validated both environments successfully. A
@@ -487,7 +488,7 @@ network/DNS access.
    or retain the implemented user-triggered preparation/preflight flow. GPL
    source and notice delivery for GPStitch is implemented. Production GIS container
    normalization, local CV, and GPStitch reconciliation are complete:
-   verification passes 173 frontend tests, 70 default Rust tests plus the
+   verification passes 173 frontend tests, 72 default Rust tests plus the
    explicitly enabled managed-uv, installed-FFmpeg, installed-GDAL, and
    live-OSRM and private-ride smokes,
    four locked/offline Python tests, and the

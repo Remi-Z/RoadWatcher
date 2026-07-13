@@ -188,9 +188,11 @@ and streaming 16 MiB output limit instead of checking size only after an
 unbounded child-process capture.
 `runtime_prepare` synchronizes both exact locked projects in parallel into
 versioned RoadWatcher-owned environments below Tauri's app-local data directory.
-Each environment is built in a unique staging directory, validated for its
-Python and sidecar entrypoints, marked as RoadWatcher-owned, and atomically
-published. Unknown/unmarked directories are never overwritten. After locked
+Each environment is built in a unique staging directory, validated by importing
+the exact installed package version through its Python interpreter, marked as
+RoadWatcher-owned, and atomically published. The same import/version probe runs
+again after promotion; a failed replacement restores the previous owned
+environment. Unknown/unmarked directories are never overwritten. After locked
 preparation, CV and GPStitch invoke their installed modules through the managed
 Python interpreter. This keeps execution offline and avoids uv's non-relocatable
 Windows command launchers after the staging directory is atomically promoted.

@@ -1,5 +1,5 @@
 use crate::bounded_process::{run_bounded_process, BoundedProcessError};
-use crate::managed_runtime::{environment_python, environment_ready};
+use crate::managed_runtime::{environment_python, probe_managed_environment};
 use crate::project_store::{
     claim_cv_scan, complete_cv_scan, fail_cv_scan, queue_cv_scan, CvFinding, CvScanRequest,
     ProjectStoreError,
@@ -60,13 +60,18 @@ impl CvExecutor for ProcessCvExecutor {
         request: &CvWorkerRequest,
         source_path: &Path,
     ) -> Result<String, CvWorkerError> {
-        if !request.sidecar_directory.is_dir()
-            || !environment_ready(&request.environment_directory, "roadwatcher-cv-0.1.0")
-        {
+        if !request.sidecar_directory.is_dir() {
             return Err(CvWorkerError::InvalidConfiguration(
                 "bundled CV source and a prepared managed CV environment are required".to_string(),
             ));
         }
+        probe_managed_environment(&request.environment_directory, "roadwatcher-cv-0.1.0").map_err(
+            |error| {
+                CvWorkerError::InvalidConfiguration(format!(
+                    "managed CV environment module probe failed: {error}"
+                ))
+            },
+        )?;
         // uv's Windows script launchers retain the absolute staging path after a
         // managed environment is atomically promoted. The environment's Python
         // interpreter is relocatable and avoids that stale launcher boundary.

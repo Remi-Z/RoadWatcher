@@ -1,5 +1,7 @@
 use crate::bounded_process::run_bounded_process;
-use crate::managed_runtime::environment_ready;
+use crate::managed_runtime::{
+    environment_probe_code, environment_python, environment_structure_ready, environment_version,
+};
 use serde::Serialize;
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
@@ -88,20 +90,6 @@ fn run_with_executor(
             "0.18.0",
             Some("GNU GENERAL PUBLIC LICENSE"),
         ),
-        environment_status(
-            "gpstitch-environment",
-            "Managed GPStitch environment",
-            &request.gpstitch_environment,
-            "gpstitch-0.18.0",
-            "0.18.0",
-        ),
-        environment_status(
-            "cv-environment",
-            "Managed RoadWatcher CV environment",
-            &request.cv_environment,
-            "roadwatcher-cv-0.1.0",
-            "0.1.0",
-        ),
         source_status(
             "cv-source",
             "RoadWatcher CV bundled source",
@@ -112,6 +100,18 @@ fn run_with_executor(
         ),
     ];
     let specs = vec![
+        environment_tool_spec(
+            "gpstitch-environment",
+            "Managed GPStitch environment",
+            &request.gpstitch_environment,
+            "gpstitch-0.18.0",
+        ),
+        environment_tool_spec(
+            "cv-environment",
+            "Managed RoadWatcher CV environment",
+            &request.cv_environment,
+            "roadwatcher-cv-0.1.0",
+        ),
         tool_spec(
             "uv",
             "uv package runner",
@@ -192,12 +192,41 @@ fn run_with_executor(
     }
 }
 
+fn environment_tool_spec(
+    id: &'static str,
+    label: &'static str,
+    environment: &Path,
+    marker: &'static str,
+) -> ToolSpec {
+    let executable = if environment_structure_ready(environment, marker) {
+        Ok(environment_python(environment))
+    } else {
+        Err(
+            "managed environment structure or ownership marker is invalid; run runtime preparation"
+                .to_string(),
+        )
+    };
+    let mut spec = tool_spec(
+        id,
+        label,
+        true,
+        executable,
+        vec![
+            "-c",
+            environment_probe_code(marker).expect("known environment marker"),
+        ],
+    );
+    spec.expected_version = environment_version(marker);
+    spec
+}
+
 struct ToolSpec {
     id: &'static str,
     label: &'static str,
     required: bool,
     executable: Result<PathBuf, String>,
     args: Vec<&'static str>,
+    expected_version: Option<&'static str>,
 }
 
 fn tool_spec(
@@ -213,6 +242,7 @@ fn tool_spec(
         required,
         executable,
         args,
+        expected_version: None,
     }
 }
 
@@ -232,6 +262,24 @@ fn probe_tool(spec: ToolSpec, executor: &dyn ToolProbeExecutor) -> RuntimeCompon
         }
     };
     match executor.run(&executable, &spec.args) {
+        Ok(version)
+            if spec
+                .expected_version
+                .is_some_and(|expected| version != expected) =>
+        {
+            RuntimeComponentStatus {
+                id: spec.id.to_string(),
+                label: spec.label.to_string(),
+                required: spec.required,
+                status: "missing".to_string(),
+                executable: executable.to_string_lossy().into_owned(),
+                version,
+                detail: format!(
+                    "probe returned an unexpected version; expected {}",
+                    spec.expected_version.unwrap_or_default()
+                ),
+            }
+        }
         Ok(version) => RuntimeComponentStatus {
             id: spec.id.to_string(),
             label: spec.label.to_string(),
@@ -287,34 +335,6 @@ fn source_status(
             "packaged source and lock are present"
         } else {
             "packaged source, version, lock, or license is missing or invalid"
-        }
-        .to_string(),
-    }
-}
-
-fn environment_status(
-    id: &str,
-    label: &str,
-    environment: &Path,
-    marker: &str,
-    version: &str,
-) -> RuntimeComponentStatus {
-    let ready = environment_ready(environment, marker);
-    RuntimeComponentStatus {
-        id: id.to_string(),
-        label: label.to_string(),
-        required: true,
-        status: if ready { "ready" } else { "missing" }.to_string(),
-        executable: environment.to_string_lossy().into_owned(),
-        version: if ready {
-            version.to_string()
-        } else {
-            String::new()
-        },
-        detail: if ready {
-            "managed environment is prepared for locked/offline execution"
-        } else {
-            "managed environment is not prepared; run runtime preparation"
         }
         .to_string(),
     }
@@ -378,12 +398,36 @@ mod tests {
 
     struct FakeExecutor;
     impl ToolProbeExecutor for FakeExecutor {
-        fn run(&self, executable: &Path, _args: &[&str]) -> Result<String, String> {
+        fn run(&self, executable: &Path, args: &[&str]) -> Result<String, String> {
             let name = executable.to_string_lossy();
             if name.contains("ogr") {
                 Err("not installed".to_string())
+            } else if args.iter().any(|value| value.contains("import gpstitch")) {
+                Ok("0.18.0".to_string())
+            } else if args
+                .iter()
+                .any(|value| value.contains("import roadwatcher_cv"))
+            {
+                Ok("0.1.0".to_string())
             } else {
                 Ok(format!("{name} 1.0"))
+            }
+        }
+    }
+
+    struct MissingCvModuleExecutor;
+    impl ToolProbeExecutor for MissingCvModuleExecutor {
+        fn run(&self, executable: &Path, args: &[&str]) -> Result<String, String> {
+            if executable
+                .to_string_lossy()
+                .contains("roadwatcher-cv-0.1.0")
+                && args
+                    .iter()
+                    .any(|value| value.contains("import roadwatcher_cv"))
+            {
+                Err("No module named roadwatcher_cv".to_string())
+            } else {
+                FakeExecutor.run(executable, args)
             }
         }
     }
@@ -395,12 +439,8 @@ mod tests {
         let gpstitch = source(&root.join("gpstitch"), "0.18.0", true);
         let cv = source(&root.join("cv"), "0.1.0", false);
         let environments = crate::managed_runtime::managed_environment_paths(&root);
-        environment(
-            &environments.gpstitch,
-            "gpstitch-0.18.0",
-            "gpstitch-dashboard",
-        );
-        environment(&environments.cv, "roadwatcher-cv-0.1.0", "roadwatcher-cv");
+        environment(&environments.gpstitch, "gpstitch-0.18.0");
+        environment(&environments.cv, "roadwatcher-cv-0.1.0");
         let response = run_with_executor(
             RuntimePreflightRequest {
                 uv_executable: "uv".to_string(),
@@ -423,6 +463,41 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    #[test]
+    fn rejects_a_structurally_present_environment_when_its_module_cannot_import() {
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-preflight-module-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let gpstitch = source(&root.join("gpstitch"), "0.18.0", true);
+        let cv = source(&root.join("cv"), "0.1.0", false);
+        let environments = crate::managed_runtime::managed_environment_paths(&root);
+        environment(&environments.gpstitch, "gpstitch-0.18.0");
+        environment(&environments.cv, "roadwatcher-cv-0.1.0");
+
+        let response = run_with_executor(
+            RuntimePreflightRequest {
+                uv_executable: "uv".to_string(),
+                ffmpeg_binary_directory: String::new(),
+                gdal_binary_directory: String::new(),
+                gpstitch_source: gpstitch,
+                cv_source: cv,
+                gpstitch_environment: environments.gpstitch,
+                cv_environment: environments.cv,
+            },
+            Arc::new(MissingCvModuleExecutor),
+        );
+
+        assert_eq!(response.status, "incomplete");
+        assert!(response
+            .components
+            .iter()
+            .any(|item| item.id == "cv-environment"
+                && item.status == "missing"
+                && item.detail.contains("No module named")));
+        let _ = fs::remove_dir_all(root);
+    }
+
     fn source(root: &Path, version: &str, license: bool) -> PathBuf {
         fs::create_dir_all(root.join("src")).unwrap();
         fs::write(
@@ -437,7 +512,7 @@ mod tests {
         root.to_path_buf()
     }
 
-    fn environment(root: &Path, marker: &str, command: &str) {
+    fn environment(root: &Path, marker: &str) {
         fs::create_dir_all(root.join(if cfg!(windows) { "Scripts" } else { "bin" })).unwrap();
         fs::write(root.join(".roadwatcher-managed-environment"), marker).unwrap();
         fs::write(root.join("pyvenv.cfg"), "home=test").unwrap();
@@ -448,15 +523,6 @@ mod tests {
                 "bin/python"
             }),
             "python",
-        )
-        .unwrap();
-        fs::write(
-            root.join(if cfg!(windows) {
-                format!("Scripts/{command}.exe")
-            } else {
-                format!("bin/{command}")
-            }),
-            "command",
         )
         .unwrap();
     }

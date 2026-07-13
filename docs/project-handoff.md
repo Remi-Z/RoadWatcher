@@ -48,10 +48,12 @@ The runnable app today is the React/Vite evidence workstation:
   and streaming output cap.
 - `runtime_prepare` now creates versioned GPStitch/CV environments below
   Tauri's app-local data directory. Two bounded `uv sync --locked --no-dev`
-  operations run in parallel, publish only after Python plus the expected
-  command entrypoint exist, and use ownership markers/staging directories so
-  unknown folders are never overwritten. Native jobs execute the installed
-  modules through these writable environments and remain offline.
+  operations run in parallel, publish only after the managed interpreter imports
+  the exact installed package version, and use ownership markers/staging
+  directories so unknown folders are never overwritten. The probe runs again
+  after promotion and restores a previous owned target on failure. Native jobs
+  execute the installed modules through these writable environments and remain
+  offline.
 - Browser repository loads now report `loaded`, `missing`, `corrupt`,
   `unsupported`, or `unavailable`; startup keeps seeded state usable while
   showing the precise recovery condition. Schema-declaring project imports no
@@ -620,7 +622,7 @@ The asynchronous manager queues before returning, invokes the installed CV
 module through the prepared Python interpreter without a shell, canonicalizes
 source/model/label identities, caps process output, rejects mismatched aggregates,
 and records terminal blocked/failed states. Full
-default Rust verification passes 70 tests; the managed-uv, installed-FFmpeg,
+default Rust verification passes 72 tests; the managed-uv, installed-FFmpeg,
 and installed-GDAL smokes also pass when explicitly enabled. The GDAL smoke
 used the 61,735,748-byte GISInternals MSVC 2022 x64 package (download SHA-256
 `B0FC7620B965FA6A176C4B9F2110564233A58A4EBBEEC8E37C1F69443E24C048`),
@@ -653,7 +655,7 @@ and GPStitch now execute their installed modules using the managed environment's
 Python interpreter. Python and Rust also spell canonical Windows paths
 differently (`C:\...` versus `\\?\C:\...`); CV now canonicalizes the sidecar's
 returned source/model/labels paths and compares filesystem identities without
-weakening the mismatch guard. Default verification is now 70 passing Rust tests
+weakening the mismatch guard. Default verification is now 72 passing Rust tests
 and five ignored real smokes.
 
 To rerun this evidence without modifying the dataset:
@@ -674,6 +676,16 @@ argument, and changing the setup slot no longer retriggers active CV/GPStitch
 polling effects. The previously unchecked reviewer-reconciliation plan items
 were audited against implemented adapter, polling, decision persistence,
 snapshot, and export tests and marked complete.
+
+The following managed-runtime hardening replaces launcher-file readiness with
+bounded module/version execution evidence. Preparation probes GPStitch 0.18.0
+and RoadWatcher CV 0.1.0 inside staging and again at the final app-local path.
+If the second probe fails, the promoted directory is confined, removed, and the
+previous RoadWatcher-owned environment is restored. Runtime preflight and both
+workers use the same module boundary, so a missing or wrong package version is
+reported before work proceeds. Pure tests cover missing imports and rollback;
+the explicitly enabled real uv smoke prepared and imported both exact versions
+in 2.58 seconds.
 
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep

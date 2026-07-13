@@ -17,9 +17,10 @@ RoadWatcher derives these paths below Tauri's app-local data directory:
 - `sidecar-environments/roadwatcher-cv-0.1.0`.
 
 The version is part of the directory identity, so a future sidecar upgrade does
-not silently reuse an incompatible environment. A valid environment requires an
-exact RoadWatcher ownership marker, `pyvenv.cfg`, its Python executable, and the
-expected `gpstitch-dashboard` or `roadwatcher-cv` entrypoint.
+not silently reuse an incompatible environment. Structural ownership requires
+an exact RoadWatcher marker, `pyvenv.cfg`, and its Python executable. Readiness
+additionally requires that interpreter to import the expected package and report
+the exact installed `gpstitch` or `roadwatcher-cv` version.
 
 ## Preparation
 
@@ -30,10 +31,12 @@ parallel. Each invokes external uv directly, without a shell:
 
 `UV_PROJECT_ENVIRONMENT` points at a unique staging directory. Each process has
 a twenty-minute timeout and 16 MiB output limit. A successful staging result is
-validated, ownership-marked, and atomically renamed into its versioned target.
-An existing valid target is reused. An unknown target without the exact expected
-ownership marker is refused, never deleted or overwritten. An owned-but-invalid target is
-quarantined during replacement and restored if publication fails.
+ownership-marked, structurally checked, and module/version-probed before it is
+atomically renamed into its versioned target. The module probe runs again after
+promotion to catch non-relocatable environments. If that probe fails, the new
+directory is removed and any previous owned environment is restored. An existing
+valid target is reused. An unknown target without the exact expected ownership
+marker is refused, never deleted or overwritten.
 
 ## Execution and Preflight
 
@@ -51,7 +54,8 @@ GPStitch jobs no longer accept an obsolete per-job uv parameter.
 
 ## Verification
 
-Pure tests prove initial publication, ready-environment reuse, and refusal to
-replace an unowned directory. A separately enabled real smoke uses installed uv
-and the actual bundled locks to prepare and validate both environments in a
-temporary app-data root.
+Pure tests prove initial publication, ready-environment reuse, refusal to replace
+an unowned directory, missing-module preflight failure, and rollback after a
+simulated post-promotion import failure. A separately enabled real smoke uses
+installed uv and the actual bundled locks to prepare, promote, and import both
+exact package versions in a temporary app-data root.

@@ -39,7 +39,7 @@ replaced with mocks or toy files in final release evidence.
 
 - Frontend: 27 files / 173 tests pass.
 - App integration: 68 tests pass without React asynchronous-update warnings.
-- Rust: 70 default tests pass; five real smokes are ignored by default. The
+- Rust: 72 default tests pass; five real smokes are ignored by default. The
   managed-uv, installed-FFmpeg, installed-GDAL, live-OSRM, and private ride
   dataset smokes pass when enabled separately.
 - The private ride smoke copies only the smallest 128,353,932-byte LRV into an
@@ -80,6 +80,12 @@ The native CV and GPStitch start contracts now reflect that architecture:
 `uvExecutable` was removed from both per-job APIs, worker requests, frontend
 repositories, and polling dependencies. `uv` remains required only for the
 commands that use it—runtime preparation and preflight.
+Managed-environment readiness now probes the exact installed Python package
+version rather than treating launcher-file presence as execution evidence. Both
+staging and promoted targets are probed; failed promotion removes the invalid
+environment and restores a previous RoadWatcher-owned target. Preflight runs the
+same bounded imports, and the real managed-uv smoke passes for GPStitch 0.18.0
+and RoadWatcher CV 0.1.0.
 
 ## Required External Gates
 
