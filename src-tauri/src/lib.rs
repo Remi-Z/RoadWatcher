@@ -350,6 +350,11 @@ fn runtime_preflight(
     )?;
     let cv_source =
         resolve_runtime_component(&app, "sidecars/roadwatcher-cv", "sidecars/roadwatcher-cv")?;
+    let valhalla_source = resolve_runtime_component(
+        &app,
+        "sidecars/roadwatcher-valhalla",
+        "sidecars/roadwatcher-valhalla",
+    )?;
     let environments = managed_environments(&app)?;
     let resolved_uv = if uv_executable.trim().is_empty() {
         dependencies
@@ -382,8 +387,10 @@ fn runtime_preflight(
             gdal_binary_directory: resolved_gdal_directory,
             gpstitch_source,
             cv_source,
+            valhalla_source,
             gpstitch_environment: environments.gpstitch,
             cv_environment: environments.cv,
+            valhalla_environment: environments.valhalla,
         },
     ))
 }
@@ -401,6 +408,11 @@ fn runtime_prepare(
     )?;
     let cv_source =
         resolve_runtime_component(&app, "sidecars/roadwatcher-cv", "sidecars/roadwatcher-cv")?;
+    let valhalla_source = resolve_runtime_component(
+        &app,
+        "sidecars/roadwatcher-valhalla",
+        "sidecars/roadwatcher-valhalla",
+    )?;
     let resolved_uv = if uv_executable.trim().is_empty() {
         dependencies
             .managed_executable("uv-python", "uv.exe")
@@ -414,6 +426,7 @@ fn runtime_prepare(
             uv_executable: resolved_uv,
             gpstitch_source,
             cv_source,
+            valhalla_source,
             environments: managed_environments(&app)?,
         },
     ))
@@ -433,13 +446,28 @@ fn gpx_match(
     osrm_endpoint: String,
 ) -> Result<route_matcher::RouteMatchStartResponse, String> {
     let managed_valhalla = if valhalla_endpoint.trim().is_empty() {
-        let executable =
-            dependencies.managed_executable("managed-valhalla", "valhalla_service.exe");
+        let environments = managed_environments(&app)?;
+        let prepared_executable =
+            managed_runtime::probe_managed_environment(&environments.valhalla, "pyvalhalla-3.7.0")
+                .ok()
+                .map(|_| managed_runtime::valhalla_service(&environments.valhalla));
+        let installed_identity = dependencies.managed_identity("managed-valhalla");
+        let (executable, matcher_version) = if let Some(executable) = prepared_executable {
+            (Some(executable), "3.7.0".to_string())
+        } else {
+            (
+                dependencies.managed_executable("managed-valhalla", "valhalla_service.exe"),
+                installed_identity
+                    .map(|identity| identity.version)
+                    .unwrap_or_default(),
+            )
+        };
         let config = dependencies.managed_named_file("york-valhalla-tiles", "valhalla.json");
-        let matcher_identity = dependencies.managed_identity("managed-valhalla");
         let tile_identity = dependencies.managed_identity("york-valhalla-tiles");
-        match (executable, config, matcher_identity, tile_identity) {
-            (Some(executable), Some(config), Some(matcher_identity), Some(tile_identity)) => {
+        match (executable, config, tile_identity) {
+            (Some(executable), Some(config), Some(tile_identity))
+                if !matcher_version.is_empty() =>
+            {
                 let config_bytes = fs::read(&config).map_err(|error| {
                     format!("could not read managed Valhalla configuration: {error}")
                 })?;
@@ -454,7 +482,7 @@ fn gpx_match(
                         .app_local_data_dir()
                         .map_err(|error| error.to_string())?
                         .join("matcher-jobs"),
-                    matcher_version: matcher_identity.version,
+                    matcher_version,
                     tile_version: tile_identity.version,
                     tile_sha256: tile_identity.artifact_sha256,
                     config_sha256: hex::encode(Sha256::digest(&config_bytes)),

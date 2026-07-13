@@ -25,6 +25,16 @@ The CV sidecar is part of RoadWatcher and is distributed under
 GPL-3.0-or-later. Its source, `pyproject.toml`, and `uv.lock` are installed at
 `sidecars/roadwatcher-cv`.
 
+### RoadWatcher Valhalla environment lock 0.1.0
+
+RoadWatcher bundles a `pyproject.toml`, `uv.lock`, and explanatory README at
+`sidecars/roadwatcher-valhalla`. The lock resolves `pyvalhalla==3.7.0`; its
+Windows x64 wheel is identified by SHA-256
+`edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef`.
+Valhalla/pyvalhalla is MIT-licensed. The wheel and a prepared environment are
+not embedded in the current installer and remain subject to the explicit
+managed-install license/source approval gate.
+
 ## External tools not redistributed
 
 The current installer does not contain `uv`, Python, FFmpeg/ffprobe, GDAL/OGR,

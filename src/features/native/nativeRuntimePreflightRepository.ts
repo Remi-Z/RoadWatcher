@@ -20,7 +20,7 @@ export type NativeRuntimePreflightResult =
   | { status: "loaded"; report: RuntimePreflightReport }
   | { status: "unavailable"; commandStatus: FailureStatus; message: string };
 export interface RuntimeEnvironmentPreparation {
-  id: "gpstitch-environment" | "cv-environment";
+  id: "gpstitch-environment" | "cv-environment" | "valhalla-environment";
   status: "ready" | "failed";
   environmentPath: string;
   detail: string;
@@ -37,7 +37,8 @@ export type NativeRuntimePrepareResult =
 const EXPECTED_COMPONENTS = new Map<string, boolean>([
   ["gpstitch-source", true], ["cv-source", true], ["uv", false], ["python", false],
   ["ffmpeg", true], ["ffprobe", true], ["ogrinfo", false], ["ogr2ogr", false],
-  ["gpstitch-environment", true], ["cv-environment", false]
+  ["gpstitch-environment", true], ["cv-environment", false],
+  ["valhalla-source", true], ["valhalla-environment", true]
 ]);
 
 export function createNativeRuntimePreflightRepository(
@@ -63,8 +64,8 @@ export function createNativeRuntimePreflightRepository(
 function parsePreparation(value: unknown): RuntimePrepareReport | null {
   if (!record(value) || !Number.isSafeInteger(value.preparedAtUnix) || (value.preparedAtUnix as number) <= 0
     || (value.status !== "ready" && value.status !== "incomplete") || !Array.isArray(value.environments)
-    || value.environments.length !== 2) return null;
-  const expected = new Set(["gpstitch-environment", "cv-environment"]);
+    || value.environments.length !== 3) return null;
+  const expected = new Set(["gpstitch-environment", "cv-environment", "valhalla-environment"]);
   const environments: RuntimeEnvironmentPreparation[] = [];
   for (const candidate of value.environments) {
     if (!record(candidate) || typeof candidate.id !== "string" || !expected.delete(candidate.id)
@@ -88,7 +89,7 @@ function parseReport(value: unknown): RuntimePreflightReport | null {
       || EXPECTED_COMPONENTS.get(candidate.id) !== candidate.required || !text(candidate.label)
       || !componentStatus(candidate.status) || typeof candidate.executable !== "string"
       || typeof candidate.version !== "string" || !text(candidate.detail)) return null;
-    if (candidate.status === "ready" && (!text(candidate.executable) || candidate.id !== "gpstitch-source" && candidate.id !== "cv-source" && !text(candidate.version))) return null;
+    if (candidate.status === "ready" && (!text(candidate.executable) || !candidate.id.endsWith("-source") && !text(candidate.version))) return null;
     seen.add(candidate.id);
     components.push(candidate as unknown as RuntimePreflightComponent);
   }

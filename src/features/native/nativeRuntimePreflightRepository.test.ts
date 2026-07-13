@@ -6,7 +6,8 @@ const config = { uvExecutable: "uv", ffmpegBinaryDirectory: "D:/ffmpeg/bin", gda
 const definitions = [
   ["gpstitch-source", true], ["cv-source", true], ["uv", false], ["python", false],
   ["ffmpeg", true], ["ffprobe", true], ["ogrinfo", false], ["ogr2ogr", false],
-  ["gpstitch-environment", true], ["cv-environment", false]
+  ["gpstitch-environment", true], ["cv-environment", false],
+  ["valhalla-source", true], ["valhalla-environment", true]
 ] as const;
 
 describe("native runtime preflight repository", () => {
@@ -26,8 +27,8 @@ describe("native runtime preflight repository", () => {
       .resolves.toMatchObject({ status: "unavailable", commandStatus: "invalid_response" });
   });
 
-  it("prepares exactly two identity-matched managed environments", async () => {
-    const environments = ["gpstitch-environment", "cv-environment"].map((id) => ({ id, status: "ready", environmentPath: `D:/app-data/${id}`, detail: "prepared" }));
+  it("prepares exactly three identity-matched managed environments", async () => {
+    const environments = ["gpstitch-environment", "cv-environment", "valhalla-environment"].map((id) => ({ id, status: "ready", environmentPath: `D:/app-data/${id}`, detail: "prepared" }));
     const invoke = vi.fn<NativeCommandBridge["invoke"]>().mockResolvedValue({ ok: true, status: "invoked", command: "runtime_prepare", response: { preparedAtUnix: 1_788_000_000, status: "ready", environments } });
     const result = await createNativeRuntimePreflightRepository({ invoke }, config).prepare();
     expect(invoke).toHaveBeenCalledWith("runtime_prepare", { uvExecutable: "uv" });
@@ -37,7 +38,8 @@ describe("native runtime preflight repository", () => {
   it("accepts an incomplete preparation report when the optional CV environment fails", async () => {
     const environments = [
       { id: "gpstitch-environment", status: "ready", environmentPath: "D:/app-data/gpstitch-0.18.0", detail: "prepared" },
-      { id: "cv-environment", status: "failed", environmentPath: "D:/app-data/roadwatcher-cv-0.1.0", detail: "module probe failed" }
+      { id: "cv-environment", status: "failed", environmentPath: "D:/app-data/roadwatcher-cv-0.1.0", detail: "module probe failed" },
+      { id: "valhalla-environment", status: "ready", environmentPath: "D:/app-data/pyvalhalla-3.7.0", detail: "prepared" }
     ];
     const invoke = vi.fn<NativeCommandBridge["invoke"]>().mockResolvedValue({
       ok: true,

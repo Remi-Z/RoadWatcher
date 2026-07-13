@@ -91,7 +91,7 @@ export function ReviewReadinessPanel(props: ReviewReadinessPanelProps) {
         <p>{readiness.runtime.summary}</p>
         <p><StatusPill status={readiness.runtime.bridgeStatus === "ready" ? "ready" : readiness.runtime.bridgeStatus === "bridge_unavailable" ? "blocked" : "queued"} label={readiness.runtime.bridgeStatus} /> {readiness.runtime.bridgeSummary}</p>
         <button type="button" className="button secondary native-probe-button" onClick={onRuntimePreflight}><ShieldCheck size={15} />Check installed runtime</button>
-        <button type="button" className="button secondary native-probe-button" onClick={onRuntimePrepare}><Settings size={15} />Prepare sidecar environments</button>
+        <button type="button" className="button secondary native-probe-button" onClick={onRuntimePrepare}><Settings size={15} />Prepare Python environments</button>
         {runtimePreflightReport ? (
           <div className="native-attempt-list" aria-label="Installed runtime preflight results">
             <strong>Installed runtime: {runtimePreflightReport.status}</strong>

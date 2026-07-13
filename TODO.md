@@ -72,7 +72,9 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   environments.
 - [ ] `[AGENT]` Install and validate the audited FFmpeg/ffprobe distribution.
 - [ ] `[AGENT]` Install and validate the audited GDAL/OGR distribution.
-- [ ] `[AGENT]` Add a locked `pyvalhalla==3.7.0` environment.
+- [x] `[AGENT]` Add a locked `pyvalhalla==3.7.0` environment.
+  - [x] `[AGENT]` Bundle and release-audit the exact Python 3.12 lock definition
+    and Windows x64 wheel hash without redistributing the unapproved wheel.
 - [ ] `[AGENT]` Install York Region plus 10 km Valhalla tiles with version/hash
   provenance.
 - [ ] `[AGENT]` Install the optional verified YOLO11n-compatible ONNX model and

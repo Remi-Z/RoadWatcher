@@ -20,8 +20,10 @@ pub struct RuntimePreflightRequest {
     pub gdal_binary_directory: String,
     pub gpstitch_source: PathBuf,
     pub cv_source: PathBuf,
+    pub valhalla_source: PathBuf,
     pub gpstitch_environment: PathBuf,
     pub cv_environment: PathBuf,
+    pub valhalla_environment: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -89,6 +91,7 @@ fn run_with_executor(
             &request.gpstitch_source,
             "0.18.0",
             Some("GNU GENERAL PUBLIC LICENSE"),
+            true,
         ),
         source_status(
             "cv-source",
@@ -97,6 +100,16 @@ fn run_with_executor(
             &request.cv_source,
             "0.1.0",
             None,
+            true,
+        ),
+        source_status(
+            "valhalla-source",
+            "RoadWatcher Valhalla lock definition",
+            true,
+            &request.valhalla_source,
+            "0.1.0",
+            None,
+            false,
         ),
     ];
     let specs = vec![
@@ -113,6 +126,13 @@ fn run_with_executor(
             &request.cv_environment,
             "roadwatcher-cv-0.1.0",
             false,
+        ),
+        environment_tool_spec(
+            "valhalla-environment",
+            "Managed pyvalhalla environment",
+            &request.valhalla_environment,
+            "pyvalhalla-3.7.0",
+            true,
         ),
         tool_spec(
             "uv",
@@ -311,6 +331,7 @@ fn source_status(
     root: &Path,
     version: &str,
     license_marker: Option<&str>,
+    source_directory_required: bool,
 ) -> RuntimeComponentStatus {
     let pyproject = std::fs::read_to_string(root.join("pyproject.toml")).unwrap_or_default();
     let version_matches = pyproject.contains(&format!("version = \"{version}\""));
@@ -320,7 +341,7 @@ fn source_status(
     let ready = root.is_dir()
         && root.join("pyproject.toml").is_file()
         && root.join("uv.lock").is_file()
-        && root.join("src").is_dir()
+        && (!source_directory_required || root.join("src").is_dir())
         && version_matches
         && license_matches;
     RuntimeComponentStatus {
@@ -412,6 +433,8 @@ mod tests {
                 .any(|value| value.contains("import roadwatcher_cv"))
             {
                 Ok("0.1.0".to_string())
+            } else if args.iter().any(|value| value.contains("pyvalhalla")) {
+                Ok("3.7.0".to_string())
             } else {
                 Ok(format!("{name} 1.0"))
             }
@@ -435,9 +458,11 @@ mod tests {
             std::env::temp_dir().join(format!("roadwatcher-preflight-{}", std::process::id()));
         let gpstitch = source(&root.join("gpstitch"), "0.18.0", true);
         let cv = source(&root.join("cv"), "0.1.0", false);
+        let valhalla = source(&root.join("valhalla"), "0.1.0", false);
         let environments = crate::managed_runtime::managed_environment_paths(&root);
         environment(&environments.gpstitch, "gpstitch-0.18.0");
         environment(&environments.cv, "roadwatcher-cv-0.1.0");
+        environment(&environments.valhalla, "pyvalhalla-3.7.0");
         let response = run_with_executor(
             RuntimePreflightRequest {
                 uv_executable: "uv".to_string(),
@@ -445,13 +470,15 @@ mod tests {
                 gdal_binary_directory: String::new(),
                 gpstitch_source: gpstitch,
                 cv_source: cv,
+                valhalla_source: valhalla,
                 gpstitch_environment: environments.gpstitch,
                 cv_environment: environments.cv,
+                valhalla_environment: environments.valhalla,
             },
             Arc::new(FakeExecutor),
         );
         assert_eq!(response.status, "ready");
-        assert_eq!(response.components.len(), 10);
+        assert_eq!(response.components.len(), 12);
         assert!(response
             .components
             .iter()
@@ -475,9 +502,11 @@ mod tests {
         ));
         let gpstitch = source(&root.join("gpstitch"), "0.18.0", true);
         let cv = source(&root.join("cv"), "0.1.0", false);
+        let valhalla = source(&root.join("valhalla"), "0.1.0", false);
         let environments = crate::managed_runtime::managed_environment_paths(&root);
         environment(&environments.gpstitch, "gpstitch-0.18.0");
         environment(&environments.cv, "roadwatcher-cv-0.1.0");
+        environment(&environments.valhalla, "pyvalhalla-3.7.0");
 
         let request = RuntimePreflightRequest {
             uv_executable: "uv".to_string(),
@@ -485,8 +514,10 @@ mod tests {
             gdal_binary_directory: String::new(),
             gpstitch_source: gpstitch,
             cv_source: cv,
-            gpstitch_environment: environments.gpstitch,
-            cv_environment: environments.cv,
+            valhalla_source: valhalla,
+            gpstitch_environment: environments.gpstitch.clone(),
+            cv_environment: environments.cv.clone(),
+            valhalla_environment: environments.valhalla.clone(),
         };
         let optional_cv_missing = run_with_executor(
             request.clone(),
@@ -510,6 +541,26 @@ mod tests {
             .any(|item| item.id == "gpstitch-environment"
                 && item.required
                 && item.status == "missing"));
+
+        let valhalla_request = RuntimePreflightRequest {
+            uv_executable: "uv".to_string(),
+            ffmpeg_binary_directory: String::new(),
+            gdal_binary_directory: String::new(),
+            gpstitch_source: source(&root.join("gpstitch-again"), "0.18.0", true),
+            cv_source: source(&root.join("cv-again"), "0.1.0", false),
+            valhalla_source: source(&root.join("valhalla-again"), "0.1.0", false),
+            gpstitch_environment: environments.gpstitch,
+            cv_environment: environments.cv,
+            valhalla_environment: environments.valhalla,
+        };
+        let required_valhalla_missing = run_with_executor(
+            valhalla_request,
+            Arc::new(MissingModuleExecutor("pyvalhalla")),
+        );
+        assert_eq!(required_valhalla_missing.status, "incomplete");
+        assert!(required_valhalla_missing.components.iter().any(|item| {
+            item.id == "valhalla-environment" && item.required && item.status == "missing"
+        }));
         let _ = fs::remove_dir_all(root);
     }
 
@@ -540,5 +591,16 @@ mod tests {
             "python",
         )
         .unwrap();
+        if marker == "pyvalhalla-3.7.0" {
+            fs::write(
+                root.join(if cfg!(windows) {
+                    "Scripts/valhalla_service.exe"
+                } else {
+                    "bin/valhalla_service"
+                }),
+                "valhalla",
+            )
+            .unwrap();
+        }
     }
 }

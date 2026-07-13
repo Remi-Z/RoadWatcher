@@ -802,6 +802,7 @@ describe("RoadWatcher workstation", () => {
     const definitions = [
       ["gpstitch-source", "GPStitch bundled source", true, "ready"],
       ["cv-source", "RoadWatcher CV bundled source", true, "ready"],
+      ["valhalla-source", "RoadWatcher Valhalla lock definition", true, "ready"],
       ["uv", "uv environment preparer", false, "ready"],
       ["python", "Python resolver through uv", false, "missing"],
       ["ffmpeg", "FFmpeg video processor", true, "ready"],
@@ -809,7 +810,8 @@ describe("RoadWatcher workstation", () => {
       ["ogrinfo", "GDAL ogrinfo", false, "missing"],
       ["ogr2ogr", "GDAL ogr2ogr", false, "missing"],
       ["gpstitch-environment", "Managed GPStitch environment", true, "ready"],
-      ["cv-environment", "Managed RoadWatcher CV environment", false, "missing"]
+      ["cv-environment", "Managed RoadWatcher CV environment", false, "missing"],
+      ["valhalla-environment", "Managed pyvalhalla environment", true, "ready"]
     ] as const;
     const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
       if (command === "project_load") return { projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion, savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot) };
@@ -843,12 +845,13 @@ describe("RoadWatcher workstation", () => {
       componentSlots: missingSlots.map((slot) => slot.id === "python-runtime" ? { ...slot, reference: uvExecutable } : slot),
       incident: incidentDraft, jobs: initialJobs, media: mediaAssets,
       projectId: "native-runtime-prepare-project" as ProjectId, projectedFeatures });
-    const componentIds = ["gpstitch-source", "cv-source", "gpstitch-environment", "cv-environment", "uv", "python", "ffmpeg", "ffprobe", "ogrinfo", "ogr2ogr"];
+    const componentIds = ["gpstitch-source", "cv-source", "valhalla-source", "gpstitch-environment", "cv-environment", "valhalla-environment", "uv", "python", "ffmpeg", "ffprobe", "ogrinfo", "ogr2ogr"];
     const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
       if (command === "project_load") return { projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion, savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot) };
       if (command === "runtime_prepare") return { preparedAtUnix: 1_788_000_000, status: "incomplete", environments: [
         { id: "gpstitch-environment", status: "ready", environmentPath: "D:/AppData/gpstitch-0.18.0", detail: "prepared" },
-        { id: "cv-environment", status: "failed", environmentPath: "D:/AppData/roadwatcher-cv-0.1.0", detail: "module probe failed" }
+        { id: "cv-environment", status: "failed", environmentPath: "D:/AppData/roadwatcher-cv-0.1.0", detail: "module probe failed" },
+        { id: "valhalla-environment", status: "ready", environmentPath: "D:/AppData/pyvalhalla-3.7.0", detail: "prepared" }
       ] };
       if (command === "runtime_preflight") return { checkedAtUnix: 1_788_000_001, status: "ready", components: componentIds.map((id) => ({
         id, label: id, required: !["uv", "python", "cv-environment", "ogrinfo", "ogr2ogr"].includes(id),
@@ -865,7 +868,7 @@ describe("RoadWatcher workstation", () => {
       projectRepository={createMemoryProjectRepository()} />);
     await screen.findByText(/Restored native SQLite project/);
 
-    fireEvent.click(screen.getByRole("button", { name: "Prepare sidecar environments" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare Python environments" }));
 
     await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("preflight passed"));
     expect(nativeInvoke).toHaveBeenCalledWith("runtime_prepare", { uvExecutable });

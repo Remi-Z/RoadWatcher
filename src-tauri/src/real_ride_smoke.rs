@@ -165,12 +165,14 @@ fn real_ride_dataset_exercises_ingest_proxy_cv_and_gpstitch() {
     let manifest_directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let gpstitch_source = manifest_directory.join("../sidecars/roadwatcher-gpstitch");
     let cv_source = manifest_directory.join("../sidecars/roadwatcher-cv");
+    let valhalla_source = manifest_directory.join("../sidecars/roadwatcher-valhalla");
     let environments = managed_runtime::managed_environment_paths(&temp_root.join("app-data"));
     let preparation =
         managed_runtime::prepare_runtime_environments(managed_runtime::RuntimePrepareRequest {
             uv_executable: "uv".to_string(),
             gpstitch_source: gpstitch_source.clone(),
             cv_source: cv_source.clone(),
+            valhalla_source,
             environments: environments.clone(),
         });
     assert_eq!(

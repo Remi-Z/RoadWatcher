@@ -33,6 +33,14 @@ for (const component of manifest.components) {
   }
 }
 
+const valhallaProject = readFileSync(resolve(root, "sidecars/roadwatcher-valhalla/pyproject.toml"), "utf8");
+const valhallaLock = readFileSync(resolve(root, "sidecars/roadwatcher-valhalla/uv.lock"), "utf8");
+assert(valhallaProject.includes('requires-python = "==3.12.*"'), "Valhalla environment Python range is not locked to 3.12");
+assert(valhallaProject.includes('"pyvalhalla==3.7.0"'), "Valhalla environment dependency is not exactly pyvalhalla 3.7.0");
+assert(valhallaLock.includes('name = "pyvalhalla"\nversion = "3.7.0"'), "Valhalla lock does not resolve pyvalhalla 3.7.0");
+assert(valhallaLock.includes("pyvalhalla-3.7.0-cp312-abi3-win_amd64.whl"), "Valhalla lock has no Windows x64 wheel");
+assert(valhallaLock.includes("sha256:edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef"), "Valhalla Windows wheel hash drifted");
+
 for (const tool of manifest.externalTools) {
   assert(tool.distributed === false, `${tool.id} cannot be marked distributed without a binary/license inventory`);
 }

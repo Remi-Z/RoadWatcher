@@ -1169,7 +1169,7 @@ export function App({
       command: "runtime_prepare",
       status: result.status === "loaded" ? "invoked" : result.commandStatus,
       requestedAtIso,
-      requestSummary: `uv: ${uvReference.startsWith("slot:") ? "managed install or PATH" : uvReference}; targets: GPStitch 0.18.0 and RoadWatcher CV 0.1.0`,
+      requestSummary: `uv: ${uvReference.startsWith("slot:") ? "managed install or PATH" : uvReference}; targets: GPStitch 0.18.0, RoadWatcher CV 0.1.0, and pyvalhalla 3.7.0`,
       resultSummary: result.status === "loaded"
         ? `${result.report.status}; ${result.report.environments.map((environment) => `${environment.id}: ${environment.status}`).join(", ")}`
         : result.message

@@ -19,6 +19,7 @@ pub struct ManagedEnvironmentPaths {
     pub root: PathBuf,
     pub gpstitch: PathBuf,
     pub cv: PathBuf,
+    pub valhalla: PathBuf,
     pub python_install_root: PathBuf,
     pub uv_cache_root: PathBuf,
 }
@@ -28,6 +29,7 @@ pub struct RuntimePrepareRequest {
     pub uv_executable: String,
     pub gpstitch_source: PathBuf,
     pub cv_source: PathBuf,
+    pub valhalla_source: PathBuf,
     pub environments: ManagedEnvironmentPaths,
 }
 
@@ -106,6 +108,7 @@ pub fn managed_environment_paths(app_local_data: &Path) -> ManagedEnvironmentPat
     ManagedEnvironmentPaths {
         gpstitch: root.join("gpstitch-0.18.0"),
         cv: root.join("roadwatcher-cv-0.1.0"),
+        valhalla: root.join("pyvalhalla-3.7.0"),
         root,
         python_install_root: app_local_data
             .join("python-installations")
@@ -160,6 +163,12 @@ fn prepare_with_executor(
             "roadwatcher-cv-0.1.0",
             request.cv_source,
             request.environments.cv,
+        ),
+        (
+            "valhalla-environment",
+            "pyvalhalla-3.7.0",
+            request.valhalla_source,
+            request.environments.valhalla,
         ),
     ];
     let handles = specs
@@ -318,10 +327,19 @@ pub(crate) fn environment_structure_ready(environment: &Path, marker: &str) -> b
         && fs::read_to_string(environment.join(MANAGED_MARKER)).is_ok_and(|value| value == marker)
         && environment.join("pyvenv.cfg").is_file()
         && environment.join(python_relative_path()).is_file()
+        && (marker != "pyvalhalla-3.7.0" || valhalla_service(environment).is_file())
 }
 
 pub(crate) fn environment_python(environment: &Path) -> PathBuf {
     environment.join(python_relative_path())
+}
+
+pub(crate) fn valhalla_service(environment: &Path) -> PathBuf {
+    environment.join(if cfg!(windows) {
+        "Scripts/valhalla_service.exe"
+    } else {
+        "bin/valhalla_service"
+    })
 }
 
 pub(crate) fn environment_probe_code(marker: &str) -> Option<&'static str> {
@@ -332,6 +350,9 @@ pub(crate) fn environment_probe_code(marker: &str) -> Option<&'static str> {
         "roadwatcher-cv-0.1.0" => Some(
             "import platform; from importlib.metadata import version; import roadwatcher_cv; print(version('roadwatcher-cv')); print(platform.python_version())",
         ),
+        "pyvalhalla-3.7.0" => Some(
+            "import platform; from importlib.metadata import version; print(version('pyvalhalla')); print(platform.python_version())",
+        ),
         _ => None,
     }
 }
@@ -340,6 +361,7 @@ pub(crate) fn environment_version(marker: &str) -> Option<&'static str> {
     match marker {
         "gpstitch-0.18.0" => Some("0.18.0"),
         "roadwatcher-cv-0.1.0" => Some("0.1.0"),
+        "pyvalhalla-3.7.0" => Some("3.7.0"),
         _ => None,
     }
 }
@@ -480,6 +502,15 @@ mod tests {
                 "python",
             )
             .unwrap();
+            fs::write(
+                staging.join(if cfg!(windows) {
+                    "Scripts/valhalla_service.exe"
+                } else {
+                    "bin/valhalla_service"
+                }),
+                "valhalla",
+            )
+            .unwrap();
             Ok("prepared".to_string())
         }
 
@@ -583,6 +614,7 @@ mod tests {
             uv_executable: "uv".to_string(),
             gpstitch_source: root.join("gp-source"),
             cv_source: root.join("cv-source"),
+            valhalla_source: root.join("valhalla-source"),
             environments: paths.clone(),
         };
         let first = prepare_with_executor(request.clone(), Arc::new(FakeSync));
@@ -595,11 +627,20 @@ mod tests {
             &paths.cv,
             "roadwatcher-cv-0.1.0"
         ));
+        assert!(environment_structure_ready(
+            &paths.valhalla,
+            "pyvalhalla-3.7.0"
+        ));
         let second = prepare_with_executor(request, Arc::new(FakeSync));
         assert!(second
             .environments
             .iter()
             .all(|item| item.detail.contains("already ready")));
+        fs::remove_file(super::valhalla_service(&paths.valhalla)).unwrap();
+        assert!(!environment_structure_ready(
+            &paths.valhalla,
+            "pyvalhalla-3.7.0"
+        ));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -622,6 +663,7 @@ mod tests {
                 uv_executable: "uv".to_string(),
                 gpstitch_source: root.join("gp-source"),
                 cv_source: root.join("cv-source"),
+                valhalla_source: root.join("valhalla-source"),
                 environments: paths,
             },
             Arc::new(FakeSync),
@@ -673,6 +715,7 @@ mod tests {
                 uv_executable: "uv".to_string(),
                 gpstitch_source: root.join("gp-source"),
                 cv_source: root.join("cv-source"),
+                valhalla_source: root.join("valhalla-source"),
                 environments: paths.clone(),
             },
             Arc::new(FailAfterPromotion),
@@ -696,7 +739,7 @@ mod tests {
 
     #[test]
     #[ignore = "requires installed uv and may populate its dependency cache"]
-    fn real_uv_smoke_prepares_both_locked_environments() {
+    fn real_uv_smoke_prepares_all_locked_environments() {
         let root = std::env::temp_dir().join(format!(
             "roadwatcher-real-managed-runtime-{}",
             uuid::Uuid::new_v4()
@@ -710,6 +753,9 @@ mod tests {
             cv_source: Path::new("../sidecars/roadwatcher-cv")
                 .canonicalize()
                 .unwrap(),
+            valhalla_source: Path::new("../sidecars/roadwatcher-valhalla")
+                .canonicalize()
+                .unwrap(),
             environments: paths.clone(),
         });
         assert_eq!(response.status, "ready", "{response:?}");
@@ -720,6 +766,10 @@ mod tests {
         assert!(environment_structure_ready(
             &paths.cv,
             "roadwatcher-cv-0.1.0"
+        ));
+        assert!(environment_structure_ready(
+            &paths.valhalla,
+            "pyvalhalla-3.7.0"
         ));
         assert!(
             super::probe_managed_environment(&paths.gpstitch, "gpstitch-0.18.0")

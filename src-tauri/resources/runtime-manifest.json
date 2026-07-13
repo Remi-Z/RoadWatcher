@@ -28,10 +28,20 @@
       ],
       "versionMarker": "version = \"0.1.0\"",
       "licenseMarker": null
+    },
+    {
+      "id": "roadwatcher-valhalla-environment",
+      "version": "0.1.0",
+      "license": "GPL-3.0-or-later; pyvalhalla dependency MIT",
+      "sourceRoot": "../sidecars/roadwatcher-valhalla",
+      "resourcePath": "sidecars/roadwatcher-valhalla",
+      "requiredFiles": ["pyproject.toml", "uv.lock", "README.md"],
+      "versionMarker": "version = \"0.1.0\"",
+      "licenseMarker": null
     }
   ],
   "externalTools": [
-    { "id": "uv", "requiredFor": ["gpstitch", "roadwatcher-cv"], "distributed": false },
+    { "id": "uv", "requiredFor": ["gpstitch", "roadwatcher-cv", "roadwatcher-valhalla-environment"], "distributed": false },
     { "id": "ffmpeg", "requiredFor": ["proxy", "gpstitch"], "distributed": false },
     { "id": "ffprobe", "requiredFor": ["proxy"], "distributed": false },
     { "id": "gdal-ogr", "requiredFor": ["non-GeoJSON GIS import"], "distributed": false },

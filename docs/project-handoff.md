@@ -845,6 +845,33 @@ local Windows x64 download inventory was used to pin CPython 3.12.13. The uv
 executable archive itself is still `pendingApproval`, so the broader TODO entry
 for bootstrapping the approved uv/Python component remains open.
 
+The managed matcher environment is now operationally locked and bundled as
+source metadata at `sidecars/roadwatcher-valhalla`. Its uv lock resolves exactly
+`pyvalhalla==3.7.0` for Python 3.12 and pins the Windows x64 wheel SHA-256 to
+`edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef`.
+The runtime/release audit requires the Python constraint, dependency version,
+Windows wheel, and hash; the Tauri resource manifest installs the pyproject,
+lock, and README, while the third-party notice records MIT terms. No wheel or
+prepared environment was added to the installer.
+
+Explicit `runtime_prepare` now prepares three atomic app-local environments:
+GPStitch, optional CV, and required pyvalhalla. Preflight has twelve identities,
+including the bundled Valhalla lock and the service-bearing environment, and
+requires both exact package/Python probes and `Scripts/valhalla_service.exe`.
+When no explicit HTTP Valhalla override is supplied, route matching resolves the
+prepared app-local service first, retains the catalog-installed environment as
+an alternate, and still preserves HTTP Valhalla/OSRM fallbacks. The existing
+bounded one-shot service lifecycle and tile/config provenance are unchanged.
+
+A disposable real Windows sync passed with uv 0.11.23, CPython 3.12.13, and
+pyvalhalla 3.7.0; it produced a 46,080-byte
+`Scripts/valhalla_service.exe`. Lock freshness, managed-runtime/preflight tests,
+route matcher tests, TypeScript compilation, runtime packaging, and release
+audits pass. Windows denied uv cache promotion inside the repository workspace,
+so the disposable real smoke used `C:\\tmp`; RoadWatcher production preparation
+uses its app-local data root, not the repository. Redistribution approval and
+the production York tile artifact remain separate owner-gated work.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence
