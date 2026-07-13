@@ -98,17 +98,20 @@ later agent does not mistake an intentional boundary for an unfinished feature.
     disable PROJ networking and VRT Python/raw bands, and leave user overrides
     unchanged.
   - [x] `[AGENT]` Add a source-only, fixed-profile GDAL asset builder. It accepts
-    only hash-locked local source/prefix/notice trees and pinned local
-    CMake/Ninja/MSVC/dumpbin/Node tools; validates notice coverage, cache flags,
-    exact package layout, required drivers, an EPSG:26917 conversion, and the PE
-    dependency closure before deterministic archive/manifest publication. Five
+    only a retained hash/size-locked GDAL 3.12.4 `tar.gz`, matching local
+    source/prefix/notice trees, expected OGR and complete GDAL driver inventories,
+    and pinned local CMake/Ninja/MSVC/dumpbin/Node tools. It validates safe archive
+    contents, notice coverage, confined CMake package discovery/cache flags, exact
+    package layout, driver inventories, an EPSG:26917 conversion, and the PE
+    dependency closure before deterministic archive/manifest publication. Six
     fake-tool tests pass; no production recipe, binary, URL, or catalog promotion
     was created.
-  - [ ] `[BLOCKED-ON-USER]` Provide the immutable GDAL source-archive evidence,
-    reviewed dependency-prefix/toolchain lock, complete notice bundle, and exact
-    approved driver inventory for a real build. The staging builder verifies
-    canonical local tree content, but it cannot independently prove remote
-    publisher metadata or that an ambient Windows SDK/library was not selected.
+  - [ ] `[BLOCKED-ON-USER]` Provide the immutable GDAL source archive and its
+    publisher evidence, reviewed dependency-prefix/toolchain/link-input lock,
+    complete notice bundle, and exact approved driver inventories for a real
+    build. The staging builder binds a retained archive to canonical source-tree
+    content, but it cannot independently prove remote publisher metadata or that
+    an ambient Windows SDK/library was not selected.
   - [ ] `[AGENT]` Produce and qualify the owner-approved minimal open-driver
     package from pinned source with unused database/proprietary drivers disabled;
     do not use the mutable daily bundle or its license-gated plugins.
@@ -146,7 +149,8 @@ later agent does not mistake an intentional boundary for an unfinished feature.
     complete YOLO11n-compatible ONNX model/labels output set.
   - [x] `[AGENT]` Emit deterministic source-size provenance and
     `sourceDateEpoch` generation time for every managed artifact manifest; GDAL
-    source-tree sizes are canonical regular-file totals.
+    records its retained source archive size/hash and canonical regular-file
+    totals for local prefix/notice build inputs.
 - [x] `[AGENT]` Add bounded one-shot managed Valhalla matching without Docker or
   a persistent service.
 - [x] `[AGENT]` Preserve configured HTTP Valhalla and OSRM fallbacks.
@@ -284,11 +288,13 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Four ONNX builder tests cover locked exporter identity, static
   scanner-compatible tensors, labels/opset/source rejection, and complete
   archive/lock/definition/manifest publication with a fake export worker.
-- [x] `[AGENT]` Five GDAL builder tests cover locked source/tool/notice inputs,
-  CMake profile and reproducibility-flag drift, runtime containment, exact CRS
-  conversion, PE dependency closure/reachability, forbidden layout injection,
-  and deterministic four-file publication. They do not substitute for a real
-  Windows source build or second-builder comparison.
+- [x] `[AGENT]` Six GDAL builder tests cover retained source-archive identity and
+  traversal rejection, source/tool/notice inputs, CMake profile/discovery and
+  reproducibility-flag drift, exact OGR/GDAL inventories, runtime containment,
+  exact CRS conversion, PE dependency closure/reachability, forbidden layout
+  injection, and deterministic four-file publication. They do not substitute
+  for a real Windows source build, actual link-input review, or a second-builder
+  comparison.
 - [ ] `[USER-CONTEXT]` Decide whether internal qualification may exclude
   GPStitch's upstream browser suite or whether RoadWatcher should carry a
   reviewed GPStitch Windows-test patch and the separate Playwright browser.

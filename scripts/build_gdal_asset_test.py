@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -31,6 +33,7 @@ class GdalAssetBuilderTests(unittest.TestCase):
         self.licenses = self.root / "licenses"
         self._write(self.source / "CMakeLists.txt", b"cmake_minimum_required(VERSION 3.20)\n")
         self._write(self.source / "LICENSE", b"GDAL MIT fixture\n")
+        self.source_archive = self._archive_source_tree(self.source)
         self._write(self.prefix / "include" / "proj.h", b"proj fixture\n")
         self._write(self.prefix / "include" / "sqlite3.h", b"sqlite fixture\n")
         self._write(self.prefix / "lib" / "proj.lib", b"proj static fixture\n")
@@ -52,12 +55,14 @@ class GdalAssetBuilderTests(unittest.TestCase):
             }.items()
         }
         self.recipe = {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "id": "gdal-ogr",
             "version": "3.12.4-test.1",
             "platform": "windows-x86_64",
             "sourceDateEpoch": "2026-07-13T12:00:00Z",
             "artifactLicense": self._license("gdal-proj-sqlite", "GDAL/PROJ MIT and SQLite notices"),
+            "expectedOgrFormats": ["ESRI Shapefile", "FlatGeobuf", "GPKG", "GeoJSON", "OpenFileGDB", "SQLite"],
+            "expectedGdalFormats": ["ESRI Shapefile", "FlatGeobuf", "GPKG", "GeoJSON", "OpenFileGDB", "SQLite"],
             "sources": [
                 self._source("gdal-3-12-4", "gdalSource", self.source, "3.12.4"),
                 self._source("pinned-proj-sqlite", "dependencyPrefix", self.prefix, "vcpkg-locked"),
@@ -104,6 +109,8 @@ class GdalAssetBuilderTests(unittest.TestCase):
         self.assertIn("-DGDAL_USE_CURL:BOOL=OFF", configure)
         self.assertIn("-DGDAL_ENABLE_PLUGINS:BOOL=OFF", configure)
         self.assertIn("-DGDAL_VRT_ENABLE_RAWRASTERBAND:BOOL=OFF", configure)
+        self.assertIn("-DCMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH:BOOL=FALSE", configure)
+        self.assertIn("-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY:STRING=ONLY", configure)
         self.assertTrue(any("/dependents" in args for args in calls))
         self.assertTrue(any("/imports" in args for args in calls))
         self.assertTrue(any("-s_srs" in args and "EPSG:26917" in args and "-t_srs" in args and "EPSG:4326" in args for args in calls))
@@ -128,6 +135,9 @@ class GdalAssetBuilderTests(unittest.TestCase):
         self.assertEqual(manifest["artifact"]["sha256"], result["sha256"])
         self.assertEqual(manifest["generatedAt"], self.recipe["sourceDateEpoch"])
         self.assertTrue(all(source["sizeBytes"] > 0 for source in manifest["sources"]))
+        gdal_source = next(source for source in manifest["sources"] if source["id"] == "gdal-3-12-4")
+        self.assertEqual(gdal_source["downloadedSha256"], self._sha256(self.source_archive))
+        self.assertEqual(gdal_source["sizeBytes"], self.source_archive.stat().st_size)
         self.assertTrue(any("managed-artifact-manifest.mjs" in " ".join(args) and "build" in args for args in calls))
         self.assertTrue(any("managed-artifact-manifest.mjs" in " ".join(args) and "verify" in args for args in calls))
         self.assertTrue(any(args[0] == str(self.tools["node"]) and "managed-artifact-manifest.mjs" in " ".join(args) for args in calls))
@@ -137,7 +147,7 @@ class GdalAssetBuilderTests(unittest.TestCase):
     def test_rejects_source_cache_and_pe_dependency_drift(self) -> None:
         source_drift = copy.deepcopy(self.recipe)
         source_drift["sources"][0]["treeSha256"] = "0" * 64
-        with self.assertRaisesRegex(RecipeError, "tree SHA-256"):
+        with self.assertRaisesRegex(RecipeError, "source tree"):
             build_gdal_stage(source_drift, self.root / "source-drift", runner=self._runner([]), timeout_seconds=60)
 
         cache_drift = self._runner([], cache_overrides={"GDAL_USE_CURL": "ON"})
@@ -171,6 +181,42 @@ class GdalAssetBuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(RecipeError, "unused declared runtime dependency"):
             build_gdal_stage(unused_runtime, self.root / "unused-runtime", runner=self._runner([]), timeout_seconds=60)
 
+    def test_rejects_source_archive_provenance_and_complete_driver_or_cache_drift(self) -> None:
+        archive_hash_drift = copy.deepcopy(self.recipe)
+        archive_hash_drift["sources"][0]["archiveSha256"] = "0" * 64
+        with self.assertRaisesRegex(RecipeError, "archive SHA-256"):
+            build_gdal_stage(archive_hash_drift, self.root / "archive-hash-drift", runner=self._runner([]), timeout_seconds=60)
+
+        self._archive_source_tree(self.source, extra_members=[("gdal-3.12.4/../escape.txt", b"escape")])
+        traversal = copy.deepcopy(self.recipe)
+        traversal["sources"][0]["archiveSha256"] = self._sha256(self.source_archive)
+        traversal["sources"][0]["archiveSizeBytes"] = self.source_archive.stat().st_size
+        with self.assertRaisesRegex(RecipeError, "unsafe GDAL source archive member path"):
+            build_gdal_stage(traversal, self.root / "archive-traversal", runner=self._runner([]), timeout_seconds=60)
+
+        self.source_archive = self._archive_source_tree(self.source)
+        exact_driver = copy.deepcopy(self.recipe)
+        exact_driver["sources"][0]["archiveSha256"] = self._sha256(self.source_archive)
+        exact_driver["sources"][0]["archiveSizeBytes"] = self.source_archive.stat().st_size
+        with self.assertRaisesRegex(RecipeError, "GDAL complete driver inventory does not exactly match"):
+            build_gdal_stage(exact_driver, self.root / "driver-drift", runner=self._runner([], extra_gdal_format="VRT"), timeout_seconds=60)
+
+        with self.assertRaisesRegex(RecipeError, "outside the approved staged roots"):
+            build_gdal_stage(
+                exact_driver,
+                self.root / "cache-path-drift",
+                runner=self._runner([], cache_path_overrides={"ZLIB_LIBRARY": "C:\\untrusted\\zlib.lib"}),
+                timeout_seconds=60,
+            )
+
+        with self.assertRaisesRegex(RecipeError, "did not consume"):
+            build_gdal_stage(
+                exact_driver,
+                self.root / "unused-setting",
+                runner=self._runner([], configure_unused_setting=True),
+                timeout_seconds=60,
+            )
+
     def test_rejects_unknown_recipe_fields_and_wrong_gdal_identity(self) -> None:
         unsupported = copy.deepcopy(self.recipe)
         unsupported["download"] = "https://example.com/unapproved"
@@ -186,6 +232,11 @@ class GdalAssetBuilderTests(unittest.TestCase):
         missing_notice["sources"][0]["noticeFiles"] = ["missing.txt"]
         with self.assertRaisesRegex(RecipeError, "gdalSource notice"):
             build_gdal_stage(missing_notice, self.root / "missing-notice", runner=self._runner([]), timeout_seconds=60)
+
+        unsorted_formats = copy.deepcopy(self.recipe)
+        unsorted_formats["expectedOgrFormats"] = list(reversed(unsorted_formats["expectedOgrFormats"]))
+        with self.assertRaisesRegex(RecipeError, "expectedOgrFormats must be sorted and unique"):
+            validate_recipe(unsorted_formats)
 
     def test_runtime_qualification_clears_inherited_gdal_and_proj_state(self) -> None:
         inherited = {
@@ -216,11 +267,15 @@ class GdalAssetBuilderTests(unittest.TestCase):
         *,
         cache_overrides: dict[str, str] | None = None,
         cache_flag_overrides: dict[str, str] | None = None,
+        cache_path_overrides: dict[str, str] | None = None,
         foreign_dependency: str | None = None,
         malicious_install_relative: str | None = None,
+        extra_gdal_format: str | None = None,
+        configure_unused_setting: bool = False,
     ):
         cache_overrides = cache_overrides or {}
         cache_flag_overrides = cache_flag_overrides or {}
+        cache_path_overrides = cache_path_overrides or {}
 
         def runner(args: list[str], cwd: Path, _timeout: int, _limit: int, environment: dict[str, str]) -> str:
             calls.append(args)
@@ -240,12 +295,13 @@ class GdalAssetBuilderTests(unittest.TestCase):
                     raise RecipeError(completed.stderr or completed.stdout)
                 return completed.stdout + completed.stderr
             if executable == "cmake.exe" and "-S" in args:
-                self._write_cache(args, cache_overrides, cache_flag_overrides)
-                return "configured\n"
+                self._write_cache(args, cache_overrides, cache_flag_overrides, cache_path_overrides)
+                return "Manually-specified variables were not used by the project\n" if configure_unused_setting else "configured\n"
             if executable == "cmake.exe" and "--build" in args:
                 build_root = Path(args[args.index("--build") + 1])
                 install_root = self._cache_value(build_root / "CMakeCache.txt", "CMAKE_INSTALL_PREFIX")
                 self._write(install_root / "bin" / "gdal.dll", b"gdal fixture\n")
+                self._write(install_root / "bin" / "gdalinfo.exe", b"gdalinfo fixture\n")
                 self._write(install_root / "bin" / "ogrinfo.exe", b"ogrinfo fixture\n")
                 self._write(install_root / "bin" / "ogr2ogr.exe", b"ogr2ogr fixture\n")
                 self._write(install_root / "share" / "gdal" / "gdal_datum.csv", b"gdal data fixture\n")
@@ -256,10 +312,20 @@ class GdalAssetBuilderTests(unittest.TestCase):
                 return "GDAL 3.12.4\n"
             if executable == "ogr2ogr.exe" and args[1:] == ["--version"]:
                 return "GDAL 3.12.4\n"
+            if executable == "gdalinfo.exe" and args[1:] == ["--version"]:
+                return "GDAL 3.12.4\n"
             if executable == "ogrinfo.exe" and args[1:] == ["--formats"]:
                 return "\n".join(
                     f"  {name} -vector- (rw+v): fixture"
                     for name in ["ESRI Shapefile", "GPKG", "SQLite", "FlatGeobuf", "OpenFileGDB", "GeoJSON"]
+                )
+            if executable == "gdalinfo.exe" and args[1:] == ["--formats"]:
+                formats = ["ESRI Shapefile", "GPKG", "SQLite", "FlatGeobuf", "OpenFileGDB", "GeoJSON"]
+                if extra_gdal_format:
+                    formats.append(extra_gdal_format)
+                return "\n".join(
+                    f"  {name} -vector- (rw+v): fixture"
+                    for name in formats
                 )
             if executable == "ogr2ogr.exe" and "-t_srs" in args:
                 output = Path(args[-2])
@@ -283,6 +349,7 @@ class GdalAssetBuilderTests(unittest.TestCase):
         args: list[str],
         overrides: dict[str, str],
         flag_overrides: dict[str, str],
+        path_overrides: dict[str, str],
     ) -> None:
         source = Path(args[args.index("-S") + 1])
         build = Path(args[args.index("-B") + 1])
@@ -307,6 +374,8 @@ class GdalAssetBuilderTests(unittest.TestCase):
                 f"CMAKE_CXX_COMPILER:FILEPATH={values['CMAKE_CXX_COMPILER']}",
                 f"CMAKE_LINKER:FILEPATH={values['CMAKE_LINKER']}",
                 f"CMAKE_INSTALL_PREFIX:PATH={values['CMAKE_INSTALL_PREFIX']}",
+                f"CMAKE_PREFIX_PATH:PATH={values['CMAKE_PREFIX_PATH']}",
+                f"CMAKE_FIND_ROOT_PATH:PATH={values['CMAKE_FIND_ROOT_PATH']}",
                 f"PROJ_INCLUDE_DIR:PATH={values['PROJ_INCLUDE_DIR']}",
                 f"PROJ_LIBRARY_RELEASE:FILEPATH={values['PROJ_LIBRARY_RELEASE']}",
                 f"SQLite3_INCLUDE_DIR:PATH={values['SQLite3_INCLUDE_DIR']}",
@@ -318,6 +387,7 @@ class GdalAssetBuilderTests(unittest.TestCase):
                 f"CMAKE_HOME_DIRECTORY:INTERNAL={source}",
             ]
         )
+        lines.extend(f"{name}:FILEPATH={value}" for name, value in path_overrides.items())
         (build / "CMakeCache.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     @staticmethod
@@ -356,7 +426,14 @@ class GdalAssetBuilderTests(unittest.TestCase):
             "retrievedAt": "2026-07-13T12:00:00Z",
         }
         if role == "gdalSource":
-            result["commit"] = "f2ff911fee59d4b647dd7b2c030c389c9c062d8c"
+            result.update({
+                "commit": "f2ff911fee59d4b647dd7b2c030c389c9c062d8c",
+                "archivePath": str(self.source_archive),
+                "archiveSha256": self._sha256(self.source_archive),
+                "archiveSizeBytes": self.source_archive.stat().st_size,
+                "archiveFormat": "tar.gz",
+                "archiveRoot": "gdal-3.12.4",
+            })
         return result
 
     def _tool(self, name: str, version: str) -> dict[str, str]:
@@ -376,6 +453,26 @@ class GdalAssetBuilderTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
         return path.resolve()
+
+    def _archive_source_tree(self, source: Path, *, extra_members: list[tuple[str, bytes]] | None = None) -> Path:
+        archive = self.root / "gdal-3.12.4.tar.gz"
+        with tarfile.open(archive, "w:gz") as output:
+            directory = tarfile.TarInfo("gdal-3.12.4/")
+            directory.type = tarfile.DIRTYPE
+            directory.mtime = 0
+            output.addfile(directory)
+            for relative, _digest, size in _tree_inventory(source, "source fixture", 200_000, 8 * 1024 * 1024 * 1024):
+                content = (source / relative).read_bytes()
+                entry = tarfile.TarInfo(f"gdal-3.12.4/{relative}")
+                entry.size = size
+                entry.mtime = 0
+                output.addfile(entry, io.BytesIO(content))
+            for relative, content in extra_members or []:
+                entry = tarfile.TarInfo(relative)
+                entry.size = len(content)
+                entry.mtime = 0
+                output.addfile(entry, io.BytesIO(content))
+        return archive.resolve()
 
     @staticmethod
     def _sha256(path: Path) -> str:

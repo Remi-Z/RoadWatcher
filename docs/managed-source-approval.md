@@ -146,14 +146,16 @@ builder. A deterministic archive makes the declared package reproducible, but
 does not alone prove separately compiled PE binaries are byte-identical.
 
 `scripts/build_gdal_asset.py` now provides a fake-tool-qualified source-only
-staging boundary: it accepts only local hash-locked GDAL/dependency/notice trees,
-requires explicit notice coverage and pinned CMake/Ninja/MSVC/dumpbin/Node
-identities, produces the reserved `bin`/`share/gdal`/`share/proj` layout, and
-checks the approved driver surface, exact CRS fixture, and PE import closure.
-It does not independently verify an upstream source archive, prove that CMake
-selected no ambient SDK libraries, or establish the full driver inventory from a
-real build. Retaining and checking the original archive, reviewing actual link
-inputs, and recording that inventory remain release gates.
+staging boundary: it accepts only a retained hash/size-locked GDAL `tar.gz`, a
+matching local source tree, hash-locked dependency/notice trees, sorted exact
+OGR/GDAL format inventories, and pinned CMake/Ninja/MSVC/dumpbin/Node identities.
+It safely streams and compares the archive tree, enforces constrained CMake
+discovery/cache paths, produces the reserved `bin`/`share/gdal`/`share/proj`
+layout, and checks exact driver sets, the CRS fixture, and PE import closure.
+It does not independently prove an upstream publisher supplied the retained
+archive metadata or prove that a real MSVC/SDK link used no ambient library.
+Reviewing publisher evidence and actual link inputs, capturing the real-build
+inventory, and comparing a second build remain release gates.
 This records an implementation capability only. A real immutable upstream source
 archive identity, reviewed dependency-prefix lock, complete notice bundle, output
 asset, independently re-hashed release URL, and second clean-builder comparison

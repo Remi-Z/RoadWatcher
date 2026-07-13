@@ -198,27 +198,38 @@ until the model/license-consent gate is complete.
 
 `scripts/build_gdal_asset.py` is a source-only Windows x64 builder for the
 pending managed GDAL component. It does not download files, accept command
-templates, or accept an output path from a recipe. A real recipe must name only
-three locally available, hash-locked regular-file trees: the pinned GDAL 3.12.4
-source checkout, a dependency prefix, and a complete notice bundle. Every tree
-has a canonical content-tree SHA-256 and explicit notice-file coverage. The
-recipe records owner-supplied URL/version/license/publisher/retrieval evidence,
-but this staging builder verifies the local tree identity rather than an original
-upstream download. The source checkout must declare
-commit `f2ff911fee59d4b647dd7b2c030c389c9c062d8c`; its local content-tree hash
-is the build-input identity, while `publisherSha256` remains a reviewed recipe
-assertion until the original immutable source archive is retained and checked.
+templates, or accept an output path from a recipe. A real schema-2 recipe must
+name three locally available, hash-locked regular-file trees: the pinned GDAL
+3.12.4 source checkout, a dependency prefix, and a complete notice bundle. It
+also requires the retained source `tar.gz`: its absolute local path, exact byte
+size, SHA-256, and the fixed `gdal-3.12.4` root. The builder streams the archive
+without extracting it, rejects traversal, links, special entries, duplicate or
+case-colliding paths, and bounds files/bytes; its canonical regular-file tree
+must exactly equal the staged checkout. The GDAL manifest source therefore uses
+the verified archive hash and size, while the prefix and notice inputs retain
+their canonical-tree identities until their owners supply archive evidence.
+
+The recipe still records owner-supplied URL/version/license/publisher/retrieval
+evidence and requires the pinned commit declaration
+`f2ff911fee59d4b647dd7b2c030c389c9c062d8c`. It binds the retained archive to
+the local build tree, but cannot prove that a remote publisher supplied those
+bytes, metadata, or commit claim. Retaining the original archive and reviewing
+the publisher evidence remains an owner release gate.
 
 The recipe also locks local hashes and declared versions for CMake, Ninja, MSVC
 `cl`/`link`, `dumpbin`, and Node. The script uses only its fixed CMake vector:
 shared release apps; static MSVC runtime; optional drivers, plugins, CURL,
 network/proprietary/database clients, Python bindings, and raw VRT bands off;
 it requires Shapefile, GeoPackage, SQLite, FlatGeobuf, OpenFileGDB, PROJ, and
-GeoJSON support. GDAL also has non-disableable built-ins, so the exact complete
-driver list must be captured and approved from a real build before release. It
-clears injected CMake/vcpkg/pkg-config and GIS network configuration, validates
-the generated cache and `/Brepro` flags, and runs no recipe-supplied command or
-argument list.
+GeoJSON support. The real recipe supplies sorted exact OGR and complete GDAL
+format inventories; qualification runs both `ogrinfo --formats` and the
+build-only `gdalinfo --formats`, then rejects an extra or missing driver. It
+also disables CMake registry, environment, system, install-prefix, and package
+root discovery, constrains package/include/library lookup to the staged prefix,
+rejects discovered dependency cache paths outside staged roots, and fails if
+CMake reports an unused fixed setting. It clears injected CMake/vcpkg/pkg-config
+and GIS network configuration, validates the generated cache and `/Brepro`
+flags, and runs no recipe-supplied command or argument list.
 
 The staged payload is exactly `bin/gdal.dll`, `bin/ogrinfo.exe`,
 `bin/ogr2ogr.exe`, declared reachable runtime DLLs, `share/gdal`, `share/proj`,
@@ -226,9 +237,9 @@ and `licenses`. Qualification requires the requested driver list, an explicit
 EPSG:26917-to-WGS84 fixture conversion, and a `dumpbin` import closure with no
 undeclared, plugin, database, network, or proprietary dependency. Binaries
 outside the root `bin` directory, case-colliding paths, links/reparse points,
-and incomplete notices fail closed. Its manifest records canonical tree-content
-byte totals for the three source trees; that is a reproducible build-input record,
-not an assertion that the values are original downloaded-archive byte counts.
+and incomplete notices fail closed. Its GDAL manifest entry records the retained
+archive's hash and byte size; prefix and notice entries record canonical
+tree-content byte totals as reproducible build-input evidence.
 
 This is build infrastructure, not a GDAL release asset. No real source recipe,
 toolchain/prefix lock, license bundle, generated archive, GitHub URL, installer
@@ -236,5 +247,6 @@ strategy, or catalog hash is present. `/Brepro`, pinned executable hashes, and
 deterministic packaging make a reviewed build repeatable, but do not establish a
 fully hermetic Windows SDK/MSVC environment, prove CMake avoided all ambient
 libraries, or prove independently compiled PE bytes identical. The original
-source archive, actual link-input review, exact driver inventory, and second
-clean Windows builder comparison remain explicit owner gates before publication.
+archive's publisher evidence, actual link-input review, a real-build inventory,
+and a second clean Windows builder comparison remain explicit owner gates before
+publication.

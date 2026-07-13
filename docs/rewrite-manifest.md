@@ -472,7 +472,9 @@ network/DNS access.
 - Shapefile, GeoPackage, FlatGeobuf, FileGDB, and arbitrary CRS normalization
   work through an explicit/PATH GDAL/OGR override. Managed GDAL layout and
   child-process containment are implemented; a source-only fixed-profile asset
-  builder is fake-tool qualified, but no immutable managed archive exists yet.
+  builder now binds a retained GDAL source archive to its staged tree, constrains
+  CMake discovery, and locks exact driver inventories, but no immutable managed
+  archive exists yet.
   A live external GDAL 3.12.4 Windows adapter smoke passes.
 - The CV sidecar implements bounded YOLO-style ONNX Runtime/OpenCV frame
   scanning and conservative finding JSON. Durable Rust execution, strict
@@ -491,7 +493,7 @@ network/DNS access.
 | Valhalla York/GTA data | Local map matching | Managed matcher/builder implemented; real approved inputs and published tile asset blocked |
 | OSRM Match fallback | Simpler GPX matching fallback | Configured optional HTTP fallback |
 | Official GIS layers | Stop signs/lights/bike lanes projection | User-approved source/layer selection and explicit project import required |
-| GDAL/OGR | Production GIS containers and CRS normalization | Explicit/PATH override works; managed layout/containment and source-only fixed-profile builder implemented, but a real package/artifact remains absent |
+| GDAL/OGR | Production GIS containers and CRS normalization | Explicit/PATH override works; managed layout/containment and archive-bound fixed-profile builder implemented, but a real package/artifact and reviewed link inputs remain absent |
 | FFmpeg/ffprobe | Proxy generation and metadata probing | Owner-approved exact managed 8.1.1 build; explicit override and PATH remain fallbacks |
 | ONNX model + labels | Local vehicle/CV scan | Builder implemented; approved weights/labels/consent and hosted asset absent |
 

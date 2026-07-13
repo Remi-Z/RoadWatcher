@@ -20,6 +20,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 from typing import Callable
@@ -40,6 +41,7 @@ _LICENSE_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ /-]{0,199}$")
 
 _GDAL_COMMIT = "f2ff911fee59d4b647dd7b2c030c389c9c062d8c"
 _GDAL_VERSION = "3.12.4"
+_GDAL_RECIPE_SCHEMA_VERSION = 2
 _PROFILE = "roadwatcher-minimal-open-vector-v1"
 _TOP_KEYS = {
     "schemaVersion",
@@ -51,6 +53,8 @@ _TOP_KEYS = {
     "sources",
     "tools",
     "runtimeFiles",
+    "expectedOgrFormats",
+    "expectedGdalFormats",
 }
 _SOURCE_COMMON_KEYS = {
     "id",
@@ -64,7 +68,14 @@ _SOURCE_COMMON_KEYS = {
     "publisherSha256",
     "retrievedAt",
 }
-_GDAL_SOURCE_KEYS = _SOURCE_COMMON_KEYS | {"commit"}
+_GDAL_SOURCE_KEYS = _SOURCE_COMMON_KEYS | {
+    "commit",
+    "archivePath",
+    "archiveSha256",
+    "archiveSizeBytes",
+    "archiveFormat",
+    "archiveRoot",
+}
 _LICENSE_KEYS = {"id", "name", "url"}
 _TOOL_KEYS = {"name", "path", "sha256", "version"}
 _RUNTIME_FILE_KEYS = {"name", "sha256", "licenses"}
@@ -73,6 +84,7 @@ _TOOL_NAMES = {"cmake", "ninja", "msvc-cl", "msvc-link", "dumpbin", "node"}
 _COPY_CHUNK = 1024 * 1024
 _MAX_INPUT_FILES = 200_000
 _MAX_INPUT_BYTES = 8 * 1024 * 1024 * 1024
+_MAX_SOURCE_ARCHIVE_BYTES = 1024 * 1024 * 1024
 _MAX_ARTIFACT_FILES = 25_000
 _MAX_ARTIFACT_BYTES = 4 * 1024 * 1024 * 1024
 _MAX_PROCESS_OUTPUT_BYTES = 16 * 1024 * 1024
@@ -122,11 +134,29 @@ _CACHE_EXPECTATIONS = {
     "OGR_ENABLE_DRIVER_ELASTIC": "OFF",
     "CMAKE_DISABLE_FIND_PACKAGE_CURL": "ON",
     "CMAKE_DISABLE_FIND_PACKAGE_Git": "ON",
+    "CMAKE_FIND_USE_CMAKE_PATH": "FALSE",
+    "CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH": "FALSE",
+    "CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH": "FALSE",
+    "CMAKE_FIND_USE_CMAKE_SYSTEM_PATH": "FALSE",
+    "CMAKE_FIND_USE_INSTALL_PREFIX": "FALSE",
+    "CMAKE_FIND_USE_PACKAGE_ROOT_PATH": "FALSE",
     "CMAKE_FIND_USE_PACKAGE_REGISTRY": "FALSE",
     "CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY": "FALSE",
+    "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE": "ONLY",
+    "CMAKE_FIND_ROOT_PATH_MODE_INCLUDE": "ONLY",
+    "CMAKE_FIND_ROOT_PATH_MODE_LIBRARY": "ONLY",
+    "CMAKE_FIND_ROOT_PATH_MODE_PROGRAM": "NEVER",
     "FETCHCONTENT_FULLY_DISCONNECTED": "ON",
     "FETCHCONTENT_UPDATES_DISCONNECTED": "ON",
     "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+}
+_CMAKE_STRING_CACHE_KEYS = {
+    "GDAL_USE_INTERNAL_LIBS",
+    "CMAKE_MSVC_RUNTIME_LIBRARY",
+    "CMAKE_FIND_ROOT_PATH_MODE_PACKAGE",
+    "CMAKE_FIND_ROOT_PATH_MODE_INCLUDE",
+    "CMAKE_FIND_ROOT_PATH_MODE_LIBRARY",
+    "CMAKE_FIND_ROOT_PATH_MODE_PROGRAM",
 }
 _CMAKE_FLAG_EXPECTATIONS = {
     "CMAKE_C_FLAGS_RELEASE": "/O2 /Brepro",
@@ -302,7 +332,7 @@ def validate_recipe(value: object) -> None:
     """Validate the deliberately narrow, source-only recipe contract."""
     if not isinstance(value, dict) or set(value) != _TOP_KEYS:
         raise RecipeError("GDAL recipe has unsupported or missing top-level fields")
-    if value["schemaVersion"] != 1 or value["id"] != "gdal-ogr":
+    if value["schemaVersion"] != _GDAL_RECIPE_SCHEMA_VERSION or value["id"] != "gdal-ogr":
         raise RecipeError("GDAL recipe identity is invalid")
     if value["platform"] != "windows-x86_64":
         raise RecipeError("GDAL recipe platform must be windows-x86_64")
@@ -328,6 +358,17 @@ def validate_recipe(value: object) -> None:
         ids.add(source["id"])
     if roles != _SOURCE_ROLES:
         raise RecipeError("GDAL source roles are incomplete")
+
+    expected_ogr_formats = _format_inventory(value["expectedOgrFormats"], "expectedOgrFormats")
+    expected_gdal_formats = _format_inventory(value["expectedGdalFormats"], "expectedGdalFormats")
+    if not expected_ogr_formats <= expected_gdal_formats:
+        raise RecipeError("expectedGdalFormats must include every expectedOgrFormats entry")
+    missing_required = sorted(_REQUIRED_FORMATS - expected_ogr_formats)
+    forbidden_declared = sorted(_FORBIDDEN_FORMATS & expected_gdal_formats)
+    if missing_required:
+        raise RecipeError("expectedOgrFormats lacks required RoadWatcher formats: " + ", ".join(missing_required))
+    if forbidden_declared:
+        raise RecipeError("expected GDAL inventory includes forbidden formats: " + ", ".join(forbidden_declared))
 
     tools = value["tools"]
     if not isinstance(tools, list) or len(tools) != len(_TOOL_NAMES):
@@ -373,6 +414,8 @@ def build_gdal_stage(
     tools = {tool["name"]: tool for tool in recipe["tools"]}
     assert all(isinstance(source, dict) for source in sources.values())
     assert all(isinstance(tool, dict) for tool in tools.values())
+
+    _verify_gdal_source_archive(sources["gdalSource"])
 
     source_root = _copy_verified_tree(
         _safe_local_directory(sources["gdalSource"]["localPath"], "GDAL source"),
@@ -448,7 +491,8 @@ def build_gdal_stage(
         install_root,
         prefix_root,
     )
-    runner(configure_args, work_root, timeout_seconds, _MAX_PROCESS_OUTPUT_BYTES, configure_environment)
+    configure_output = runner(configure_args, work_root, timeout_seconds, _MAX_PROCESS_OUTPUT_BYTES, configure_environment)
+    _validate_configure_output(configure_output)
     _validate_cmake_cache(build_root / "CMakeCache.txt", source_root, prefix_root, install_root, ninja, compiler, linker)
 
     # The exact target and parallelism are intentionally fixed.  There is no
@@ -467,11 +511,17 @@ def build_gdal_stage(
         configure_environment,
     )
 
+    gdalinfo = install_root / "bin" / "gdalinfo.exe"
+    if not gdalinfo.is_file() or gdalinfo.is_symlink():
+        raise RecipeError("CMake install is missing build-only gdalinfo.exe for driver inventory qualification")
     _assemble_artifact(install_root, prefix_root, license_root, recipe["runtimeFiles"], artifact_root)
     runtime_environment = _runtime_environment(artifact_root, recipe["sourceDateEpoch"])
     _validate_runtime(
         artifact_root,
         sources["gdalSource"]["version"],
+        gdalinfo,
+        recipe["expectedOgrFormats"],
+        recipe["expectedGdalFormats"],
         dumpbin,
         recipe["runtimeFiles"],
         runner,
@@ -504,7 +554,10 @@ def build_gdal_stage(
             "parameters": {
                 "curl": False,
                 "gdalCommit": _GDAL_COMMIT,
+                "gdalSourceArchiveSha256": sources["gdalSource"]["archiveSha256"],
                 "gdalSourceTreeSha256": sources["gdalSource"]["treeSha256"],
+                "expectedGdalFormatInventorySha256": _format_inventory_digest(recipe["expectedGdalFormats"]),
+                "expectedOgrFormatInventorySha256": _format_inventory_digest(recipe["expectedOgrFormats"]),
                 "licenseBundleTreeSha256": sources["licenseBundle"]["treeSha256"],
                 "optionalDrivers": False,
                 "plugins": False,
@@ -614,6 +667,34 @@ def _source(value: object) -> None:
         value["commit"] != _GDAL_COMMIT or value["version"] != _GDAL_VERSION
     ):
         raise RecipeError("GDAL source must use pinned 3.12.4 commit f2ff911fee59d4b647dd7b2c030c389c9c062d8c")
+    if role == "gdalSource":
+        archive = _safe_local_file(value["archivePath"], "GDAL source archivePath")
+        size_bytes = value["archiveSizeBytes"]
+        if not isinstance(size_bytes, int) or isinstance(size_bytes, bool) or size_bytes <= 0:
+            raise RecipeError("GDAL source archiveSizeBytes is invalid")
+        if archive.stat().st_size != size_bytes:
+            raise RecipeError("GDAL source archiveSizeBytes does not match the retained archive")
+        if archive.stat().st_size <= 0 or archive.stat().st_size > _MAX_SOURCE_ARCHIVE_BYTES:
+            raise RecipeError("GDAL source archive exceeds its size bound")
+        _hash(value["archiveSha256"], "GDAL source archive SHA-256")
+        if value["archiveFormat"] != "tar.gz":
+            raise RecipeError("GDAL source archiveFormat must be tar.gz")
+        if value["archiveRoot"] != f"gdal-{_GDAL_VERSION}":
+            raise RecipeError("GDAL source archiveRoot must match the pinned GDAL release root")
+
+
+def _format_inventory(value: object, label: str) -> set[str]:
+    if not isinstance(value, list) or not value or len(value) > 512:
+        raise RecipeError(f"{label} must be a non-empty bounded list")
+    entries: list[str] = []
+    for entry in value:
+        text = _nonblank(entry, f"{label} entry", 100)
+        if "\r" in text or "\n" in text or "\0" in text:
+            raise RecipeError(f"{label} entry is invalid")
+        entries.append(text)
+    if entries != sorted(entries) or len(set(entries)) != len(entries):
+        raise RecipeError(f"{label} must be sorted and unique")
+    return set(entries)
 
 
 def _tool(value: object) -> None:
@@ -723,6 +804,7 @@ def _configure_args(
         f"-DCMAKE_CXX_COMPILER:FILEPATH={_cmake_path(compiler)}",
         f"-DCMAKE_LINKER:FILEPATH={_cmake_path(linker)}",
         f"-DCMAKE_PREFIX_PATH:PATH={_cmake_path(prefix_root)}",
+        f"-DCMAKE_FIND_ROOT_PATH:PATH={_cmake_path(prefix_root)}",
         f"-DPROJ_ROOT:PATH={_cmake_path(prefix_root)}",
         f"-DSQLite3_ROOT:PATH={_cmake_path(prefix_root)}",
         f"-DPROJ_INCLUDE_DIR:PATH={_cmake_path(prefix_root / 'include')}",
@@ -737,7 +819,7 @@ def _configure_args(
         "-DCMAKE_EXE_LINKER_FLAGS_RELEASE:STRING=/Brepro",
     ]
     for name, expected in _CACHE_EXPECTATIONS.items():
-        value_type = "STRING" if name in {"GDAL_USE_INTERNAL_LIBS", "CMAKE_MSVC_RUNTIME_LIBRARY"} else "BOOL"
+        value_type = "STRING" if name in _CMAKE_STRING_CACHE_KEYS else "BOOL"
         args.append(f"-D{name}:{value_type}={expected}")
     return args
 
@@ -770,6 +852,8 @@ def _validate_cmake_cache(
         "CMAKE_CXX_COMPILER": compiler,
         "CMAKE_LINKER": linker,
         "CMAKE_INSTALL_PREFIX": install_root,
+        "CMAKE_PREFIX_PATH": prefix_root,
+        "CMAKE_FIND_ROOT_PATH": prefix_root,
         "PROJ_INCLUDE_DIR": prefix_root / "include",
         "PROJ_LIBRARY_RELEASE": prefix_root / "lib" / "proj.lib",
         "SQLite3_INCLUDE_DIR": prefix_root / "include",
@@ -782,6 +866,7 @@ def _validate_cmake_cache(
     source_cache_path = cache.get("CMAKE_HOME_DIRECTORY")
     if source_cache_path is None or not _same_path(source_cache_path, source_root):
         raise RecipeError("CMake cache source directory differs from the staged pinned GDAL source")
+    _validate_dependency_cache_paths(cache, (source_root, prefix_root, install_root, cache_path.parent))
 
 
 def _parse_cmake_cache(path: Path) -> dict[str, str]:
@@ -825,6 +910,30 @@ def _same_path(value: str, expected: Path) -> bool:
     normalized_value = value.replace("/", "\\")
     normalized_expected = str(expected.resolve(strict=True)).replace("/", "\\")
     return os.path.normcase(os.path.normpath(normalized_value)) == os.path.normcase(os.path.normpath(normalized_expected))
+
+
+def _validate_dependency_cache_paths(cache: dict[str, str], allowed_roots: tuple[Path, ...]) -> None:
+    """Reject CMake-discovered dependency paths outside the staged build roots."""
+    dependency_key = re.compile(r"(?:^|_)(?:LIBRARY|LIBRARIES|INCLUDE|INCLUDES|ROOT|DIR)(?:_|$)")
+    for name, value in cache.items():
+        if name.startswith("CMAKE_") or not dependency_key.search(name):
+            continue
+        for candidate in value.split(";"):
+            candidate = candidate.strip().strip('"')
+            if not _looks_like_absolute_path(candidate):
+                continue
+            if not any(_path_is_within(candidate, root) for root in allowed_roots):
+                raise RecipeError(f"CMake cache resolved {name} outside the approved staged roots")
+
+
+def _looks_like_absolute_path(value: str) -> bool:
+    return bool(re.fullmatch(r"(?:[A-Za-z]:[\\/].*|/.*)", value))
+
+
+def _path_is_within(value: str, root: Path) -> bool:
+    normalized_value = os.path.normcase(os.path.normpath(value.replace("/", "\\")))
+    normalized_root = os.path.normcase(os.path.normpath(str(root.resolve(strict=True)).replace("/", "\\")))
+    return normalized_value == normalized_root or normalized_value.startswith(normalized_root + "\\")
 
 
 def _assemble_artifact(
@@ -899,6 +1008,9 @@ def _validate_artifact_layout(artifact_root: Path, runtime_files: object) -> Non
 def _validate_runtime(
     artifact_root: Path,
     gdal_version: object,
+    gdalinfo: Path,
+    expected_ogr_formats: object,
+    expected_gdal_formats: object,
     dumpbin: Path,
     runtime_files: object,
     runner: Runner,
@@ -907,6 +1019,8 @@ def _validate_runtime(
     bin_root = artifact_root / "bin"
     ogrinfo = bin_root / "ogrinfo.exe"
     ogr2ogr = bin_root / "ogr2ogr.exe"
+    expected_ogr = _format_inventory(expected_ogr_formats, "expectedOgrFormats")
+    expected_gdal = _format_inventory(expected_gdal_formats, "expectedGdalFormats")
     _assert_version(
         runner([str(ogrinfo), "--version"], artifact_root, 120, 1024 * 1024, environment),
         gdal_version,
@@ -917,15 +1031,19 @@ def _validate_runtime(
         gdal_version,
         "ogr2ogr",
     )
-    formats = _parse_formats(
+    _assert_version(
+        runner([str(gdalinfo), "--version"], artifact_root, 120, 1024 * 1024, environment),
+        gdal_version,
+        "gdalinfo",
+    )
+    ogr_formats = _parse_formats(
         runner([str(ogrinfo), "--formats"], artifact_root, 120, 4 * 1024 * 1024, environment)
     )
-    missing = sorted(_REQUIRED_FORMATS - formats)
-    forbidden = sorted(_FORBIDDEN_FORMATS & formats)
-    if missing:
-        raise RecipeError("GDAL driver list lacks approved required formats: " + ", ".join(missing))
-    if forbidden:
-        raise RecipeError("GDAL driver list includes disabled database, network, or proprietary formats: " + ", ".join(forbidden))
+    gdal_formats = _parse_formats(
+        runner([str(gdalinfo), "--formats"], artifact_root, 120, 4 * 1024 * 1024, environment)
+    )
+    _validate_format_inventory(ogr_formats, expected_ogr, "OGR vector")
+    _validate_format_inventory(gdal_formats, expected_gdal, "GDAL complete")
     _validate_epsg_26917_conversion(artifact_root, ogr2ogr, runner, environment)
     _audit_pe_dependencies(artifact_root, dumpbin, runtime_files, runner, environment)
 
@@ -1082,6 +1200,21 @@ def _parse_formats(output: str) -> set[str]:
     return formats
 
 
+def _validate_format_inventory(actual: set[str], expected: set[str], label: str) -> None:
+    forbidden = sorted(_FORBIDDEN_FORMATS & actual)
+    if forbidden:
+        raise RecipeError(f"{label} driver inventory includes disabled database, network, or proprietary formats: " + ", ".join(forbidden))
+    missing = sorted(expected - actual)
+    unexpected = sorted(actual - expected)
+    if missing or unexpected:
+        details: list[str] = []
+        if missing:
+            details.append("missing " + ", ".join(missing))
+        if unexpected:
+            details.append("unexpected " + ", ".join(unexpected))
+        raise RecipeError(f"{label} driver inventory does not exactly match its approved recipe: " + "; ".join(details))
+
+
 def _assert_version(output: str, expected: object, label: str) -> None:
     version = _nonblank(expected, f"{label} version", 100)
     if re.search(rf"(?<![0-9A-Za-z]){re.escape(version)}(?![0-9A-Za-z])", output) is None:
@@ -1131,6 +1264,111 @@ def _copy_verified_tree(source: Path, destination: Path, expected_hash: object, 
     if _tree_digest(copied) != expected:
         raise RecipeError(f"{label} changed while it was being staged")
     return destination.resolve(strict=True)
+
+
+def _verify_gdal_source_archive(source: dict[str, object]) -> None:
+    """Bind the staged source tree to a retained, immutable official tarball."""
+    archive = _safe_local_file(source["archivePath"], "GDAL source archive")
+    expected_size = source["archiveSizeBytes"]
+    if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size <= 0:
+        raise RecipeError("GDAL source archiveSizeBytes is invalid")
+    if archive.stat().st_size != expected_size:
+        raise RecipeError("GDAL source archive size does not match its approved recipe")
+    expected_hash = _hash(source["archiveSha256"], "GDAL source archive SHA-256")
+    if _sha256_file_safe(archive, "GDAL source archive") != expected_hash:
+        raise RecipeError("GDAL source archive SHA-256 does not match its approved recipe")
+    inventory = _tar_gz_tree_inventory(
+        archive,
+        source["archiveRoot"],
+        "GDAL source archive",
+        _MAX_INPUT_FILES,
+        _MAX_INPUT_BYTES,
+    )
+    if _tree_digest(inventory) != source["treeSha256"]:
+        raise RecipeError("GDAL source archive contents do not match the approved source tree")
+    if archive.stat().st_size != expected_size or _sha256_file_safe(archive, "GDAL source archive") != expected_hash:
+        raise RecipeError("GDAL source archive changed while it was being verified")
+
+
+def _tar_gz_tree_inventory(
+    archive: Path,
+    archive_root: object,
+    label: str,
+    max_files: int,
+    max_bytes: int,
+) -> list[tuple[str, str, int]]:
+    """Read a tar.gz as a bounded regular-file tree without extracting it."""
+    root = _nonblank(archive_root, f"{label} root", 200)
+    if "/" in root or "\\" in root or root in {".", ".."} or any(ord(character) < 32 or character == ":" for character in root):
+        raise RecipeError(f"{label} root is invalid")
+    result: list[tuple[str, str, int]] = []
+    seen_members: set[str] = set()
+    total_bytes = 0
+    member_count = 0
+    saw_root = False
+    try:
+        with tarfile.open(archive, mode="r:gz") as input_archive:
+            for member in input_archive:
+                member_count += 1
+                if member_count > max_files:
+                    raise RecipeError(f"{label} exceeds its member-count bound")
+                raw_name = member.name
+                if not isinstance(raw_name, str) or not raw_name:
+                    raise RecipeError(f"{label} contains an unnamed member")
+                if raw_name == root or raw_name == f"{root}/":
+                    if not member.isdir() or saw_root:
+                        raise RecipeError(f"{label} has an invalid root member")
+                    saw_root = True
+                    continue
+                prefix = f"{root}/"
+                if not raw_name.startswith(prefix):
+                    raise RecipeError(f"{label} member escapes the declared root: {raw_name!r}")
+                relative = _safe_relative_path(raw_name[len(prefix):], f"{label} member path")
+                casefolded = relative.casefold()
+                if casefolded in seen_members:
+                    raise RecipeError(f"{label} contains duplicate or case-colliding members: {relative}")
+                seen_members.add(casefolded)
+                if member.isdir():
+                    continue
+                if not member.isfile():
+                    raise RecipeError(f"{label} contains a link or special member: {relative}")
+                if member.size < 0:
+                    raise RecipeError(f"{label} contains a file with an invalid size")
+                total_bytes += member.size
+                if len(result) >= max_files or total_bytes > max_bytes:
+                    raise RecipeError(f"{label} exceeds its file-count or size bound")
+                source = input_archive.extractfile(member)
+                if source is None:
+                    raise RecipeError(f"{label} cannot read member: {relative}")
+                digest = hashlib.sha256()
+                bytes_read = 0
+                with source:
+                    while chunk := source.read(_COPY_CHUNK):
+                        bytes_read += len(chunk)
+                        if bytes_read > member.size:
+                            raise RecipeError(f"{label} member size changed while being read: {relative}")
+                        digest.update(chunk)
+                if bytes_read != member.size:
+                    raise RecipeError(f"{label} member size is truncated: {relative}")
+                result.append((relative, digest.hexdigest(), member.size))
+    except (OSError, EOFError, tarfile.TarError) as error:
+        raise RecipeError(f"cannot safely read {label}: {error}") from error
+    if not saw_root or not result:
+        raise RecipeError(f"{label} must contain its declared root and at least one regular file")
+    return sorted(result)
+
+
+def _format_inventory_digest(value: object) -> str:
+    entries = sorted(_format_inventory(value, "format inventory"))
+    encoded = json.dumps(entries, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_configure_output(output: str) -> None:
+    if len(output.encode("utf-8", errors="replace")) > _MAX_PROCESS_OUTPUT_BYTES:
+        raise RecipeError("CMake configuration output exceeds its bound")
+    if re.search(r"manually[- ]specified variables were not used", output, re.IGNORECASE):
+        raise RecipeError("CMake did not consume one or more fixed GDAL profile settings")
 
 
 def _copy_tree_contents(source: Path, destination: Path, label: str) -> None:
@@ -1304,18 +1542,25 @@ def _emit_and_verify_manifest(
 
 
 def _manifest_source(source: dict[str, object], size_bytes: int) -> dict[str, object]:
+    downloaded_sha256 = source["treeSha256"]
+    manifest_size = size_bytes
+    if source["role"] == "gdalSource":
+        downloaded_sha256 = source["archiveSha256"]
+        manifest_size = source["archiveSizeBytes"]
     result = {
         "id": source["id"],
         "url": source["url"],
         "version": source["version"],
         "license": source["license"],
-        # The shared schema calls this downloadedSha256. For this directory-only
-        # staging builder it is explicitly the canonical verified content-tree
-        # digest, not a claim that an upstream archive was downloaded here.
-        "downloadedSha256": source["treeSha256"],
+        # The retained GDAL release tarball is verified before its canonical
+        # content tree is compared to the staged source. Prefixes and notices
+        # are local source-build inputs, so their canonical tree digests remain
+        # the most precise available identity until their owner supplies archive
+        # evidence for a production recipe.
+        "downloadedSha256": downloaded_sha256,
         "publisherSha256": source["publisherSha256"],
         "retrievedAt": source["retrievedAt"],
-        "sizeBytes": size_bytes,
+        "sizeBytes": manifest_size,
     }
     if source["role"] == "gdalSource":
         result["commit"] = source["commit"]

@@ -1167,36 +1167,42 @@ independent PE byte reproducibility.
 ### Source-only GDAL asset builder (unpublished)
 
 `scripts/build_gdal_asset.py` now supplies the missing source-build boundary,
-but it deliberately does not promote `gdal`. A recipe can contain only three
-local, hash-locked non-link trees (GDAL source, dependency prefix, complete
-notice bundle) and pinned local CMake, Ninja, MSVC `cl`/`link`, `dumpbin`, and
-Node tools. It requires the pinned GDAL 3.12.4 commit declaration, canonical
-tree identities, explicit notice-file coverage, fixed CMake arguments, and
-validated `/Brepro` cache flags. It clears injected GIS, CMake/vcpkg, and
-pkg-config settings before the fixed commands run. Owner-provided URL/publisher
-hash/retrieval fields are recorded but are not independent archive verification
-until the original immutable source archive accompanies the real recipe.
+but it deliberately does not promote `gdal`. A schema-2 recipe contains only a
+retained hash/size-locked GDAL 3.12.4 `tar.gz`, matching local non-link source,
+dependency-prefix, and complete-notice trees, exact OGR/complete-GDAL format
+inventories, and pinned local CMake, Ninja, MSVC `cl`/`link`, `dumpbin`, and
+Node tools. It streams the source archive without extracting it and requires its
+canonical file tree to equal the staged source tree; traversal, links, special
+members, duplicate/case-colliding paths, and archive/tree drift fail closed.
+Its GDAL manifest source now carries the verified archive hash and byte size.
+
+Fixed CMake configuration disables registry/environment/system/install-prefix
+and package-root discovery, constrains package/include/library lookup to the
+staged prefix, rejects cache paths outside staged roots, and fails any unused
+fixed setting. It validates both `ogrinfo` and a build-only `gdalinfo` against
+the recipe's exact sorted driver inventories. It clears injected GIS,
+CMake/vcpkg, and pkg-config settings before fixed commands run.
 
 The builder publishes only a staged four-file test output: deterministic ZIP,
 package lock, normalized definition, and re-verified manifest. The package can
 contain only root `bin` executables/declared reachable DLLs plus `share/gdal`,
 `share/proj`, and `licenses`; it rejects links, case-colliding paths, extra
 binaries, unsupported drivers, an inaccurate explicit EPSG:26917 conversion,
-and undeclared or unused PE imports. Manifest source records now include positive
-byte sizes and use `sourceDateEpoch` for a deterministic generation time. GDAL's
-non-disableable built-ins still require a real-build exact driver inventory; the
-staging check proves required drivers and a forbidden risk set, not a final
-closed-world driver allowlist. Five fake-tool tests pass and `pnpm test:artifacts`
-runs them with the York/ONNX and shared manifest suites.
+and undeclared or unused PE imports. Manifest source records include positive
+byte sizes and use `sourceDateEpoch` for a deterministic generation time. Six
+fake-tool tests now cover archive identity/traversal, CMake discovery/cache
+drift, and exact OGR/GDAL inventory drift in addition to the existing profile,
+CRS, PE, layout, and publication boundaries; `pnpm test:artifacts` runs them
+with the York/ONNX and shared manifest suites.
 
 This does not remove the external gate. No real recipe, dependency-prefix lock,
-complete notice bundle, source archive identity, PE asset, release URL, catalog
-strategy, or managed install smoke exists. The current tool hashes and `/Brepro`
-are not a claim that the ambient Windows SDK/include/lib environment is fully
-hermetic or that CMake cannot select an unreviewed static dependency; actual
-link-input review, the exact driver inventory, and the second clean Windows
-MSVC/vcpkg comparison remain required before any release asset or catalog
-promotion.
+complete notice bundle, source archive publisher evidence, PE asset, release
+URL, catalog strategy, or managed install smoke exists. The current tool hashes,
+discovery restrictions, and `/Brepro` are not a claim that the ambient Windows
+SDK/include/lib environment is fully hermetic or that CMake cannot select an
+unreviewed static dependency; actual link-input review, a real-build driver
+inventory, and the second clean Windows MSVC/vcpkg comparison remain required
+before any release asset or catalog promotion.
 
 1. Qualify a reproducible minimal open-driver GDAL package; keep its runtime
    consent and complete notice inventory.
