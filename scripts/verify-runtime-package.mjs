@@ -99,6 +99,16 @@ function verifyDependencyCatalog(catalog) {
         && pathParts.every((part) => part.length > 0 && part !== "." && part !== ".." && !part.includes(":")),
       `${component.id} managed reference path is unsafe`);
     }
+    assert(Array.isArray(component.projectImports), `${component.id} managed project imports are missing`);
+    const importIds = new Set();
+    for (const projectImport of component.projectImports) {
+      assert(/^[a-z0-9-]+$/.test(projectImport.id) && !importIds.has(projectImport.id), `${component.id} has an invalid or duplicate project import id`);
+      importIds.add(projectImport.id);
+      assert(projectImport.label && projectImport.sourceCrs && typeof projectImport.layerName === "string", `${component.id} project import metadata is incomplete`);
+      assert(["mixed", "traffic_light", "stop_sign", "bike_lane", "crosswalk", "other"].includes(projectImport.layerKind), `${component.id} project import layer kind is unsupported`);
+      const importParts = typeof projectImport.path === "string" ? projectImport.path.split(/[\\/]/) : [];
+      assert(importParts.length > 0 && importParts.every((part) => part && part !== "." && part !== ".." && !part.includes(":")), `${component.id} project import path is unsafe`);
+    }
   }
   for (const component of catalog.components) {
     for (const dependency of component.dependencies) {

@@ -93,6 +93,7 @@ struct DependencyComponent {
     artifact: Option<DependencyArtifact>,
     dependencies: Vec<String>,
     references: Vec<DependencyReference>,
+    project_imports: Vec<DependencyProjectImport>,
 }
 
 #[derive(Deserialize)]
@@ -101,6 +102,17 @@ struct DependencyReference {
     id: String,
     path: String,
     kind: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependencyProjectImport {
+    id: String,
+    label: String,
+    path: String,
+    source_crs: String,
+    layer_name: String,
+    layer_kind: String,
 }
 
 #[derive(Deserialize)]
@@ -271,6 +283,41 @@ fn validate_dependency_catalog() {
                 "dependency component {} has an unsafe managed reference path",
                 component.id
             );
+        }
+        let mut import_ids = HashSet::new();
+        for project_import in &component.project_imports {
+            assert!(
+                !project_import.id.is_empty()
+                    && project_import
+                        .id
+                        .chars()
+                        .all(|value| value.is_ascii_lowercase()
+                            || value.is_ascii_digit()
+                            || value == '-')
+                    && import_ids.insert(project_import.id.as_str())
+                    && !project_import.label.trim().is_empty()
+                    && !project_import.source_crs.trim().is_empty()
+                    && matches!(
+                        project_import.layer_kind.as_str(),
+                        "mixed"
+                            | "traffic_light"
+                            | "stop_sign"
+                            | "bike_lane"
+                            | "crosswalk"
+                            | "other"
+                    ),
+                "dependency component {} has an invalid managed project import",
+                component.id
+            );
+            assert!(
+                !project_import.path.is_empty()
+                    && Path::new(&project_import.path)
+                        .components()
+                        .all(|part| matches!(part, Component::Normal(_))),
+                "dependency component {} has an unsafe managed project import path",
+                component.id
+            );
+            let _ = &project_import.layer_name;
         }
     }
 

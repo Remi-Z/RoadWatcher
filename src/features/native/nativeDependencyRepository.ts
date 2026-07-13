@@ -33,17 +33,32 @@ export interface DependencyComponent {
   artifact: DependencyArtifact | null;
   dependencies: string[];
   references: DependencyReference[];
+  projectImports: DependencyProjectImport[];
   state: DependencyInstallState;
   installPath: string;
   updateAvailable: boolean;
   detail: string;
   managedReferences: Record<string, string>;
+  managedProjectImports: ManagedProjectImport[];
 }
 
 export interface DependencyReference {
   id: string;
   path: string;
   kind: "file" | "directory";
+}
+
+export interface DependencyProjectImport {
+  id: string;
+  label: string;
+  path: string;
+  sourceCrs: string;
+  layerName: string;
+  layerKind: "mixed" | "traffic_light" | "stop_sign" | "bike_lane" | "crosswalk" | "other";
+}
+
+export interface ManagedProjectImport extends Omit<DependencyProjectImport, "path"> {
+  sourcePath: string;
 }
 
 export interface DependencyCatalog {
@@ -129,9 +144,9 @@ function parseComponent(value: unknown): DependencyComponent | null {
     || typeof value.required !== "boolean" || typeof value.recommended !== "boolean" || !record(value.license)
     || !id(value.license.id) || !text(value.license.label) || !https(value.license.url) || !text(value.license.digest)
     || typeof value.license.consentRequired !== "boolean" || !https(value.sourceUrl) || !availability(value.availability)
-    || !Array.isArray(value.dependencies) || !value.dependencies.every(id) || !Array.isArray(value.references)
+    || !Array.isArray(value.dependencies) || !value.dependencies.every(id) || !Array.isArray(value.references) || !Array.isArray(value.projectImports)
     || !installState(value.state) || typeof value.installPath !== "string" || typeof value.updateAvailable !== "boolean"
-    || !text(value.detail) || !record(value.managedReferences)) return null;
+    || !text(value.detail) || !record(value.managedReferences) || !Array.isArray(value.managedProjectImports)) return null;
   const artifact = value.artifact === null ? null : parseArtifact(value.artifact);
   if (value.artifact !== null && !artifact) return null;
   if (value.availability === "available" && !artifact) return null;
@@ -149,13 +164,35 @@ function parseComponent(value: unknown): DependencyComponent | null {
   }
   if (value.state === "ready" && references.some((reference) => !managedReferences[(reference as DependencyReference).id])) return null;
   if (value.state !== "ready" && Object.keys(managedReferences).length > 0) return null;
+  const projectImports = value.projectImports.map(parseProjectImport);
+  if (projectImports.some((projectImport) => !projectImport)) return null;
+  const declaredProjectImports = projectImports as DependencyProjectImport[];
+  const importIds = new Set(declaredProjectImports.map((projectImport) => projectImport.id));
+  if (importIds.size !== projectImports.length) return null;
+  const managedProjectImports = value.managedProjectImports.map(parseManagedProjectImport);
+  if (managedProjectImports.some((projectImport) => !projectImport)) return null;
+  const resolvedProjectImports = managedProjectImports as ManagedProjectImport[];
+  const managedImportIds = new Set(resolvedProjectImports.map((projectImport) => projectImport.id));
+  if (managedImportIds.size !== resolvedProjectImports.length
+    || resolvedProjectImports.some((projectImport) => {
+      const declaration = declaredProjectImports.find((candidate) => candidate.id === projectImport.id);
+      return !declaration
+        || declaration.label !== projectImport.label
+        || declaration.sourceCrs !== projectImport.sourceCrs
+        || declaration.layerName !== projectImport.layerName
+        || declaration.layerKind !== projectImport.layerKind;
+    })) return null;
+  if (value.state === "ready" && (managedProjectImports.length !== projectImports.length
+    || [...importIds].some((projectImportId) => !managedImportIds.has(projectImportId)))) return null;
+  if (value.state !== "ready" && managedProjectImports.length > 0) return null;
   return {
     id: value.id, label: value.label, version: value.version, purpose: value.purpose,
     required: value.required, recommended: value.recommended,
     license: value.license as unknown as DependencyLicense, sourceUrl: value.sourceUrl,
     availability: value.availability, artifact, dependencies: value.dependencies, references: references as DependencyReference[],
+    projectImports: projectImports as DependencyProjectImport[],
     state: value.state, installPath: value.installPath, updateAvailable: value.updateAvailable, detail: value.detail,
-    managedReferences
+    managedReferences, managedProjectImports: resolvedProjectImports
   };
 }
 
@@ -163,6 +200,18 @@ function parseReference(value: unknown): DependencyReference | null {
   if (!record(value) || !id(value.id) || typeof value.path !== "string" || !safeRelativePath(value.path)
     || (value.kind !== "file" && value.kind !== "directory")) return null;
   return value as unknown as DependencyReference;
+}
+
+function parseProjectImport(value: unknown): DependencyProjectImport | null {
+  if (!record(value) || !id(value.id) || !text(value.label) || typeof value.path !== "string" || !safeRelativePath(value.path)
+    || !text(value.sourceCrs) || typeof value.layerName !== "string" || !layerKind(value.layerKind)) return null;
+  return value as unknown as DependencyProjectImport;
+}
+
+function parseManagedProjectImport(value: unknown): ManagedProjectImport | null {
+  if (!record(value) || !id(value.id) || !text(value.label) || !text(value.sourcePath)
+    || !text(value.sourceCrs) || typeof value.layerName !== "string" || !layerKind(value.layerKind)) return null;
+  return value as unknown as ManagedProjectImport;
 }
 
 function parseArtifact(value: unknown): DependencyArtifact | null {
@@ -197,5 +246,6 @@ function safeRelativePath(value: string): boolean {
 }
 function https(value: unknown): value is string { return typeof value === "string" && value.startsWith("https://") && !/[\r\n]/.test(value); }
 function availability(value: unknown): value is DependencyAvailability { return value === "available" || value === "pendingApproval" || value === "blockedOnUser"; }
+function layerKind(value: unknown): value is ManagedProjectImport["layerKind"] { return typeof value === "string" && ["mixed", "traffic_light", "stop_sign", "bike_lane", "crosswalk", "other"].includes(value); }
 function installState(value: unknown): value is DependencyInstallState { return typeof value === "string" && ["notInstalled", "queued", "downloading", "installing", "ready", "failed", "cancelled", "invalid"].includes(value); }
 function jobState(value: unknown): value is DependencyInstallJob["status"] { return typeof value === "string" && ["queued", "downloading", "installing", "ready", "failed", "cancelled"].includes(value); }

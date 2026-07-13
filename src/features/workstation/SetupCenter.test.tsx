@@ -9,8 +9,8 @@ const installable: DependencyComponent = {
   license: { id: "mit", label: "MIT", url: "https://example.com/license", digest: "license-digest", consentRequired: true },
   sourceUrl: "https://example.com/tool", availability: "available",
   artifact: { url: "https://github.com/example/tool.zip", sha256: "a".repeat(64), maxBytes: 25_000_000, archive: "zip" },
-  dependencies: [], references: [], state: "notInstalled", installPath: "C:/RoadWatcher/tool/1.2.3", updateAvailable: false,
-  detail: "Available for explicit installation.", managedReferences: {}
+  dependencies: [], references: [], projectImports: [], state: "notInstalled", installPath: "C:/RoadWatcher/tool/1.2.3", updateAvailable: false,
+  detail: "Available for explicit installation.", managedReferences: {}, managedProjectImports: []
 };
 
 const catalog: DependencyCatalog = {
@@ -20,7 +20,7 @@ const catalog: DependencyCatalog = {
 function renderSetup(overrides: Partial<Parameters<typeof SetupCenter>[0]> = {}) {
   const props: Parameters<typeof SetupCenter>[0] = {
     catalog, activeJob: null, message: "Catalog ready.", onRefresh: vi.fn(), onInstall: vi.fn(),
-    onCancel: vi.fn(), onRemove: vi.fn(), ...overrides
+    onCancel: vi.fn(), onRemove: vi.fn(), onProjectImport: vi.fn(), ...overrides
   };
   render(<SetupCenter {...props} />);
   return props;
@@ -35,6 +35,15 @@ describe("Setup Center", () => {
     expect(install).toBeEnabled();
     fireEvent.click(install);
     expect(props.onInstall).toHaveBeenCalledWith(["tool"], ["license-digest"]);
+  });
+
+  it("requires an explicit per-dataset project import action", () => {
+    const projectImport = { id: "signals", label: "Traffic signals", sourcePath: "C:/managed/signals.gpkg", sourceCrs: "EPSG:4326", layerName: "signals", layerKind: "traffic_light" as const };
+    const ready = { ...installable, state: "ready" as const, managedProjectImports: [projectImport] };
+    const props = renderSetup({ catalog: { ...catalog, components: [ready] } });
+    expect(props.onProjectImport).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Import Traffic signals into project" }));
+    expect(props.onProjectImport).toHaveBeenCalledWith(projectImport);
   });
 
   it("shows update identity and removes only a ready managed copy", () => {

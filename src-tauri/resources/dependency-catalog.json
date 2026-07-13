@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "platform": "windows-x86_64",
-  "catalogVersion": "2026.07.13-internal.2",
+  "catalogVersion": "2026.07.13-internal.3",
   "components": [
     {
       "id": "uv-python",
@@ -17,7 +17,8 @@
       "dependencies": [],
       "references": [
         { "id": "executable", "path": "uv.exe", "kind": "file" }
-      ]
+      ],
+      "projectImports": []
     },
     {
       "id": "ffmpeg",
@@ -33,7 +34,8 @@
       "dependencies": [],
       "references": [
         { "id": "binary-directory", "path": "bin", "kind": "directory" }
-      ]
+      ],
+      "projectImports": []
     },
     {
       "id": "gdal",
@@ -49,7 +51,8 @@
       "dependencies": [],
       "references": [
         { "id": "binary-directory", "path": "bin", "kind": "directory" }
-      ]
+      ],
+      "projectImports": []
     },
     {
       "id": "managed-valhalla",
@@ -65,7 +68,8 @@
       "dependencies": ["uv-python"],
       "references": [
         { "id": "service-executable", "path": "Scripts/valhalla_service.exe", "kind": "file" }
-      ]
+      ],
+      "projectImports": []
     },
     {
       "id": "york-valhalla-tiles",
@@ -81,7 +85,8 @@
       "dependencies": ["managed-valhalla"],
       "references": [
         { "id": "config", "path": "valhalla.json", "kind": "file" }
-      ]
+      ],
+      "projectImports": []
     },
     {
       "id": "cv-yolo11n",
@@ -98,7 +103,8 @@
       "references": [
         { "id": "model", "path": "yolo11n.onnx", "kind": "file" },
         { "id": "labels", "path": "labels.txt", "kind": "file" }
-      ]
+      ],
+      "projectImports": []
     },
     {
       "id": "york-official-gis",
@@ -114,7 +120,8 @@
       "dependencies": ["gdal"],
       "references": [
         { "id": "catalog", "path": "catalog.json", "kind": "file" }
-      ]
+      ],
+      "projectImports": []
     }
   ]
 }

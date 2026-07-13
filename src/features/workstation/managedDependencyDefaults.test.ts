@@ -7,8 +7,8 @@ function component(id: string, state: DependencyComponent["state"], managedRefer
     id, label: id, version: "1", purpose: "test", required: false, recommended: false,
     license: { id: "mit", label: "MIT", url: "https://example.com/license", digest: "digest", consentRequired: false },
     sourceUrl: "https://example.com/source", availability: "pendingApproval", artifact: null, dependencies: [],
-    references: Object.keys(managedReferences).map((referenceId) => ({ id: referenceId, path: "expected", kind: "file" })),
-    state, installPath: "C:/managed", updateAvailable: false, detail: "test", managedReferences
+    references: Object.keys(managedReferences).map((referenceId) => ({ id: referenceId, path: "expected", kind: "file" })), projectImports: [],
+    state, installPath: "C:/managed", updateAvailable: false, detail: "test", managedReferences, managedProjectImports: []
   };
 }
 

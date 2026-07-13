@@ -1,6 +1,6 @@
-import { AlertTriangle, CheckCircle2, Download, RotateCcw, Square, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, FolderInput, RotateCcw, Square, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { DependencyCatalog, DependencyInstallJob } from "../native/nativeDependencyRepository";
+import type { DependencyCatalog, DependencyInstallJob, ManagedProjectImport } from "../native/nativeDependencyRepository";
 import { StatusPill } from "./WorkstationViews";
 
 export function SetupCenter({
@@ -10,7 +10,8 @@ export function SetupCenter({
   onRefresh,
   onInstall,
   onCancel,
-  onRemove
+  onRemove,
+  onProjectImport
 }: {
   catalog: DependencyCatalog | null;
   activeJob: DependencyInstallJob | null;
@@ -19,6 +20,7 @@ export function SetupCenter({
   onInstall: (componentIds: string[], acceptedLicenseDigests: string[]) => void;
   onCancel: () => void;
   onRemove: (componentId: string) => void;
+  onProjectImport: (projectImport: ManagedProjectImport) => void;
 }) {
   const [acceptedDigests, setAcceptedDigests] = useState<string[]>([]);
   const recommended = useMemo(
@@ -93,6 +95,10 @@ export function SetupCenter({
               <span>{component.detail}</span>
             </div>
             <div className="setup-component-actions">
+              {component.managedProjectImports.map((projectImport) => (
+                <button type="button" className="button secondary" disabled={busy} key={projectImport.id}
+                  onClick={() => onProjectImport(projectImport)}><FolderInput size={15} />Import {projectImport.label} into project</button>
+              ))}
               {component.state === "ready" ? (
                 <button type="button" className="button secondary" disabled={busy} onClick={() => onRemove(component.id)}><Trash2 size={15} />Remove managed copy</button>
               ) : (

@@ -45,6 +45,7 @@ pub struct DependencyComponent {
     pub artifact: Option<DependencyArtifact>,
     pub dependencies: Vec<String>,
     pub references: Vec<DependencyReference>,
+    pub project_imports: Vec<DependencyProjectImport>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -53,6 +54,28 @@ pub struct DependencyReference {
     pub id: String,
     pub path: String,
     pub kind: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependencyProjectImport {
+    pub id: String,
+    pub label: String,
+    pub path: String,
+    pub source_crs: String,
+    pub layer_name: String,
+    pub layer_kind: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedProjectImport {
+    pub id: String,
+    pub label: String,
+    pub source_path: String,
+    pub source_crs: String,
+    pub layer_name: String,
+    pub layer_kind: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -94,6 +117,7 @@ pub struct DependencyComponentStatus {
     pub update_available: bool,
     pub detail: String,
     pub managed_references: HashMap<String, String>,
+    pub managed_project_imports: Vec<ManagedProjectImport>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -418,7 +442,9 @@ impl DependencyManager {
         let Ok(component) = self.component(id) else {
             return false;
         };
-        self.has_valid_marker(component) && self.resolve_references(component).is_ok()
+        self.has_valid_marker(component)
+            && self.resolve_references(component).is_ok()
+            && self.resolve_project_imports(component).is_ok()
     }
 
     fn has_valid_marker(&self, component: &DependencyComponent) -> bool {
@@ -464,11 +490,61 @@ impl DependencyManager {
         Ok(result)
     }
 
+    fn resolve_project_imports(
+        &self,
+        component: &DependencyComponent,
+    ) -> Result<Vec<ManagedProjectImport>, String> {
+        let root = self.component_path(component);
+        let canonical_root = root
+            .canonicalize()
+            .map_err(|error| format!("Could not validate managed component root: {error}"))?;
+        component
+            .project_imports
+            .iter()
+            .map(|project_import| {
+                let source = root.join(&project_import.path);
+                if !source.exists() {
+                    return Err(format!(
+                        "Managed project import {} is missing.",
+                        project_import.id
+                    ));
+                }
+                let canonical = source.canonicalize().map_err(|error| {
+                    format!(
+                        "Could not validate managed project import {}: {error}",
+                        project_import.id
+                    )
+                })?;
+                if !canonical.starts_with(&canonical_root) {
+                    return Err(format!(
+                        "Managed project import {} escaped its component root.",
+                        project_import.id
+                    ));
+                }
+                Ok(ManagedProjectImport {
+                    id: project_import.id.clone(),
+                    label: project_import.label.clone(),
+                    source_path: canonical.display().to_string(),
+                    source_crs: project_import.source_crs.clone(),
+                    layer_name: project_import.layer_name.clone(),
+                    layer_kind: project_import.layer_kind.clone(),
+                })
+            })
+            .collect()
+    }
+
     fn component_status(&self, component: &DependencyComponent) -> DependencyComponentStatus {
         let path = self.component_path(component);
         let marker_valid = self.has_valid_marker(component);
         let resolved_references = marker_valid.then(|| self.resolve_references(component));
+        let resolved_project_imports =
+            marker_valid.then(|| self.resolve_project_imports(component));
         let managed_references = resolved_references
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
+            .cloned()
+            .unwrap_or_default();
+        let managed_project_imports = resolved_project_imports
             .as_ref()
             .and_then(|result| result.as_ref().ok())
             .cloned()
@@ -477,6 +553,7 @@ impl DependencyManager {
             !self.is_ready(&component.id) && self.has_owned_previous_version(component);
         let (state, detail) = if marker_valid
             && resolved_references.as_ref().is_some_and(Result::is_ok)
+            && resolved_project_imports.as_ref().is_some_and(Result::is_ok)
         {
             (
                 "ready",
@@ -487,6 +564,7 @@ impl DependencyManager {
                 "invalid",
                 resolved_references
                     .and_then(Result::err)
+                    .or_else(|| resolved_project_imports.and_then(Result::err))
                     .unwrap_or_else(|| "Managed component references are invalid.".to_string()),
             )
         } else if path.exists() {
@@ -521,6 +599,7 @@ impl DependencyManager {
             update_available,
             detail,
             managed_references,
+            managed_project_imports,
         }
     }
 
@@ -717,6 +796,28 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
             }
             validate_relative_path(Path::new(&reference.path))
                 .map_err(|_| format!("{} managed reference path is unsafe", component.id))?;
+        }
+        let mut import_ids = HashSet::new();
+        for project_import in &component.project_imports {
+            if project_import.id.is_empty()
+                || !project_import.id.chars().all(|value| {
+                    value.is_ascii_lowercase() || value.is_ascii_digit() || value == '-'
+                })
+                || !import_ids.insert(project_import.id.clone())
+                || project_import.label.trim().is_empty()
+                || project_import.source_crs.trim().is_empty()
+                || !matches!(
+                    project_import.layer_kind.as_str(),
+                    "mixed" | "traffic_light" | "stop_sign" | "bike_lane" | "crosswalk" | "other"
+                )
+            {
+                return Err(format!(
+                    "{} has an invalid managed project import",
+                    component.id
+                ));
+            }
+            validate_relative_path(Path::new(&project_import.path))
+                .map_err(|_| format!("{} managed project import path is unsafe", component.id))?;
         }
     }
     for component in &catalog.components {
@@ -1159,6 +1260,7 @@ mod tests {
                 }),
                 dependencies: vec![],
                 references: vec![],
+                project_imports: vec![],
             }],
         }
     }
@@ -1229,10 +1331,20 @@ mod tests {
             path: "bin/tool.exe".to_string(),
             kind: "file".to_string(),
         }];
+        configured_catalog.components[0].project_imports = vec![DependencyProjectImport {
+            id: "signals".to_string(),
+            label: "Traffic signals".to_string(),
+            path: "data/signals.gpkg".to_string(),
+            source_crs: "EPSG:4326".to_string(),
+            layer_name: "signals".to_string(),
+            layer_kind: "traffic_light".to_string(),
+        }];
         let manager = DependencyManager::from_catalog(configured_catalog, root.clone()).unwrap();
         let target = root.join("tool").join("1");
         fs::create_dir_all(target.join("bin")).unwrap();
         fs::write(target.join("bin/tool.exe"), b"fixture").unwrap();
+        fs::create_dir_all(target.join("data")).unwrap();
+        fs::write(target.join("data/signals.gpkg"), b"fixture").unwrap();
         fs::write(
             target.join(MANAGED_MARKER),
             serde_json::to_vec(&ManagedComponentMarker {
@@ -1252,6 +1364,10 @@ mod tests {
             .managed_references
             .get("executable")
             .is_some_and(|path| path.ends_with("tool.exe")));
+        assert_eq!(ready.managed_project_imports.len(), 1);
+        assert!(ready.managed_project_imports[0]
+            .source_path
+            .ends_with("signals.gpkg"));
 
         fs::remove_file(target.join("bin/tool.exe")).unwrap();
         let invalid = manager.catalog().components.remove(0);

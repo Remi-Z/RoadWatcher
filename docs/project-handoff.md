@@ -872,6 +872,25 @@ so the disposable real smoke used `C:\\tmp`; RoadWatcher production preparation
 uses its app-local data root, not the repository. Redistribution approval and
 the production York tile artifact remain separate owner-gated work.
 
+Managed GIS components now have a strict install-to-project handoff without an
+automatic import. Catalog `projectImports` declare only relative source paths
+and bounded GIS metadata. Build-time, runtime, Rust, and frontend validators
+reject unsafe paths, duplicate identities, unsupported layer kinds, or resolved
+imports that do not exactly cover the declaration. The dependency manager emits
+absolute `managedProjectImports` only for a ready component with a valid
+ownership marker, an existing source, and a canonical source path confined to
+that component root. Setup Center renders one explicit **Import into project**
+action per resolved dataset and routes it through the existing native GIS import
+command; installation alone never modifies a project.
+
+The bundled catalog intentionally contains empty `projectImports` arrays. Exact
+municipal endpoints, terms, retrieval provenance, and layer metadata remain
+owner approval gates, so this module proves the security and UI contract without
+inventing a production dataset. Focused evidence is 9 dependency-manager tests,
+7 frontend repository/Setup Center tests, TypeScript compilation, and the
+runtime catalog audit. Real selectable datasets remain unfinished until those
+approvals are recorded in root `TODO.md`.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

@@ -86,7 +86,8 @@ import { createNativeRuntimePreflightRepository, type RuntimePreflightReport } f
 import {
   createNativeDependencyRepository,
   type DependencyCatalog,
-  type DependencyInstallJob
+  type DependencyInstallJob,
+  type ManagedProjectImport
 } from "./features/native/nativeDependencyRepository";
 import { createNativeFilePicker, type NativeFilePicker, type NativeFilePurpose } from "./features/native/nativeFilePicker";
 import { detectNativeRuntime, type NativeRuntimeHost, type NativeRuntimeStatus } from "./features/native/runtimeEnvironment";
@@ -1330,21 +1331,31 @@ export function App({
     );
   }
 
-  async function handleNativeGisImport() {
+  async function handleNativeGisImport(projectImport?: ManagedProjectImport) {
     if (!activeNativeSqlitePath) {
       setAppStatus("Native GIS import requires an active SQLite project. Create or reopen a native project first.");
       return;
     }
+    const sourcePath = projectImport?.sourcePath ?? nativeGisSourcePath;
+    const sourceCrs = projectImport?.sourceCrs ?? nativeGisSourceCrs;
+    const layerName = projectImport?.layerName ?? nativeGisLayerName;
+    const layerKind = projectImport?.layerKind ?? nativeGisLayerKind;
+    if (projectImport) {
+      setNativeGisSourcePath(sourcePath);
+      setNativeGisSourceCrs(sourceCrs);
+      setNativeGisLayerName(layerName);
+      setNativeGisLayerKind(layerKind);
+    }
     const requestedAtIso = new Date().toISOString();
     const gdalBinaryDirectory = componentSlots.find((slot) => slot.id === "gdal")?.reference ?? "";
     const result = await createNativeGisRepository(nativeCommandBridge, activeNativeSqlitePath, projectId)
-      .importPath(nativeGisSourcePath, nativeGisSourceCrs, nativeGisLayerKind, nativeGisLayerName, gdalBinaryDirectory);
+      .importPath(sourcePath, sourceCrs, layerKind, layerName, gdalBinaryDirectory);
     const attempt: NativeCommandAttempt = {
       id: `gis-import-${Date.now().toString(36)}`,
       command: "gis_import",
       status: result.status === "imported" ? "invoked" : result.commandStatus,
       requestedAtIso,
-      requestSummary: `sqlitePath: ${activeNativeSqlitePath}; sourcePath: ${nativeGisSourcePath}; sourceCrs: ${nativeGisSourceCrs}; layerName: ${nativeGisLayerName || "auto"}; layerKind: ${nativeGisLayerKind}`,
+      requestSummary: `sqlitePath: ${activeNativeSqlitePath}; sourcePath: ${sourcePath}; sourceCrs: ${sourceCrs}; layerName: ${layerName || "auto"}; layerKind: ${layerKind}`,
       resultSummary:
         result.status === "imported"
           ? `featureSourceId: ${result.featureSourceId}; features: ${result.features.length}; projectionJobId: ${result.projectionJobId}`
@@ -1740,7 +1751,7 @@ export function App({
             onNativeGisSourceCrsChange={setNativeGisSourceCrs}
             onNativeGisLayerNameChange={setNativeGisLayerName}
             onNativeGisLayerKindChange={setNativeGisLayerKind}
-            onNativeGisImport={handleNativeGisImport}
+            onNativeGisImport={() => void handleNativeGisImport()}
             onNativeGisSelect={() => void handleNativeFileSelection("gis")}
             onNativeGisDirectorySelect={() => void handleNativeFileSelection("gis_directory")}
             readiness={reviewReadiness}
@@ -1770,6 +1781,7 @@ export function App({
                 onInstall={(componentIds, acceptedLicenseDigests) => void handleDependencyInstall(componentIds, acceptedLicenseDigests)}
                 onCancel={() => void handleDependencyCancel()}
                 onRemove={(componentId) => void handleDependencyRemove(componentId)}
+                onProjectImport={(projectImport) => void handleNativeGisImport(projectImport)}
               />
             }
           />

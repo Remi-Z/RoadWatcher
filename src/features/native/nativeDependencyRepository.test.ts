@@ -8,8 +8,9 @@ const component = {
   sourceUrl: "https://example.com/tool", availability: "available",
   artifact: { url: "https://github.com/example/tool.zip", sha256: "a".repeat(64), maxBytes: 1000, archive: "zip" },
   dependencies: [], references: [{ id: "executable", path: "bin/tool.exe", kind: "file" }],
+  projectImports: [],
   state: "notInstalled", installPath: "C:/RoadWatcher/tool/1", updateAvailable: false,
-  detail: "Available for installation.", managedReferences: {}
+  detail: "Available for installation.", managedReferences: {}, managedProjectImports: []
 };
 
 describe("native dependency repository", () => {
@@ -41,15 +42,18 @@ describe("native dependency repository", () => {
   });
 
   it("accepts only backend-resolved references for ready components", async () => {
+    const projectImport = { id: "signals", label: "Traffic signals", path: "data/signals.gpkg", sourceCrs: "EPSG:4326", layerName: "signals", layerKind: "traffic_light" };
+    const managedProjectImport = { id: "signals", label: "Traffic signals", sourcePath: "C:/RoadWatcher/tool/1/data/signals.gpkg", sourceCrs: "EPSG:4326", layerName: "signals", layerKind: "traffic_light" };
     const invoke = vi.fn<NativeCommandBridge["invoke"]>().mockResolvedValue({
       ok: true, status: "invoked", command: "dependency_catalog", response: {
         schemaVersion: 1, platform: "windows-x86_64", catalogVersion: "test", components: [{
-          ...component, state: "ready", managedReferences: { executable: "C:/RoadWatcher/tool/1/bin/tool.exe" }
+          ...component, state: "ready", projectImports: [projectImport], managedProjectImports: [managedProjectImport],
+          managedReferences: { executable: "C:/RoadWatcher/tool/1/bin/tool.exe" }
         }]
       }
     });
     await expect(createNativeDependencyRepository({ invoke }).catalog()).resolves.toMatchObject({
-      status: "loaded", catalog: { components: [{ managedReferences: { executable: "C:/RoadWatcher/tool/1/bin/tool.exe" } }] }
+      status: "loaded", catalog: { components: [{ managedReferences: { executable: "C:/RoadWatcher/tool/1/bin/tool.exe" }, managedProjectImports: [managedProjectImport] }] }
     });
 
     invoke.mockResolvedValueOnce({ ok: true, status: "invoked", command: "dependency_catalog", response: {
@@ -62,6 +66,31 @@ describe("native dependency repository", () => {
     invoke.mockResolvedValueOnce({ ok: true, status: "invoked", command: "dependency_catalog", response: {
       schemaVersion: 1, platform: "windows-x86_64", catalogVersion: "test", components: [{
         ...component, state: "ready", managedReferences: {}
+      }]
+    } });
+    await expect(createNativeDependencyRepository({ invoke }).catalog()).resolves.toMatchObject({ status: "unavailable" });
+
+    invoke.mockResolvedValueOnce({ ok: true, status: "invoked", command: "dependency_catalog", response: {
+      schemaVersion: 1, platform: "windows-x86_64", catalogVersion: "test", components: [{
+        ...component,
+        state: "ready",
+        projectImports: [
+          projectImport,
+          { ...projectImport, id: "stop-signs", label: "Stop signs", layerKind: "stop_sign" }
+        ],
+        managedReferences: { executable: "C:/RoadWatcher/tool/1/bin/tool.exe" },
+        managedProjectImports: [managedProjectImport, managedProjectImport]
+      }]
+    } });
+    await expect(createNativeDependencyRepository({ invoke }).catalog()).resolves.toMatchObject({ status: "unavailable" });
+
+    invoke.mockResolvedValueOnce({ ok: true, status: "invoked", command: "dependency_catalog", response: {
+      schemaVersion: 1, platform: "windows-x86_64", catalogVersion: "test", components: [{
+        ...component,
+        state: "ready",
+        projectImports: [projectImport],
+        managedReferences: { executable: "C:/RoadWatcher/tool/1/bin/tool.exe" },
+        managedProjectImports: [{ ...managedProjectImport, sourceCrs: "EPSG:3857" }]
       }]
     } });
     await expect(createNativeDependencyRepository({ invoke }).catalog()).resolves.toMatchObject({ status: "unavailable" });

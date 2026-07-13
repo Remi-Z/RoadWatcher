@@ -11,8 +11,9 @@ configuration, but it is not yet complete for the new internal-release roadmap
 in root `TODO.md`. The managed catalog, installer boundary, Setup Center,
 feature-level view split, and one-shot managed Valhalla adapter are implemented.
 Exact installable component artifacts, reproducible tile/model builders,
-managed GIS project handoff, and clean-Windows pilot
-evidence remain incomplete or user-gated.
+approved managed GIS dataset descriptors, and clean-Windows pilot evidence
+remain incomplete or user-gated. The managed GIS install-to-project contract is
+implemented, but no municipal source is promoted before owner validation.
 
 It is also not a signed, validated public Windows release.
 `release-manifest.json` correctly keeps `publicReleaseReady` false. External
@@ -37,7 +38,7 @@ unpublished hashes in final evidence.
 | Managed artifact provenance manifests | Strict generator/verifier, three Node tests, release-audit integration, manifest documentation | Proven complete |
 | Deterministic release-asset packaging | Exact-tree/SHA lock, normalized stored ZIPs, atomic no-overwrite publication, three Python tests | Proven complete as shared packaging foundation; York/ONNX recipes missing |
 | Reproducible York/ONNX release-asset production | Root TODO and catalog placeholders; provenance generator only | Not achieved |
-| Managed GIS install-to-project handoff | Root TODO; existing manual/native GIS import only | Not achieved |
+| Managed GIS install-to-project handoff | Catalog/build/runtime validation, ownership-confined backend resolution, strict frontend parsing, explicit Setup Center action, existing native import command | Contract and UI proven; production datasets remain owner-gated |
 | Windows source/license packaging | Runtime verifier, Rust build gate, fresh NSIS archive inspection | Proven complete |
 | Version/signing/update/release policy | Bundled release manifest, Rust build gate, three Node verifier tests, strict installer/executable Authenticode evidence script | Proven complete as development policy |
 | Installed app startup evidence | Fresh debug NSIS build and development-host startup JSON evidence | Tool proven; clean-VM evidence missing |
