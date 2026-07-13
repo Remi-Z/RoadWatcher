@@ -43,6 +43,7 @@ unpublished hashes in final evidence.
 | Windows source/license packaging | Runtime verifier, Rust build gate, fresh NSIS archive inspection | Proven complete |
 | Version/signing/update/release policy | Bundled release manifest, Rust build gate, three Node verifier tests, strict installer/executable Authenticode evidence script | Proven complete as development policy |
 | Installed app startup evidence | Fresh debug NSIS build and development-host startup JSON evidence | Tool proven; clean-VM evidence missing |
+| Clean-Windows internal-pilot evidence | Owner-run procedure plus strict JSON verifier and five contract tests; covers every planned functional flow and immutable-input/installer guardrails | Evidence tooling proven; owner clean-machine run missing |
 | Public Windows release | Stable + signed + clean-machine-passed aggregate required by verifier | Not achieved |
 
 ## Current Verification

@@ -984,6 +984,23 @@ SHA-256, notices, layout, and approval evidence and then rerun focused
 install/validation/removal qualification. Generated GitHub assets still require
 owner publication or explicit workflow authorization before catalog promotion.
 
+The owner-run internal milestone now has a separate qualification contract in
+`docs/internal-pilot-validation.md` and a machine-checkable evidence verifier at
+`scripts/verify-internal-pilot.mjs`. The verifier requires every planned flow,
+ready-state provenance for the six core managed components, explicit GIS import,
+cancel/retry/removal evidence, matching hashes for original inputs, and negative
+evidence for elevation, PATH mutation, telemetry, automatic updates, and
+RoadWatch submission. Optional CV may be passed or explicitly skipped; a passed
+scan requires a ready model with an artifact hash.
+
+Five focused Node tests exercise the complete unsigned-internal path, missing
+flow evidence, environment guardrail violations, changed originals, invalid
+component provenance, and the optional-CV dependency. This verifier establishes
+evidence completeness, not truth of the observations; the owner must preserve
+and review the referenced logs/screenshots/packet and remains the only actor who
+can sign off the clean-machine pilot. Public signing and certification remain a
+separate future gate.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

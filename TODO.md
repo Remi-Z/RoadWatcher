@@ -127,6 +127,10 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 
 ### Qualification
 
+- [x] `[AGENT]` Provide a clean-Windows internal-pilot procedure and strict
+  evidence verifier covering managed installs, explicit GIS import, proxy,
+  managed matching, optional CV, GPStitch, persistence, export, cancellation,
+  retry, removal, immutable originals, and unchanged release guardrails.
 - [ ] `[AGENT]` Pass frontend, build, release/runtime audit, Rust, sidecar, and
   deterministic matcher/artifact tests.
 - [x] `[AGENT]` Verify dependency catalog rejection, download confinement,
@@ -147,7 +151,7 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [ ] `[BLOCKED-ON-USER]` Replace development artifact placeholders with exact
   published release URLs and final SHA-256 values.
 - [ ] `[USER-CONTEXT]` Run and sign off on the clean-Windows internal pilot with
-  representative private evidence.
+  representative private evidence using `docs/internal-pilot-validation.md`.
 - [ ] `[USER-CONTEXT]` Review every RoadWatch report and perform every final
   submission manually.
 

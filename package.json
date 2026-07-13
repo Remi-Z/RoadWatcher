@@ -13,6 +13,7 @@
     "test": "vitest run --config vitest.config.mjs",
     "test:watch": "vitest --config vitest.config.mjs",
     "test:artifacts": "node --test scripts/managed-artifact-manifest.node-test.mjs && python scripts/deterministic_artifact_zip_test.py && python scripts/build_york_valhalla_asset_test.py && python scripts/build_yolo_onnx_asset_test.py",
+    "test:internal-pilot": "node --test scripts/verify-internal-pilot.node-test.mjs",
     "verify:runtime": "node scripts/verify-runtime-package.mjs",
     "verify:release": "npm run verify:runtime && npm run test:artifacts && node --test scripts/verify-release.node-test.mjs && node scripts/verify-release.mjs"
   },
