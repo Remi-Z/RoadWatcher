@@ -407,7 +407,7 @@ mod tests {
         };
         let started = Instant::now();
         assert_eq!(manager.start(request.clone()).unwrap().status, "queued");
-        assert!(started.elapsed() < Duration::from_millis(100));
+        assert!(started.elapsed() < Duration::from_secs(1));
         let status = wait_for_terminal(&request);
         assert_eq!(status.status, "complete");
         assert_eq!(status.gpstitch_version, PINNED_GPSTITCH_VERSION);

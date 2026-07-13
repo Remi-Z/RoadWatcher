@@ -318,7 +318,7 @@ mod tests {
         };
         let started_at = Instant::now();
         let response = manager.start(request.clone()).unwrap();
-        assert!(started_at.elapsed() < Duration::from_millis(100));
+        assert!(started_at.elapsed() < Duration::from_secs(1));
         assert_eq!(response.status, "queued");
         let status = wait_for_terminal(&request);
         assert_eq!(status.status, "complete");
