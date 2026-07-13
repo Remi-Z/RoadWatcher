@@ -42,7 +42,7 @@ export function SetupCenter({
   function canInstall(componentId: string) {
     const component = catalog?.components.find((item) => item.id === componentId);
     return Boolean(component && component.availability === "available" && component.artifact
-      && (!component.license.consentRequired || hasConsent(component.license.digest)) && !busy);
+      && componentLicenses(component).every((license) => !license.consentRequired || hasConsent(license.digest)) && !busy);
   }
 
   const recommendedReady = recommended.length > 0 && recommended.every((component) => canInstall(component.id));
@@ -81,15 +81,19 @@ export function SetupCenter({
             <div className="setup-component-meta">
               <a href={component.sourceUrl} target="_blank" rel="noreferrer">Source</a>
               <a href={component.license.url} target="_blank" rel="noreferrer">{component.license.label}</a>
-              {component.artifact ? <span>{formatBytes(component.artifact.maxBytes)} maximum download</span> : <span>Exact artifact pending approval</span>}
+              {component.bootstrap ? <a href={component.bootstrap.sourceUrl} target="_blank" rel="noreferrer">Python source</a> : null}
+              {component.bootstrap ? <a href={component.bootstrap.license.url} target="_blank" rel="noreferrer">{component.bootstrap.license.label}</a> : null}
+              {component.artifact ? <span>{formatBytes(maximumDownloadBytes(component))} maximum download</span> : <span>Exact artifact pending approval</span>}
             </div>
-            {component.license.consentRequired && component.availability === "available" ? (
-              <label className="setup-license-consent">
-                <input type="checkbox" checked={hasConsent(component.license.digest)}
-                  onChange={(event) => toggleConsent(component.license.digest, event.target.checked)} />
-                <span>I reviewed and accept this exact license revision.</span>
-              </label>
-            ) : null}
+            {component.availability === "available" ? componentLicenses(component)
+              .filter((license) => license.consentRequired)
+              .map((license) => (
+                <label className="setup-license-consent" key={license.digest}>
+                  <input type="checkbox" checked={hasConsent(license.digest)}
+                    onChange={(event) => toggleConsent(license.digest, event.target.checked)} />
+                  <span>I reviewed and accept {license.label}.</span>
+                </label>
+              )) : null}
             <div className="setup-component-detail">
               {component.state === "ready" ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
               <span>{component.detail}</span>
@@ -118,4 +122,12 @@ function formatBytes(bytes: number): string {
   if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
   if (bytes >= 1_000_000) return `${Math.ceil(bytes / 1_000_000)} MB`;
   return `${Math.ceil(bytes / 1_000)} KB`;
+}
+
+function maximumDownloadBytes(component: DependencyCatalog["components"][number]): number {
+  return (component.artifact?.maxBytes ?? 0) + (component.bootstrap?.artifact?.maxBytes ?? 0);
+}
+
+function componentLicenses(component: DependencyCatalog["components"][number]) {
+  return component.bootstrap ? [component.license, component.bootstrap.license] : [component.license];
 }

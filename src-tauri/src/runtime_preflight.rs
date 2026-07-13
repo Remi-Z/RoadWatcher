@@ -24,6 +24,7 @@ pub struct RuntimePreflightRequest {
     pub gpstitch_environment: PathBuf,
     pub cv_environment: PathBuf,
     pub valhalla_environment: PathBuf,
+    pub python_install_root: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -47,15 +48,25 @@ pub struct RuntimePreflightResponse {
 }
 
 trait ToolProbeExecutor: Send + Sync {
-    fn run(&self, executable: &Path, args: &[&str]) -> Result<String, String>;
+    fn run(
+        &self,
+        executable: &Path,
+        args: &[&str],
+        environment: &[(OsString, OsString)],
+    ) -> Result<String, String>;
 }
 
 struct ProcessToolProbeExecutor;
 
 impl ToolProbeExecutor for ProcessToolProbeExecutor {
-    fn run(&self, executable: &Path, args: &[&str]) -> Result<String, String> {
+    fn run(
+        &self,
+        executable: &Path,
+        args: &[&str],
+        environment: &[(OsString, OsString)],
+    ) -> Result<String, String> {
         let mut command = Command::new(executable);
-        command.args(args);
+        command.args(args).envs(environment.iter().cloned());
         let output = run_bounded_process(&mut command, PROBE_TIMEOUT, PROBE_OUTPUT_LIMIT)
             .map_err(|error| error.to_string())?;
         let text = first_nonblank_line(&output.stdout)
@@ -112,6 +123,17 @@ fn run_with_executor(
             false,
         ),
     ];
+    let mut python_spec = tool_spec(
+        "python",
+        "Python resolver through uv",
+        false,
+        executable(&request.uv_executable, "uv"),
+        vec!["python", "find", "3.12.13", "--managed-python"],
+    );
+    python_spec.environment.push((
+        OsString::from("UV_PYTHON_INSTALL_DIR"),
+        request.python_install_root.as_os_str().to_owned(),
+    ));
     let specs = vec![
         environment_tool_spec(
             "gpstitch-environment",
@@ -141,13 +163,7 @@ fn run_with_executor(
             executable(&request.uv_executable, "uv"),
             vec!["--version"],
         ),
-        tool_spec(
-            "python",
-            "Python resolver through uv",
-            false,
-            executable(&request.uv_executable, "uv"),
-            vec!["python", "find"],
-        ),
+        python_spec,
         tool_spec(
             "ffmpeg",
             "FFmpeg video processor",
@@ -249,6 +265,7 @@ struct ToolSpec {
     required: bool,
     executable: Result<PathBuf, String>,
     args: Vec<&'static str>,
+    environment: Vec<(OsString, OsString)>,
     expected_version: Option<&'static str>,
 }
 
@@ -265,6 +282,7 @@ fn tool_spec(
         required,
         executable,
         args,
+        environment: vec![],
         expected_version: None,
     }
 }
@@ -284,7 +302,7 @@ fn probe_tool(spec: ToolSpec, executor: &dyn ToolProbeExecutor) -> RuntimeCompon
             }
         }
     };
-    match executor.run(&executable, &spec.args) {
+    match executor.run(&executable, &spec.args, &spec.environment) {
         Ok(version)
             if spec
                 .expected_version
@@ -416,13 +434,19 @@ fn first_nonblank_line(bytes: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{run_with_executor, RuntimePreflightRequest, ToolProbeExecutor};
+    use std::ffi::OsString;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
     struct FakeExecutor;
     impl ToolProbeExecutor for FakeExecutor {
-        fn run(&self, executable: &Path, args: &[&str]) -> Result<String, String> {
+        fn run(
+            &self,
+            executable: &Path,
+            args: &[&str],
+            _environment: &[(OsString, OsString)],
+        ) -> Result<String, String> {
             let name = executable.to_string_lossy();
             if name == "uv" || name.contains("ogr") {
                 Err("not installed".to_string())
@@ -443,11 +467,16 @@ mod tests {
 
     struct MissingModuleExecutor(&'static str);
     impl ToolProbeExecutor for MissingModuleExecutor {
-        fn run(&self, executable: &Path, args: &[&str]) -> Result<String, String> {
+        fn run(
+            &self,
+            executable: &Path,
+            args: &[&str],
+            environment: &[(OsString, OsString)],
+        ) -> Result<String, String> {
             if args.iter().any(|value| value.contains(self.0)) {
                 Err(format!("No module for probe {}", self.0))
             } else {
-                FakeExecutor.run(executable, args)
+                FakeExecutor.run(executable, args, environment)
             }
         }
     }
@@ -474,6 +503,7 @@ mod tests {
                 gpstitch_environment: environments.gpstitch,
                 cv_environment: environments.cv,
                 valhalla_environment: environments.valhalla,
+                python_install_root: environments.python_install_root,
             },
             Arc::new(FakeExecutor),
         );
@@ -518,6 +548,7 @@ mod tests {
             gpstitch_environment: environments.gpstitch.clone(),
             cv_environment: environments.cv.clone(),
             valhalla_environment: environments.valhalla.clone(),
+            python_install_root: environments.python_install_root.clone(),
         };
         let optional_cv_missing = run_with_executor(
             request.clone(),
@@ -552,6 +583,7 @@ mod tests {
             gpstitch_environment: environments.gpstitch,
             cv_environment: environments.cv,
             valhalla_environment: environments.valhalla,
+            python_install_root: environments.python_install_root,
         };
         let required_valhalla_missing = run_with_executor(
             valhalla_request,

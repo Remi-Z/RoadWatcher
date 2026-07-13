@@ -70,7 +70,13 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Preserve an evidence-backed managed-source approval matrix that
   distinguishes locally proven executables from fully identified distributable
   archives and leaves every owner approval explicitly unchecked.
-- [ ] `[AGENT]` Bootstrap pinned uv and isolated uv-managed Python 3.12.
+- [x] `[AGENT]` Bootstrap pinned uv and isolated uv-managed Python 3.12.
+  - [x] `[AGENT]` Pin the owner-approved official uv 0.11.23 and CPython
+    3.12.13 Windows artifacts by exact URL, size, SHA-256, source, and separate
+    license-consent digest.
+  - [x] `[AGENT]` Download Python through the verified manager, install it from
+    a confined local mirror with uv offline/no-config/no-registry/no-bin, and
+    publish both references atomically below app-local data.
 - [x] `[AGENT]` Reuse runtime preparation for locked GPStitch and CV
   environments.
 - [ ] `[AGENT]` Install and validate the audited FFmpeg/ffprobe distribution.
@@ -210,6 +216,10 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   identity/license/host/hash/archive rejection, size and integrity failures,
   cancellation, traversal-safe extraction, confined resolved references,
   atomic promotion and rollback, restart cleanup, and ownership enforcement.
+- [x] `[AGENT]` Approved managed uv/Python qualification adds fixed bootstrap,
+  dual-consent, cancellation, manual redirect-allowlist, and Windows promotion
+  coverage; the explicit real networked install/reference/removal smoke passed
+  with uv 0.11.23 and CPython 3.12.13.
 - [x] `[AGENT]` Four York builder tests cover a portable staged tile tree,
   boundary/hash/config rejection, strict recipe fields, and complete
   archive/lock/definition/manifest publication with fake fixed-command tools.

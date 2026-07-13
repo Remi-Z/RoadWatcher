@@ -38,13 +38,33 @@ managed-install license/source approval gate.
 ## External tools not redistributed
 
 The current installer does not contain `uv`, Python, FFmpeg/ffprobe, GDAL/OGR,
-Valhalla, OSRM, an ONNX model, or GIS/map datasets. Users or administrators must
-provide these separately and are responsible for selecting builds and data whose
-licenses are appropriate for their deployment. In particular, FFmpeg license
-terms depend on how a specific binary was configured.
+Valhalla, OSRM, an ONNX model, or GIS/map datasets. Approved components may be
+downloaded only after an explicit Setup Center action and exact license consent;
+all unapproved components still require an operator-selected external source.
+In particular, FFmpeg license terms depend on how a specific binary was
+configured.
+
+### Managed uv 0.11.23 and CPython 3.12.13
+
+The managed catalog pins Astral's official Windows x64 uv 0.11.23 ZIP (23,758,102
+bytes, SHA-256
+`02ad29f07e674d68726ba3bb1ff25b335d83515756e2b1a194bb56c3cc30e07c`)
+under Apache-2.0 OR MIT. It separately pins Astral's
+python-build-standalone CPython 3.12.13 Windows payload dated 20260610
+(21,932,694 bytes, SHA-256
+`99dce0b23bf3c3b28d350cdd7bfe3cd3be51cc4f285faae7c0df110d106d1a8d`).
+That archive contains `python/LICENSE.txt` plus the bundled pip/vendor and Tcl/Tk
+license files. Setup Center presents and requires both consent identities.
+
+RoadWatcher downloads and verifies both archives itself. uv receives the Python
+archive only through a confined local mirror with network and configuration
+discovery disabled, installs below RoadWatcher's app-local managed component,
+does not add executable shims or registry entries, and is never placed on PATH.
+Removing the owned component removes that managed uv/Python copy only.
 
 When the user explicitly selects **Prepare sidecar environments**, RoadWatcher
-uses external `uv` to download/install the exact Python packages identified by
+uses an explicit override, the managed uv copy, or PATH uv—in that order—to
+download/install the exact Python packages identified by
 the bundled `uv.lock` files into versioned app-local environments. Those packages
 are not embedded in the installer, but their own licenses still apply to the
 resulting local installations. A release that pre-populates or redistributes

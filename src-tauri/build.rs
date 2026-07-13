@@ -91,6 +91,7 @@ struct DependencyComponent {
     source_url: String,
     availability: String,
     artifact: Option<DependencyArtifact>,
+    bootstrap: Option<DependencyBootstrap>,
     dependencies: Vec<String>,
     references: Vec<DependencyReference>,
     project_imports: Vec<DependencyProjectImport>,
@@ -131,6 +132,17 @@ struct DependencyArtifact {
     sha256: String,
     max_bytes: u64,
     archive: String,
+    file_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependencyBootstrap {
+    kind: String,
+    version: String,
+    source_url: String,
+    license: DependencyLicense,
+    artifact: Option<DependencyArtifact>,
 }
 
 fn main() {
@@ -258,6 +270,84 @@ fn validate_dependency_catalog() {
                 "dependency component {} uses an unsupported archive",
                 component.id
             );
+            if let Some(file_name) = &artifact.file_name {
+                assert_safe_relative(file_name, "artifact file name", &component.id);
+            }
+        }
+        if let Some(bootstrap) = &component.bootstrap {
+            assert_eq!(
+                component.id, "uv-python",
+                "only uv-python may declare a bootstrap"
+            );
+            assert_eq!(bootstrap.kind, "uv-managed-python");
+            assert!(
+                exact_version(&bootstrap.version),
+                "uv bootstrap version is invalid"
+            );
+            assert_https(&bootstrap.source_url, "bootstrap source URL", &component.id);
+            assert_https(
+                &bootstrap.license.url,
+                "bootstrap license URL",
+                &component.id,
+            );
+            assert!(
+                !bootstrap.license.id.trim().is_empty()
+                    && !bootstrap.license.label.trim().is_empty()
+                    && !bootstrap.license.digest.trim().is_empty(),
+                "uv bootstrap license evidence is incomplete"
+            );
+            if let Some(previous) =
+                licenses.insert(&bootstrap.license.id, &bootstrap.license.digest)
+            {
+                assert_eq!(
+                    previous, bootstrap.license.digest,
+                    "license {} has inconsistent digests",
+                    bootstrap.license.id
+                );
+            }
+            assert!(
+                component.availability != "available" || bootstrap.artifact.is_some(),
+                "available uv-python component has no bootstrap artifact"
+            );
+            if let Some(artifact) = &bootstrap.artifact {
+                assert_https(&artifact.url, "bootstrap artifact URL", &component.id);
+                let host = artifact
+                    .url
+                    .trim_start_matches("https://")
+                    .split('/')
+                    .next()
+                    .unwrap_or_default()
+                    .split(':')
+                    .next()
+                    .unwrap_or_default();
+                assert!(
+                    DOWNLOAD_HOSTS.contains(&host),
+                    "uv bootstrap host is not allowlisted"
+                );
+                assert!(artifact.max_bytes > 0, "uv bootstrap has no size limit");
+                assert!(
+                    artifact.sha256.len() == 64
+                        && artifact
+                            .sha256
+                            .chars()
+                            .all(|value| value.is_ascii_hexdigit()),
+                    "uv bootstrap SHA-256 is invalid"
+                );
+                assert_eq!(
+                    artifact.archive, "file",
+                    "uv bootstrap must be a verified file"
+                );
+                let file_name = artifact
+                    .file_name
+                    .as_deref()
+                    .expect("uv bootstrap mirror path is missing");
+                assert_safe_relative(file_name, "bootstrap mirror path", &component.id);
+                assert!(
+                    Path::new(file_name).components().count() >= 2
+                        && file_name.to_ascii_lowercase().ends_with(".tar.gz"),
+                    "uv bootstrap mirror path is invalid"
+                );
+            }
         }
         let mut reference_ids = HashSet::new();
         for reference in &component.references {
@@ -282,6 +372,26 @@ fn validate_dependency_catalog() {
                         .all(|part| matches!(part, Component::Normal(_))),
                 "dependency component {} has an unsafe managed reference path",
                 component.id
+            );
+        }
+        if component.bootstrap.is_some() {
+            assert!(
+                component
+                    .references
+                    .iter()
+                    .any(|reference| reference.id == "executable"
+                        && reference.path == "uv.exe"
+                        && reference.kind == "file"),
+                "uv bootstrap executable reference drifted"
+            );
+            assert!(
+                component
+                    .references
+                    .iter()
+                    .any(|reference| reference.id == "python-installations"
+                        && reference.path == "python-installations"
+                        && reference.kind == "directory"),
+                "uv bootstrap Python reference drifted"
             );
         }
         let mut import_ids = HashSet::new();
@@ -359,6 +469,24 @@ fn visit_dependency<'a>(
     }
     visiting.remove(id);
     visited.insert(id);
+}
+
+fn exact_version(value: &str) -> bool {
+    let parts = value.split('.').collect::<Vec<_>>();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.chars().all(|value| value.is_ascii_digit()))
+}
+
+fn assert_safe_relative(value: &str, field: &str, component_id: &str) {
+    assert!(
+        !value.is_empty()
+            && Path::new(value)
+                .components()
+                .all(|part| matches!(part, Component::Normal(_))),
+        "dependency component {component_id} has an unsafe {field}"
+    );
 }
 
 fn assert_https(url: &str, field: &str, component_id: &str) {

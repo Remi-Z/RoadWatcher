@@ -87,6 +87,29 @@ function verifyDependencyCatalog(catalog) {
       assert(/^[a-fA-F0-9]{64}$/.test(component.artifact.sha256), `${component.id} artifact SHA-256 is invalid`);
       assert(["file", "zip"].includes(component.artifact.archive), `${component.id} archive type is unsupported`);
     }
+    if (component.bootstrap) {
+      assert(component.id === "uv-python" && component.bootstrap.kind === "uv-managed-python", `${component.id} bootstrap kind is unsupported`);
+      assert(/^\d+\.\d+\.\d+$/.test(component.bootstrap.version), `${component.id} bootstrap version is invalid`);
+      assertHttps(component.bootstrap.sourceUrl, `${component.id} bootstrap source URL`);
+      assertHttps(component.bootstrap.license?.url, `${component.id} bootstrap license URL`);
+      assert(component.bootstrap.license?.id && component.bootstrap.license?.label && component.bootstrap.license?.digest,
+        `${component.id} bootstrap license evidence is incomplete`);
+      const bootstrapPriorDigest = licenses.get(component.bootstrap.license.id);
+      assert(!bootstrapPriorDigest || bootstrapPriorDigest === component.bootstrap.license.digest,
+        `${component.bootstrap.license.id} has inconsistent license digests`);
+      licenses.set(component.bootstrap.license.id, component.bootstrap.license.digest);
+      assert(component.availability !== "available" || component.bootstrap.artifact, `${component.id} claims availability without a bootstrap artifact`);
+      const artifact = component.bootstrap.artifact;
+      if (artifact) {
+        assertHttps(artifact.url, `${component.id} bootstrap artifact URL`);
+        assert(allowedHosts.has(new URL(artifact.url).hostname), `${component.id} bootstrap artifact host is not allowlisted`);
+        assert(Number.isSafeInteger(artifact.maxBytes) && artifact.maxBytes > 0, `${component.id} bootstrap has no download size limit`);
+        assert(/^[a-fA-F0-9]{64}$/.test(artifact.sha256), `${component.id} bootstrap artifact SHA-256 is invalid`);
+        assert(artifact.archive === "file", `${component.id} bootstrap archive type is unsupported`);
+        assert(safeRelative(artifact.fileName) && artifact.fileName.toLowerCase().endsWith(".tar.gz")
+          && artifact.fileName.split(/[\\/]/).length >= 2, `${component.id} bootstrap mirror path is invalid`);
+      }
+    }
     assert(Array.isArray(component.references), `${component.id} managed references are missing`);
     const referenceIds = new Set();
     for (const reference of component.references) {
@@ -122,6 +145,23 @@ function verifyDependencyCatalog(catalog) {
     "managed York Valhalla config reference is invalid");
   assert(yorkReferences.get("tiles")?.path === "tiles" && yorkReferences.get("tiles")?.kind === "directory",
     "managed York Valhalla tile-directory reference is invalid");
+  const uvPython = byId.get("uv-python");
+  assert(uvPython?.availability === "available", "approved uv/Python component is not available");
+  assert(uvPython.license?.digest === "153397d6fc146456ad3d9c29ae3c0657d1b5a202729184a930c275085b01adae"
+    && uvPython.license?.consentRequired === true, "approved uv license consent identity drifted");
+  assert(uvPython.artifact?.url === "https://releases.astral.sh/github/uv/releases/download/0.11.23/uv-x86_64-pc-windows-msvc.zip"
+    && uvPython.artifact?.sha256 === "02ad29f07e674d68726ba3bb1ff25b335d83515756e2b1a194bb56c3cc30e07c",
+  "approved uv 0.11.23 artifact identity drifted");
+  assert(uvPython.bootstrap?.version === "3.12.13"
+    && uvPython.bootstrap?.artifact?.sha256 === "99dce0b23bf3c3b28d350cdd7bfe3cd3be51cc4f285faae7c0df110d106d1a8d"
+    && uvPython.bootstrap?.license?.digest === "799bebe26d73eb2bbf560bbd920a99e04f13e5db47c7123b73a39e87fdabcef4"
+    && uvPython.bootstrap?.license?.consentRequired === true,
+  "approved CPython 3.12.13 artifact identity drifted");
+  const uvReferences = new Map(uvPython.references.map((reference) => [reference.id, reference]));
+  assert(uvReferences.get("executable")?.path === "uv.exe" && uvReferences.get("executable")?.kind === "file",
+    "managed uv executable reference drifted");
+  assert(uvReferences.get("python-installations")?.path === "python-installations"
+    && uvReferences.get("python-installations")?.kind === "directory", "managed Python reference drifted");
   const visited = new Set();
   const visiting = new Set();
   const visit = (id) => {
@@ -137,6 +177,11 @@ function verifyDependencyCatalog(catalog) {
 
 function assertHttps(url, field) {
   assert(typeof url === "string" && url.startsWith("https://") && !/[\r\n]/.test(url), `${field} is unsafe`);
+}
+
+function safeRelative(value) {
+  if (typeof value !== "string" || !value || /^[A-Za-z]:/.test(value) || value.startsWith("/") || value.startsWith("\\") || /[\r\n]/.test(value)) return false;
+  return value.split(/[\\/]/).every((part) => part && part !== "." && part !== ".." && !part.includes(":"));
 }
 
 function json(relativePath) {

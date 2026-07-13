@@ -1,16 +1,21 @@
+use crate::bounded_process::run_bounded_process_cancellable;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use url::Url;
 use uuid::Uuid;
 use zip::ZipArchive;
 
 const MANAGED_MARKER: &str = ".roadwatcher-managed-component.json";
+const UV_PYTHON_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+const UV_PYTHON_BOOTSTRAP_OUTPUT_LIMIT: u64 = 16 * 1024 * 1024;
 const ALLOWED_DOWNLOAD_HOSTS: &[&str] = &[
     "github.com",
     "objects.githubusercontent.com",
@@ -43,6 +48,8 @@ pub struct DependencyComponent {
     pub source_url: String,
     pub availability: String,
     pub artifact: Option<DependencyArtifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap: Option<DependencyBootstrap>,
     pub dependencies: Vec<String>,
     pub references: Vec<DependencyReference>,
     pub project_imports: Vec<DependencyProjectImport>,
@@ -98,6 +105,16 @@ pub struct DependencyArtifact {
     pub file_name: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependencyBootstrap {
+    pub kind: String,
+    pub version: String,
+    pub source_url: String,
+    pub license: DependencyLicense,
+    pub artifact: Option<DependencyArtifact>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DependencyCatalogResponse {
@@ -143,6 +160,8 @@ struct ManagedComponentMarker {
     id: String,
     version: String,
     artifact_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bootstrap_artifact_sha256: Option<String>,
     source_url: String,
     installed_at_unix: u64,
 }
@@ -225,6 +244,16 @@ impl DependencyManager {
                     "License consent for {} does not match the catalog digest.",
                     component.label
                 ));
+            }
+            if let Some(bootstrap) = &component.bootstrap {
+                if bootstrap.license.consent_required
+                    && !accepted.contains(&bootstrap.license.digest)
+                {
+                    return Err(format!(
+                        "License consent for {} {} does not match the catalog digest.",
+                        component.label, bootstrap.version
+                    ));
+                }
             }
             for dependency in &component.dependencies {
                 if !component_ids.contains(dependency) && !self.is_ready(dependency) {
@@ -407,6 +436,9 @@ impl DependencyManager {
                 "zip" => extract_zip(&download, &payload, || self.is_cancelled(job_id))?,
                 other => return Err(format!("unsupported dependency archive type {other}")),
             }
+            if let Some(bootstrap) = &component.bootstrap {
+                self.install_bootstrap(job_id, bootstrap, &payload, &staging)?;
+            }
             if self.is_cancelled(job_id) {
                 return Err("dependency installation cancelled".to_string());
             }
@@ -414,6 +446,11 @@ impl DependencyManager {
                 id: component.id.clone(),
                 version: component.version.clone(),
                 artifact_sha256: artifact.sha256.clone(),
+                bootstrap_artifact_sha256: component
+                    .bootstrap
+                    .as_ref()
+                    .and_then(|bootstrap| bootstrap.artifact.as_ref())
+                    .map(|artifact| artifact.sha256.clone()),
                 source_url: artifact.url.clone(),
                 installed_at_unix: now_unix(),
             };
@@ -425,11 +462,65 @@ impl DependencyManager {
                 .write_all(&marker_bytes)
                 .map_err(|error| error.to_string())?;
             marker_file.sync_all().map_err(|error| error.to_string())?;
+            drop(marker_file);
             promote_owned_directory(&payload, &self.component_path(component), &self.root)?;
             Ok(())
         })();
         let _ = fs::remove_dir_all(&staging);
         result
+    }
+
+    fn install_bootstrap(
+        &self,
+        job_id: &str,
+        bootstrap: &DependencyBootstrap,
+        payload: &Path,
+        staging: &Path,
+    ) -> Result<(), String> {
+        match bootstrap.kind.as_str() {
+            "uv-managed-python" => {
+                let artifact = bootstrap.artifact.as_ref().ok_or_else(|| {
+                    "catalog uv-managed Python bootstrap artifact is unavailable".to_string()
+                })?;
+                let mirror_relative = artifact.file_name.as_deref().ok_or_else(|| {
+                    "catalog uv-managed Python bootstrap mirror path is unavailable".to_string()
+                })?;
+                let mirror_relative = Path::new(mirror_relative);
+                validate_relative_path(mirror_relative).map_err(|_| {
+                    "catalog uv-managed Python bootstrap mirror path is unsafe".to_string()
+                })?;
+                let mirror = staging.join("python-mirror");
+                let download = mirror.join(mirror_relative);
+                let parent = download.parent().ok_or_else(|| {
+                    "catalog uv-managed Python bootstrap mirror path is invalid".to_string()
+                })?;
+                fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+                self.update_job(job_id, |job| {
+                    job.detail = format!(
+                        "Downloading the catalog-pinned Python {} runtime.",
+                        bootstrap.version
+                    );
+                });
+                download_verified(
+                    &artifact.url,
+                    &download,
+                    artifact.max_bytes,
+                    &artifact.sha256,
+                    || self.is_cancelled(job_id),
+                )?;
+                self.update_job(job_id, |job| {
+                    job.status = "installing".to_string();
+                    job.detail = format!(
+                        "Installing and validating app-local Python {} with uv.",
+                        bootstrap.version
+                    );
+                });
+                install_uv_managed_python(payload, &mirror, &bootstrap.version, || {
+                    self.is_cancelled(job_id)
+                })
+            }
+            other => Err(format!("unsupported dependency bootstrap kind {other}")),
+        }
     }
 
     fn component(&self, id: &str) -> Result<&DependencyComponent, String> {
@@ -454,7 +545,10 @@ impl DependencyManager {
     }
 
     fn has_valid_marker(&self, component: &DependencyComponent) -> bool {
-        matches!(read_marker(&self.component_path(component)), Ok(marker) if marker.id == component.id && marker.version == component.version && component.artifact.as_ref().is_some_and(|artifact| marker.artifact_sha256 == artifact.sha256))
+        matches!(read_marker(&self.component_path(component)), Ok(marker) if marker.id == component.id
+            && marker.version == component.version
+            && component.artifact.as_ref().is_some_and(|artifact| marker.artifact_sha256 == artifact.sha256)
+            && marker.bootstrap_artifact_sha256 == component.bootstrap.as_ref().and_then(|bootstrap| bootstrap.artifact.as_ref()).map(|artifact| artifact.sha256.clone()))
     }
 
     fn resolve_references(
@@ -730,6 +824,144 @@ impl DependencyManager {
     }
 }
 
+fn install_uv_managed_python(
+    payload: &Path,
+    mirror: &Path,
+    version: &str,
+    should_cancel: impl Fn() -> bool + Copy,
+) -> Result<(), String> {
+    let uv = payload.join("uv.exe");
+    if !uv.is_file() {
+        return Err("uv-managed Python bootstrap requires payload/uv.exe".to_string());
+    }
+    let python_root = payload.join("python-installations");
+    fs::create_dir_all(&python_root).map_err(|error| error.to_string())?;
+    let canonical_payload = payload
+        .canonicalize()
+        .map_err(|error| format!("could not validate uv bootstrap payload: {error}"))?;
+    let canonical_uv = uv
+        .canonicalize()
+        .map_err(|error| format!("could not validate uv bootstrap executable: {error}"))?;
+    let canonical_mirror = mirror
+        .canonicalize()
+        .map_err(|error| format!("could not validate uv bootstrap mirror: {error}"))?;
+    let canonical_python_root = python_root
+        .canonicalize()
+        .map_err(|error| format!("could not validate uv Python directory: {error}"))?;
+    if !canonical_uv.starts_with(&canonical_payload)
+        || !canonical_python_root.starts_with(&canonical_payload)
+    {
+        return Err("uv-managed Python bootstrap path escaped its staged payload".to_string());
+    }
+    let mirror_url = Url::from_directory_path(&canonical_mirror)
+        .map_err(|_| "could not convert the confined Python mirror to a file URL".to_string())?;
+    let cache = mirror
+        .parent()
+        .ok_or_else(|| "uv bootstrap staging root is unavailable".to_string())?
+        .join("uv-cache");
+    fs::create_dir_all(&cache).map_err(|error| error.to_string())?;
+    let mut command = uv_managed_python_install_command(
+        &canonical_uv,
+        mirror_url.as_str(),
+        &canonical_python_root,
+        &cache,
+        version,
+    );
+    let output = run_bounded_process_cancellable(
+        &mut command,
+        UV_PYTHON_BOOTSTRAP_TIMEOUT,
+        UV_PYTHON_BOOTSTRAP_OUTPUT_LIMIT,
+        should_cancel,
+    )
+    .map_err(|error| format!("uv-managed Python installation failed: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "uv-managed Python installation returned a non-zero exit status: {}",
+            bounded_process_detail(&output.stderr, &output.stdout)
+        ));
+    }
+    let python = find_named_file(&canonical_python_root, "python.exe", 5)
+        .or_else(|| find_named_file(&canonical_python_root, "python3.exe", 5))
+        .ok_or_else(|| "uv did not install a discoverable Python executable".to_string())?;
+    let canonical_python = python
+        .canonicalize()
+        .map_err(|error| format!("could not validate installed Python executable: {error}"))?;
+    if !canonical_python.starts_with(&canonical_python_root) {
+        return Err("installed Python executable escaped its managed directory".to_string());
+    }
+    let mut probe = Command::new(&canonical_python);
+    probe.arg("--version");
+    let probe_output = run_bounded_process_cancellable(
+        &mut probe,
+        Duration::from_secs(30),
+        64 * 1024,
+        should_cancel,
+    )
+    .map_err(|error| format!("managed Python version probe failed: {error}"))?;
+    let detail = bounded_process_detail(&probe_output.stdout, &probe_output.stderr);
+    if !probe_output.status.success() || detail.trim() != format!("Python {version}") {
+        return Err(format!(
+            "managed Python version probe did not return exact Python {version}: {detail}"
+        ));
+    }
+    Ok(())
+}
+
+fn uv_managed_python_install_command(
+    uv: &Path,
+    mirror_url: &str,
+    python_root: &Path,
+    cache: &Path,
+    version: &str,
+) -> Command {
+    let mut command = Command::new(uv);
+    command
+        .arg("python")
+        .arg("install")
+        .arg("--install-dir")
+        .arg(python_root)
+        .arg("--no-bin")
+        .arg("--no-registry")
+        .arg("--managed-python")
+        .arg("--no-progress")
+        .arg("--offline")
+        .arg("--no-config")
+        .arg("--mirror")
+        .arg(mirror_url)
+        .arg(version)
+        .env_remove("UV_PYTHON_DOWNLOADS_JSON_URL")
+        .env_remove("UV_PYTHON_DOWNLOADS")
+        .env_remove("UV_PYTHON_INSTALL_DIR")
+        .env_remove("UV_PYTHON_INSTALL_BIN")
+        .env_remove("UV_PYTHON_INSTALL_REGISTRY")
+        .env_remove("UV_CACHE_DIR")
+        .env("UV_PYTHON_INSTALL_DIR", python_root)
+        .env("UV_PYTHON_INSTALL_BIN", "0")
+        .env("UV_PYTHON_INSTALL_REGISTRY", "0")
+        .env("UV_CACHE_DIR", cache);
+    command
+}
+
+fn bounded_process_detail(primary: &[u8], secondary: &[u8]) -> String {
+    let primary = String::from_utf8_lossy(primary).trim().to_string();
+    if !primary.is_empty() {
+        return primary.chars().take(2048).collect();
+    }
+    String::from_utf8_lossy(secondary)
+        .trim()
+        .chars()
+        .take(2048)
+        .collect()
+}
+
+fn is_exact_python_version(value: &str) -> bool {
+    let parts = value.split('.').collect::<Vec<_>>();
+    parts.len() == 3
+        && parts.iter().all(|part| {
+            !part.is_empty() && part.chars().all(|character| character.is_ascii_digit())
+        })
+}
+
 pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
     if catalog.schema_version != 1 {
         return Err("unsupported dependency catalog schema".to_string());
@@ -792,6 +1024,86 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
             if !matches!(artifact.archive.as_str(), "file" | "zip") {
                 return Err(format!("{} archive type is unsupported", component.id));
             }
+            if let Some(file_name) = &artifact.file_name {
+                validate_relative_path(Path::new(file_name))
+                    .map_err(|_| format!("{} artifact file name is unsafe", component.id))?;
+            }
+        }
+        if let Some(bootstrap) = &component.bootstrap {
+            if component.id != "uv-python" || bootstrap.kind != "uv-managed-python" {
+                return Err(format!("{} bootstrap kind is unsupported", component.id));
+            }
+            if !is_exact_python_version(&bootstrap.version) {
+                return Err(format!(
+                    "{} bootstrap Python version is invalid",
+                    component.id
+                ));
+            }
+            validate_https_url(&bootstrap.source_url)?;
+            validate_https_url(&bootstrap.license.url)?;
+            if bootstrap.license.id.trim().is_empty()
+                || bootstrap.license.label.trim().is_empty()
+                || bootstrap.license.digest.trim().is_empty()
+            {
+                return Err(format!(
+                    "{} bootstrap license evidence is incomplete",
+                    component.id
+                ));
+            }
+            if let Some(previous_digest) = licenses.insert(
+                bootstrap.license.id.clone(),
+                bootstrap.license.digest.clone(),
+            ) {
+                if previous_digest != bootstrap.license.digest {
+                    return Err(format!(
+                        "license {} has inconsistent digests",
+                        bootstrap.license.id
+                    ));
+                }
+            }
+            if component.availability == "available" && bootstrap.artifact.is_none() {
+                return Err(format!(
+                    "{} claims availability without a bootstrap artifact",
+                    component.id
+                ));
+            }
+            if let Some(artifact) = &bootstrap.artifact {
+                validate_download_url(&artifact.url)?;
+                if artifact.max_bytes == 0 {
+                    return Err(format!(
+                        "{} bootstrap has no download size limit",
+                        component.id
+                    ));
+                }
+                if artifact.sha256.len() != 64
+                    || !artifact
+                        .sha256
+                        .chars()
+                        .all(|value| value.is_ascii_hexdigit())
+                {
+                    return Err(format!(
+                        "{} bootstrap artifact SHA-256 is invalid",
+                        component.id
+                    ));
+                }
+                if artifact.archive != "file" {
+                    return Err(format!(
+                        "{} bootstrap archive type is unsupported",
+                        component.id
+                    ));
+                }
+                let file_name = artifact
+                    .file_name
+                    .as_deref()
+                    .ok_or_else(|| format!("{} bootstrap mirror path is missing", component.id))?;
+                validate_relative_path(Path::new(file_name))
+                    .map_err(|_| format!("{} bootstrap mirror path is unsafe", component.id))?;
+                if Path::new(file_name).components().count() < 2
+                    || !file_name.to_ascii_lowercase().ends_with(".tar.gz")
+                {
+                    return Err(format!("{} bootstrap mirror path is invalid", component.id));
+                }
+            }
         }
         let mut reference_ids = HashSet::new();
         for reference in &component.references {
@@ -814,6 +1126,22 @@ pub fn validate_catalog(catalog: &DependencyCatalog) -> Result<(), String> {
             }
             validate_relative_path(Path::new(&reference.path))
                 .map_err(|_| format!("{} managed reference path is unsafe", component.id))?;
+        }
+        if component.bootstrap.is_some()
+            && (!component.references.iter().any(|reference| {
+                reference.id == "executable"
+                    && reference.path == "uv.exe"
+                    && reference.kind == "file"
+            }) || !component.references.iter().any(|reference| {
+                reference.id == "python-installations"
+                    && reference.path == "python-installations"
+                    && reference.kind == "directory"
+            }))
+        {
+            return Err(format!(
+                "{} bootstrap references do not match the fixed backend contract",
+                component.id
+            ));
         }
         let mut import_ids = HashSet::new();
         for project_import in &component.project_imports {
@@ -931,39 +1259,72 @@ struct UreqDownloadClient;
 
 impl DownloadClient for UreqDownloadClient {
     fn get(&self, url: &str, resume: Option<&ResumeRequest>) -> Result<DownloadResponse, String> {
-        let mut request = ureq::get(url);
-        if let Some(resume) = resume {
-            request = request
-                .header("Range", &format!("bytes={}-", resume.offset))
-                .header("If-Range", &resume.etag);
+        let mut current = Url::parse(url)
+            .map_err(|error| format!("dependency download URL is invalid: {error}"))?;
+        for redirect_count in 0..=5 {
+            validate_download_url(current.as_str())?;
+            let mut request = ureq::get(current.as_str());
+            if let Some(resume) = resume {
+                request = request
+                    .header("Range", &format!("bytes={}-", resume.offset))
+                    .header("If-Range", &resume.etag);
+            }
+            let response = request
+                .config()
+                .max_redirects(0)
+                .max_redirects_will_error(false)
+                .build()
+                .call()
+                .map_err(|error| format!("dependency download failed: {error}"))?;
+            if response.status().is_redirection() {
+                if redirect_count == 5 {
+                    return Err("dependency download exceeded its redirect limit".to_string());
+                }
+                let location = response
+                    .headers()
+                    .get("location")
+                    .and_then(|value| value.to_str().ok())
+                    .ok_or_else(|| "dependency redirect omitted a valid Location".to_string())?;
+                current = resolve_allowed_redirect(&current, location)?;
+                continue;
+            }
+            let status = response.status().as_u16();
+            let etag = response
+                .headers()
+                .get("etag")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string);
+            let accepts_ranges = response
+                .headers()
+                .get("accept-ranges")
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.eq_ignore_ascii_case("bytes"));
+            let content_range = response
+                .headers()
+                .get("content-range")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string);
+            return Ok(DownloadResponse {
+                status,
+                etag,
+                accepts_ranges,
+                content_range,
+                reader: Box::new(response.into_body().into_reader()),
+            });
         }
-        let response = request
-            .call()
-            .map_err(|error| format!("dependency download failed: {error}"))?;
-        let status = response.status().as_u16();
-        let etag = response
-            .headers()
-            .get("etag")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string);
-        let accepts_ranges = response
-            .headers()
-            .get("accept-ranges")
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.eq_ignore_ascii_case("bytes"));
-        let content_range = response
-            .headers()
-            .get("content-range")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string);
-        Ok(DownloadResponse {
-            status,
-            etag,
-            accepts_ranges,
-            content_range,
-            reader: Box::new(response.into_body().into_reader()),
-        })
+        unreachable!("bounded dependency redirect loop always returns")
     }
+}
+
+fn resolve_allowed_redirect(current: &Url, location: &str) -> Result<Url, String> {
+    if location.contains(['\r', '\n']) {
+        return Err("dependency redirect Location is unsafe".to_string());
+    }
+    let next = current
+        .join(location)
+        .map_err(|error| format!("dependency redirect Location is invalid: {error}"))?;
+    validate_download_url(next.as_str())?;
+    Ok(next)
 }
 
 fn download_verified(
@@ -1183,12 +1544,12 @@ fn promote_owned_directory(
     let had_target = target.exists();
     if had_target {
         read_marker(target)?;
-        fs::rename(target, &backup)
+        rename_directory_with_transient_retry(target, &backup)
             .map_err(|error| format!("could not preserve previous managed component: {error}"))?;
     }
-    if let Err(error) = fs::rename(staging_payload, target) {
+    if let Err(error) = rename_directory_with_transient_retry(staging_payload, target) {
         if had_target {
-            let _ = fs::rename(&backup, target);
+            let _ = rename_directory_with_transient_retry(&backup, target);
         }
         return Err(format!(
             "could not publish managed component atomically: {error}"
@@ -1199,6 +1560,24 @@ fn promote_owned_directory(
             .map_err(|error| format!("could not remove previous managed component: {error}"))?;
     }
     Ok(())
+}
+
+fn rename_directory_with_transient_retry(source: &Path, target: &Path) -> io::Result<()> {
+    const RETRIES: usize = 100;
+    for attempt in 0..=RETRIES {
+        match fs::rename(source, target) {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt < RETRIES && transient_windows_rename_error(&error) => {
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!("bounded rename retry loop always returns")
+}
+
+fn transient_windows_rename_error(error: &io::Error) -> bool {
+    cfg!(windows) && matches!(error.raw_os_error(), Some(5 | 32 | 33))
 }
 
 fn read_marker(target: &Path) -> Result<ManagedComponentMarker, String> {
@@ -1279,6 +1658,7 @@ mod tests {
                     archive: "zip".to_string(),
                     file_name: None,
                 }),
+                bootstrap: None,
                 dependencies: vec![],
                 references: vec![],
                 project_imports: vec![],
@@ -1345,6 +1725,243 @@ mod tests {
             .contains("inconsistent digests"));
     }
 
+    fn uv_bootstrap_catalog() -> DependencyCatalog {
+        let mut value = catalog();
+        let component = &mut value.components[0];
+        component.id = "uv-python".to_string();
+        component.references = vec![
+            DependencyReference {
+                id: "executable".to_string(),
+                path: "uv.exe".to_string(),
+                kind: "file".to_string(),
+            },
+            DependencyReference {
+                id: "python-installations".to_string(),
+                path: "python-installations".to_string(),
+                kind: "directory".to_string(),
+            },
+        ];
+        component.bootstrap = Some(DependencyBootstrap {
+            kind: "uv-managed-python".to_string(),
+            version: "3.12.13".to_string(),
+            source_url: "https://releases.astral.sh/python-build-standalone".to_string(),
+            license: DependencyLicense {
+                id: "psf-2.0".to_string(),
+                label: "PSF-2.0".to_string(),
+                url: "https://docs.python.org/3.12/license.html".to_string(),
+                digest: "python-license-digest".to_string(),
+                consent_required: true,
+            },
+            artifact: Some(DependencyArtifact {
+                url: "https://releases.astral.sh/python.tar.gz".to_string(),
+                sha256: "b".repeat(64),
+                max_bytes: 22_000_000,
+                archive: "file".to_string(),
+                file_name: Some("20260610/python.tar.gz".to_string()),
+            }),
+        });
+        value
+    }
+
+    #[test]
+    fn validates_only_the_fixed_catalog_pinned_uv_python_bootstrap() {
+        assert!(validate_catalog(&uv_bootstrap_catalog()).is_ok());
+
+        let mut arbitrary_kind = uv_bootstrap_catalog();
+        arbitrary_kind.components[0]
+            .bootstrap
+            .as_mut()
+            .unwrap()
+            .kind = "command".to_string();
+        assert!(validate_catalog(&arbitrary_kind)
+            .unwrap_err()
+            .contains("unsupported"));
+
+        let mut missing_artifact = uv_bootstrap_catalog();
+        missing_artifact.components[0]
+            .bootstrap
+            .as_mut()
+            .unwrap()
+            .artifact = None;
+        assert!(validate_catalog(&missing_artifact)
+            .unwrap_err()
+            .contains("without a bootstrap artifact"));
+
+        let mut unsafe_mirror = uv_bootstrap_catalog();
+        unsafe_mirror.components[0]
+            .bootstrap
+            .as_mut()
+            .unwrap()
+            .artifact
+            .as_mut()
+            .unwrap()
+            .file_name = Some("../python.tar.gz".to_string());
+        assert!(validate_catalog(&unsafe_mirror)
+            .unwrap_err()
+            .contains("mirror path is unsafe"));
+
+        let mut missing_reference = uv_bootstrap_catalog();
+        missing_reference.components[0].references.pop();
+        assert!(validate_catalog(&missing_reference)
+            .unwrap_err()
+            .contains("fixed backend contract"));
+    }
+
+    #[test]
+    fn uv_python_command_is_app_local_registry_free_and_argument_locked() {
+        let command = uv_managed_python_install_command(
+            Path::new("C:/managed/uv.exe"),
+            "file:///C:/staging/python-mirror/",
+            Path::new("C:/managed/python-installations"),
+            Path::new("C:/staging/uv-cache"),
+            "3.12.13",
+        );
+        let args = command
+            .get_args()
+            .map(|value| value.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            args,
+            vec![
+                "python",
+                "install",
+                "--install-dir",
+                "C:/managed/python-installations",
+                "--no-bin",
+                "--no-registry",
+                "--managed-python",
+                "--no-progress",
+                "--offline",
+                "--no-config",
+                "--mirror",
+                "file:///C:/staging/python-mirror/",
+                "3.12.13",
+            ]
+        );
+        let environment = command
+            .get_envs()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().to_string(),
+                    value.map(|item| item.to_string_lossy().to_string()),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        assert_eq!(
+            environment.get("UV_PYTHON_INSTALL_BIN"),
+            Some(&Some("0".to_string()))
+        );
+        assert_eq!(
+            environment.get("UV_PYTHON_INSTALL_REGISTRY"),
+            Some(&Some("0".to_string()))
+        );
+    }
+
+    #[test]
+    #[ignore = "requires explicitly supplied approved uv and CPython archives"]
+    fn real_approved_uv_python_bootstrap_smoke() {
+        let uv_archive = PathBuf::from(
+            std::env::var("ROADWATCHER_TEST_UV_ARCHIVE")
+                .expect("ROADWATCHER_TEST_UV_ARCHIVE is required"),
+        );
+        let python_archive = PathBuf::from(
+            std::env::var("ROADWATCHER_TEST_PYTHON_ARCHIVE")
+                .expect("ROADWATCHER_TEST_PYTHON_ARCHIVE is required"),
+        );
+        assert_eq!(
+            hex::encode(Sha256::digest(fs::read(&uv_archive).unwrap())),
+            "02ad29f07e674d68726ba3bb1ff25b335d83515756e2b1a194bb56c3cc30e07c"
+        );
+        assert_eq!(
+            hex::encode(Sha256::digest(fs::read(&python_archive).unwrap())),
+            "99dce0b23bf3c3b28d350cdd7bfe3cd3be51cc4f285faae7c0df110d106d1a8d"
+        );
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-real-uv-python-bootstrap-{}",
+            Uuid::new_v4()
+        ));
+        let payload = root.join("payload");
+        let mirror = root.join("python-mirror");
+        let mirror_release = mirror.join("20260610");
+        fs::create_dir_all(&payload).unwrap();
+        fs::create_dir_all(&mirror_release).unwrap();
+        extract_zip(&uv_archive, &payload, || false).unwrap();
+        fs::copy(
+            &python_archive,
+            mirror_release.join(
+                "cpython-3.12.13+20260610-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+            ),
+        )
+        .unwrap();
+        install_uv_managed_python(&payload, &mirror, "3.12.13", || false).unwrap();
+        let python_root = payload.join("python-installations");
+        assert!(find_named_file(&python_root, "python.exe", 5).is_some());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "downloads the explicitly approved uv and CPython artifacts"]
+    fn real_managed_uv_python_install_and_remove_smoke() {
+        assert_eq!(
+            std::env::var("ROADWATCHER_RUN_REAL_MANAGED_UV").as_deref(),
+            Ok("1"),
+            "set ROADWATCHER_RUN_REAL_MANAGED_UV=1 to acknowledge the networked smoke"
+        );
+        let app_data = std::env::temp_dir().join(format!(
+            "roadwatcher-real-managed-uv-python-{}",
+            Uuid::new_v4()
+        ));
+        let catalog_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("dependency-catalog.json");
+        let manager = DependencyManager::load(&catalog_path, &app_data).unwrap();
+        let component = manager
+            .catalog
+            .components
+            .iter()
+            .find(|component| component.id == "uv-python")
+            .unwrap();
+        let digests = vec![
+            component.license.digest.clone(),
+            component.bootstrap.as_ref().unwrap().license.digest.clone(),
+        ];
+        let job = manager
+            .start(vec!["uv-python".to_string()], digests)
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5 * 60);
+        let terminal = loop {
+            let status = manager.status(&job.job_id).unwrap();
+            if matches!(status.status.as_str(), "ready" | "failed" | "cancelled") {
+                break status;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "managed uv/Python install timed out"
+            );
+            thread::sleep(Duration::from_millis(100));
+        };
+        assert_eq!(terminal.status, "ready", "{}", terminal.detail);
+        let ready = manager
+            .catalog()
+            .components
+            .into_iter()
+            .find(|component| component.component.id == "uv-python")
+            .unwrap();
+        assert_eq!(ready.state, "ready");
+        assert!(ready.managed_references["executable"].ends_with("uv.exe"));
+        assert!(Path::new(&ready.managed_references["python-installations"]).is_dir());
+        assert_eq!(
+            manager
+                .managed_identity("uv-python")
+                .unwrap()
+                .artifact_sha256,
+            "02ad29f07e674d68726ba3bb1ff25b335d83515756e2b1a194bb56c3cc30e07c"
+        );
+        let removed = manager.remove("uv-python").unwrap();
+        assert_eq!(removed.state, "notInstalled");
+        fs::remove_dir_all(app_data).unwrap();
+    }
+
     #[test]
     fn rejects_missing_license_consent_and_unknown_ids() {
         let root =
@@ -1358,6 +1975,17 @@ mod tests {
             .start(vec!["tool".to_string()], vec![])
             .unwrap_err()
             .contains("License consent"));
+
+        let bootstrap_root = std::env::temp_dir().join(format!(
+            "roadwatcher-bootstrap-consent-test-{}",
+            Uuid::new_v4()
+        ));
+        let bootstrap_manager =
+            DependencyManager::from_catalog(uv_bootstrap_catalog(), bootstrap_root).unwrap();
+        assert!(bootstrap_manager
+            .start(vec!["uv-python".to_string()], vec!["digest".to_string()])
+            .unwrap_err()
+            .contains("3.12.13"));
     }
 
     #[test]
@@ -1404,6 +2032,7 @@ mod tests {
                 id: "tool".to_string(),
                 version: "1".to_string(),
                 artifact_sha256: "a".repeat(64),
+                bootstrap_artifact_sha256: None,
                 source_url: "https://github.com/example/tool.zip".to_string(),
                 installed_at_unix: 1,
             })
@@ -1439,6 +2068,36 @@ mod tests {
         assert!(validate_relative_path(Path::new("bin/tool.exe")).is_ok());
         assert!(validate_relative_path(Path::new("../tool.exe")).is_err());
         assert!(validate_relative_path(Path::new("C:/tool.exe")).is_err());
+    }
+
+    #[test]
+    fn redirects_remain_https_and_host_allowlisted() {
+        let source = Url::parse("https://github.com/example/tool.zip").unwrap();
+        assert_eq!(
+            resolve_allowed_redirect(&source, "/example/release/tool.zip")
+                .unwrap()
+                .host_str(),
+            Some("github.com")
+        );
+        assert_eq!(
+            resolve_allowed_redirect(
+                &source,
+                "https://release-assets.githubusercontent.com/example/tool.zip",
+            )
+            .unwrap()
+            .host_str(),
+            Some("release-assets.githubusercontent.com")
+        );
+        assert!(
+            resolve_allowed_redirect(&source, "https://example.com/tool.zip")
+                .unwrap_err()
+                .contains("not allowlisted")
+        );
+        assert!(
+            resolve_allowed_redirect(&source, "http://github.com/tool.zip")
+                .unwrap_err()
+                .contains("unsafe")
+        );
     }
 
     #[test]
@@ -1714,6 +2373,21 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn retries_only_known_windows_directory_lock_errors() {
+        assert_eq!(
+            transient_windows_rename_error(&io::Error::from_raw_os_error(5)),
+            cfg!(windows)
+        );
+        assert_eq!(
+            transient_windows_rename_error(&io::Error::from_raw_os_error(32)),
+            cfg!(windows)
+        );
+        assert!(!transient_windows_rename_error(
+            &io::Error::from_raw_os_error(3)
+        ));
+    }
+
     fn write_test_marker(target: &Path) {
         fs::write(
             target.join(MANAGED_MARKER),
@@ -1721,6 +2395,7 @@ mod tests {
                 id: "tool".to_string(),
                 version: "1".to_string(),
                 artifact_sha256: "a".repeat(64),
+                bootstrap_artifact_sha256: None,
                 source_url: "https://github.com/example/tool.zip".to_string(),
                 installed_at_unix: 1,
             })

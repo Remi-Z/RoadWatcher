@@ -10,10 +10,11 @@ RoadWatcher remains complete for the former external-runtime development
 configuration, but it is not yet complete for the new internal-release roadmap
 in root `TODO.md`. The managed catalog, installer boundary, Setup Center,
 feature-level view split, and one-shot managed Valhalla adapter are implemented.
-Exact installable component artifacts, reproducible tile/model builders,
-approved managed GIS dataset descriptors, and clean-Windows pilot evidence
-remain incomplete or user-gated. The managed GIS install-to-project contract is
-implemented, but no municipal source is promoted before owner validation.
+FFmpeg/GDAL and production data/model artifacts, approved managed GIS dataset
+descriptors, and clean-Windows pilot evidence remain incomplete or user-gated.
+The approved uv/Python composite is now installable. The managed GIS
+install-to-project contract is implemented, but no municipal source is promoted
+before owner validation.
 
 It is also not a signed, validated public Windows release.
 `release-manifest.json` correctly keeps `publicReleaseReady` false. External
@@ -32,13 +33,13 @@ unpublished hashes in final evidence.
 | Local conservative CV scanning and reviewer decisions | Locked sidecar tests, durable CV Rust/frontend tests, hash-verified YOLO11n/real GoPro video smoke | Proven complete |
 | GPStitch telemetry render and provenance | Pinned v0.18.0 source/license, durable worker tests, real locked/offline fixture render | Proven complete |
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
-| Installed runtime preparation and preflight | Exact uv-managed CPython 3.12.13, app-local Python/cache roots, locked GPStitch/CV sync, ten-component preflight, rollback/probe tests, prior real uv smoke | Proven complete for external-runtime model |
-| Managed dependency command/security boundary | Build-validated catalog, strict ID/license-only commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, backend-resolved reference contracts, Setup Center tests | Proven complete; exact artifacts intentionally unavailable |
+| Installed runtime preparation and preflight | Owner-approved uv 0.11.23 and CPython 3.12.13 exact artifacts, app-local Python/cache roots, locked GPStitch/CV sync, exact managed Python resolver root, rollback/probe tests, real full manager smoke | Proven complete for managed uv/Python and external-override models |
+| Managed dependency command/security boundary | Build-validated catalog, strict ID/dual-license commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, manual allowlisted redirects, backend-resolved reference contracts, Setup Center tests | Proven complete; uv/Python is available and remaining artifacts stay gated |
 | Managed one-shot Valhalla adapter | Exact Python 3.12/pyvalhalla 3.7.0 lock and wheel hash, app-local environment preparation/probe, ownership-resolved config/tile references, portable-template runtime materialization, bounded process/request/result files, HTTP/OSRM fallback tests, durable template/tile provenance | Implementation complete; production York tile artifact missing |
 | Managed artifact provenance manifests | Strict generator/verifier, three Node tests, release-audit integration, manifest documentation | Proven complete |
 | Deterministic release-asset packaging | Exact-tree/SHA lock, normalized stored ZIPs, atomic no-overwrite publication, three Python tests | Proven complete as shared packaging foundation; York/ONNX recipes missing |
 | Reproducible York/ONNX release-asset production | Strict York boundary/OSM/config/tool recipe and strict weights/labels/exporter ONNX recipe; coverage/tensor validation, fixed bounded commands, deterministic archives and verified manifest publication; catalog placeholders | Both builders proven with fake tools/workers; real approved recipes/assets remain owner-gated |
-| Managed source approval evidence | Exact proposal matrix for uv/Python, Valhalla, FFmpeg, GDAL, York OSM/boundary, YOLO, and municipal GIS; preserves source gaps and owner-only decisions | Agent discovery complete; every approval and real catalog promotion remains owner-gated |
+| Managed source approval evidence | Exact decision matrix for uv/Python, Valhalla, FFmpeg, GDAL, York OSM/boundary, YOLO, and municipal GIS; preserves source gaps and owner-only decisions | uv/Python approved and promoted; every other approval remains owner-gated |
 | Managed GIS install-to-project handoff | Catalog/build/runtime validation, ownership-confined backend resolution, strict frontend parsing, explicit Setup Center action, existing native import command | Contract and UI proven; production datasets remain owner-gated |
 | Windows source/license packaging | Runtime verifier, Rust build gate, fresh NSIS archive inspection | Proven complete |
 | Version/signing/update/release policy | Bundled release manifest, Rust build gate, three Node verifier tests, strict installer/executable Authenticode evidence script | Proven complete as development policy |

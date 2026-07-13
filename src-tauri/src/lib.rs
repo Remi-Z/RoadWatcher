@@ -335,6 +335,22 @@ fn managed_environments(
     Ok(managed_runtime::managed_environment_paths(&app_local_data))
 }
 
+fn managed_environments_for_uv(
+    app: &tauri::AppHandle,
+    dependencies: &DependencyManager,
+    use_managed_uv: bool,
+) -> Result<managed_runtime::ManagedEnvironmentPaths, String> {
+    let mut environments = managed_environments(app)?;
+    if use_managed_uv {
+        if let Some(python_installations) =
+            dependencies.managed_reference("uv-python", "python-installations")
+        {
+            environments.python_install_root = python_installations;
+        }
+    }
+    Ok(environments)
+}
+
 #[tauri::command]
 fn runtime_preflight(
     app: tauri::AppHandle,
@@ -355,7 +371,8 @@ fn runtime_preflight(
         "sidecars/roadwatcher-valhalla",
         "sidecars/roadwatcher-valhalla",
     )?;
-    let environments = managed_environments(&app)?;
+    let environments =
+        managed_environments_for_uv(&app, &dependencies, uv_executable.trim().is_empty())?;
     let resolved_uv = if uv_executable.trim().is_empty() {
         dependencies
             .managed_executable("uv-python", "uv.exe")
@@ -391,6 +408,7 @@ fn runtime_preflight(
             gpstitch_environment: environments.gpstitch,
             cv_environment: environments.cv,
             valhalla_environment: environments.valhalla,
+            python_install_root: environments.python_install_root,
         },
     ))
 }
@@ -413,7 +431,8 @@ fn runtime_prepare(
         "sidecars/roadwatcher-valhalla",
         "sidecars/roadwatcher-valhalla",
     )?;
-    let resolved_uv = if uv_executable.trim().is_empty() {
+    let use_managed_uv = uv_executable.trim().is_empty();
+    let resolved_uv = if use_managed_uv {
         dependencies
             .managed_executable("uv-python", "uv.exe")
             .map(|path| path.display().to_string())
@@ -427,7 +446,7 @@ fn runtime_prepare(
             gpstitch_source,
             cv_source,
             valhalla_source,
-            environments: managed_environments(&app)?,
+            environments: managed_environments_for_uv(&app, &dependencies, use_managed_uv)?,
         },
     ))
 }

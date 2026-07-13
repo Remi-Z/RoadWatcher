@@ -479,7 +479,7 @@ network/DNS access.
 | --- | --- | --- |
 | Rust/Cargo | Tauri dev/build and Rust command implementation | `src-tauri/` scaffold |
 | GPStitch sidecar | Telemetry sync and overlay processing | Pinned/bundled source v0.18.0; environment preparation and FFmpeg remain external |
-| uv + Python 3.12+ | Locked GPStitch/CV environment preparation | External setup executable; UI prepares versioned app-local environments, which execute independently afterward |
+| uv 0.11.23 + Python 3.12.13 | Locked GPStitch/CV/Valhalla environment preparation | Owner-approved, exact-hash managed Setup Center component; explicit override and PATH remain lower-priority alternatives |
 | Valhalla York/GTA data | Local map matching | Editable UI slot + blocked job |
 | OSRM Match fallback | Simpler GPX matching fallback | Editable optional UI slot |
 | Official GIS layers | Stop signs/lights/bike lanes projection | Editable UI slot |
@@ -489,8 +489,8 @@ network/DNS access.
 
 ## Next Agent Checklist
 
-1. Select and inventory a self-contained `uv`/Python and FFmpeg Windows runtime,
-   or retain the implemented user-triggered preparation/preflight flow. GPL
+1. Select and inventory the remaining FFmpeg/GDAL Windows runtimes. Managed
+   uv 0.11.23/CPython 3.12.13 is implemented and real-smoke qualified; GPL
    source and notice delivery for GPStitch is implemented. Production GIS container
    normalization, local CV, and GPStitch reconciliation are complete:
    verification passes 173 frontend tests, 72 default Rust tests plus the

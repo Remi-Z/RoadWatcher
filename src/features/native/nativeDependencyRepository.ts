@@ -20,6 +20,14 @@ export interface DependencyArtifact {
   fileName?: string | null;
 }
 
+export interface DependencyBootstrap {
+  kind: "uv-managed-python";
+  version: string;
+  sourceUrl: string;
+  license: DependencyLicense;
+  artifact: DependencyArtifact | null;
+}
+
 export interface DependencyComponent {
   id: string;
   label: string;
@@ -31,6 +39,7 @@ export interface DependencyComponent {
   sourceUrl: string;
   availability: DependencyAvailability;
   artifact: DependencyArtifact | null;
+  bootstrap?: DependencyBootstrap | null;
   dependencies: string[];
   references: DependencyReference[];
   projectImports: DependencyProjectImport[];
@@ -150,6 +159,9 @@ function parseComponent(value: unknown): DependencyComponent | null {
   const artifact = value.artifact === null ? null : parseArtifact(value.artifact);
   if (value.artifact !== null && !artifact) return null;
   if (value.availability === "available" && !artifact) return null;
+  const bootstrap = value.bootstrap === undefined || value.bootstrap === null ? null : parseBootstrap(value.bootstrap);
+  if (value.bootstrap !== undefined && value.bootstrap !== null && !bootstrap) return null;
+  if (value.availability === "available" && bootstrap && !bootstrap.artifact) return null;
   const references = value.references.map(parseReference);
   if (references.some((reference) => !reference)) return null;
   const referenceIds = new Set<string>();
@@ -157,6 +169,9 @@ function parseComponent(value: unknown): DependencyComponent | null {
     if (referenceIds.has(reference.id)) return null;
     referenceIds.add(reference.id);
   }
+  if (bootstrap && (value.id !== "uv-python"
+    || !(references as DependencyReference[]).some((reference) => reference.id === "executable" && reference.path === "uv.exe" && reference.kind === "file")
+    || !(references as DependencyReference[]).some((reference) => reference.id === "python-installations" && reference.path === "python-installations" && reference.kind === "directory"))) return null;
   const managedReferences: Record<string, string> = {};
   for (const [referenceId, referencePath] of Object.entries(value.managedReferences)) {
     if (!referenceIds.has(referenceId) || !text(referencePath)) return null;
@@ -189,7 +204,7 @@ function parseComponent(value: unknown): DependencyComponent | null {
     id: value.id, label: value.label, version: value.version, purpose: value.purpose,
     required: value.required, recommended: value.recommended,
     license: value.license as unknown as DependencyLicense, sourceUrl: value.sourceUrl,
-    availability: value.availability, artifact, dependencies: value.dependencies, references: references as DependencyReference[],
+    availability: value.availability, artifact, bootstrap, dependencies: value.dependencies, references: references as DependencyReference[],
     projectImports: projectImports as DependencyProjectImport[],
     state: value.state, installPath: value.installPath, updateAvailable: value.updateAvailable, detail: value.detail,
     managedReferences, managedProjectImports: resolvedProjectImports
@@ -220,6 +235,18 @@ function parseArtifact(value: unknown): DependencyArtifact | null {
     || (value.archive !== "file" && value.archive !== "zip")
     || value.fileName !== undefined && value.fileName !== null && !text(value.fileName)) return null;
   return value as unknown as DependencyArtifact;
+}
+
+function parseBootstrap(value: unknown): DependencyBootstrap | null {
+  if (!record(value) || value.kind !== "uv-managed-python" || typeof value.version !== "string"
+    || !/^\d+\.\d+\.\d+$/.test(value.version) || !https(value.sourceUrl) || !record(value.license)
+    || !id(value.license.id) || !text(value.license.label) || !https(value.license.url)
+    || !text(value.license.digest) || typeof value.license.consentRequired !== "boolean") return null;
+  const artifact = value.artifact === null ? null : parseArtifact(value.artifact);
+  if (value.artifact !== null && (!artifact || artifact.archive !== "file" || !artifact.fileName
+    || !safeRelativePath(artifact.fileName) || !artifact.fileName.toLowerCase().endsWith(".tar.gz"))) return null;
+  return { kind: "uv-managed-python", version: value.version, sourceUrl: value.sourceUrl,
+    license: value.license as unknown as DependencyLicense, artifact };
 }
 
 function parseJob(value: unknown, componentIds: string[], expectedJobId?: string): DependencyInstallJob | null {

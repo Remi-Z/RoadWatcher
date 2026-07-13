@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "platform": "windows-x86_64",
-  "catalogVersion": "2026.07.13-internal.4",
+  "catalogVersion": "2026.07.13-internal.5",
   "components": [
     {
       "id": "uv-python",
@@ -10,13 +10,38 @@
       "purpose": "Prepare and run RoadWatcher's locked Python sidecar environments.",
       "required": true,
       "recommended": true,
-      "license": { "id": "apache-2.0-mit", "label": "Apache-2.0 OR MIT", "url": "https://github.com/astral-sh/uv/blob/0.11.23/LICENSE-MIT", "digest": "pending-owner-approval", "consentRequired": false },
+      "license": { "id": "apache-2.0-mit", "label": "Apache-2.0 OR MIT", "url": "https://github.com/astral-sh/uv/tree/0.11.23#license", "digest": "153397d6fc146456ad3d9c29ae3c0657d1b5a202729184a930c275085b01adae", "consentRequired": true },
       "sourceUrl": "https://github.com/astral-sh/uv/releases/tag/0.11.23",
-      "availability": "pendingApproval",
-      "artifact": null,
+      "availability": "available",
+      "artifact": {
+        "url": "https://releases.astral.sh/github/uv/releases/download/0.11.23/uv-x86_64-pc-windows-msvc.zip",
+        "sha256": "02ad29f07e674d68726ba3bb1ff25b335d83515756e2b1a194bb56c3cc30e07c",
+        "maxBytes": 23758102,
+        "archive": "zip"
+      },
+      "bootstrap": {
+        "kind": "uv-managed-python",
+        "version": "3.12.13",
+        "sourceUrl": "https://releases.astral.sh/github/python-build-standalone/releases/download/20260610/",
+        "license": {
+          "id": "psf-2.0-python-standalone-notices",
+          "label": "PSF-2.0 and bundled Python distribution notices",
+          "url": "https://docs.python.org/3.12/license.html",
+          "digest": "799bebe26d73eb2bbf560bbd920a99e04f13e5db47c7123b73a39e87fdabcef4",
+          "consentRequired": true
+        },
+        "artifact": {
+          "url": "https://releases.astral.sh/github/python-build-standalone/releases/download/20260610/cpython-3.12.13%2B20260610-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+          "sha256": "99dce0b23bf3c3b28d350cdd7bfe3cd3be51cc4f285faae7c0df110d106d1a8d",
+          "maxBytes": 21932694,
+          "archive": "file",
+          "fileName": "20260610/cpython-3.12.13+20260610-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
+        }
+      },
       "dependencies": [],
       "references": [
-        { "id": "executable", "path": "uv.exe", "kind": "file" }
+        { "id": "executable", "path": "uv.exe", "kind": "file" },
+        { "id": "python-installations", "path": "python-installations", "kind": "directory" }
       ],
       "projectImports": []
     },

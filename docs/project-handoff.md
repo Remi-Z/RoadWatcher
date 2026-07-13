@@ -841,9 +841,10 @@ ignored by default), including exact command/environment identity, Python and
 module rejection, unowned-target refusal, reuse, and post-promotion rollback;
 the two preflight aggregate tests also pass. The live 3.12.13 download/sync was
 not repeated for this slice because it is network/cache intensive. uv 0.11.23's
-local Windows x64 download inventory was used to pin CPython 3.12.13. The uv
-executable archive itself is still `pendingApproval`, so the broader TODO entry
-for bootstrapping the approved uv/Python component remains open.
+local Windows x64 download inventory was used to pin CPython 3.12.13. At that
+slice the uv archive was still `pendingApproval`; the later
+`2026.07.13-internal.5` implementation below supersedes that gate and completes
+the managed uv/Python TODO entry.
 
 The managed matcher environment is now operationally locked and bundled as
 source metadata at `sidecars/roadwatcher-valhalla`. Its uv lock resolves exactly
@@ -976,13 +977,12 @@ FFmpeg version, Valhalla environment delivery, immutable Ontario/York inputs,
 the reproducible YOLO weights path versus a prebuilt ONNX, and each municipal
 GIS layer.
 
-This closes the agent-side decision-discovery task without weakening the gate:
-catalog entries remain `pendingApproval`/`blockedOnUser`, license digests remain
-placeholders, and no archive URL was inferred from an executable hash. Once a
-row is approved, the next modular implementation must bind the exact URL, size,
-SHA-256, notices, layout, and approval evidence and then rerun focused
-install/validation/removal qualification. Generated GitHub assets still require
-owner publication or explicit workflow authorization before catalog promotion.
+This closed the initial agent-side decision-discovery task without weakening the
+gate: unapproved catalog entries remain `pendingApproval`/`blockedOnUser`, their
+license digests remain placeholders, and no archive URL was inferred from an
+executable hash. The subsequently approved uv/Python row now binds its exact
+identities and qualification below. Generated GitHub assets still require owner
+publication or explicit workflow authorization before catalog promotion.
 
 The owner-run internal milestone now has a separate qualification contract in
 `docs/internal-pilot-validation.md` and a machine-checkable evidence verifier at
@@ -1001,18 +1001,60 @@ and review the referenced logs/screenshots/packet and remains the only actor who
 can sign off the clean-machine pilot. Public signing and certification remain a
 separate future gate.
 
-1. Acquire/configure the intended Windows code-signing identity and run the
-   documented installer workflow on a clean supported Windows VM. Keep
-   `publicReleaseReady` false until signed-artifact and clean-machine evidence
-   exist.
-2. Choose, inventory, and license a self-contained Windows distribution for the
-   still-external `uv`/Python and FFmpeg/ffprobe executables, or retain the
-   implemented user-triggered preparation/preflight model. Source/license
-   bundling and writable managed environments are complete.
-3. Validate the selected York/GTA production matcher data during deployment.
-   Live OSRM integration, real CV model/video, and Windows GDAL adapter smokes
-   are complete.
-4. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
+The owner approved official uv and uv-managed app-local CPython 3.12.13 on
+2026-07-13. Catalog `2026.07.13-internal.5` therefore promotes only
+`uv-python`: uv 0.11.23's 23,758,102-byte Windows x64 ZIP is pinned at SHA-256
+`02ad29f07e674d68726ba3bb1ff25b335d83515756e2b1a194bb56c3cc30e07c`,
+and uv's exact 20260610 CPython payload is pinned at 21,932,694 bytes and SHA-256
+`99dce0b23bf3c3b28d350cdd7bfe3cd3be51cc4f285faae7c0df110d106d1a8d`.
+The Setup Center displays both sources, their combined 45,690,796-byte maximum,
+and separate uv and Python-distribution consent checkboxes. The backend requires
+both catalog digests.
+
+The dependency manager downloads and hashes the Python payload itself into an
+owned staging mirror. It then invokes only staged `uv.exe` with a fixed Python
+3.12.13 request, `--offline`, `--no-config`, `--no-bin`, `--no-registry`, and a
+backend-generated `file:` mirror URL. Python is probed for the exact version
+before the component marker and both backend references can become ready.
+Runtime preparation uses that component's canonical Python root only when the
+managed uv resolution wins; an explicit uv override retains its separate
+app-local Python root. No frontend path, URL, version, mirror, or command input
+is accepted.
+
+The real manager smoke found and fixed a pre-existing Windows promotion bug:
+RoadWatcher retained its ownership-marker file handle while renaming the marker's
+parent directory, causing every genuine Windows promotion to fail with access
+denied. The marker is now synced and closed before promotion. Promotion also
+retries only Windows access/sharing-lock errors for a bounded five seconds, then
+retains the existing rollback behavior. Managed bootstrap subprocesses now
+support explicit cancellation, and HTTP redirects are followed manually only
+through HTTPS allowlisted hosts.
+
+Qualification passed 16 default dependency-manager tests (two explicit real
+smokes ignored by default), three bounded-process tests, two runtime-preflight
+tests, and ten focused frontend catalog/Setup Center/default-resolution tests.
+Both explicit real paths passed: the local approved-archive bootstrap and the
+complete networked download, dual-consent, install, atomic publication,
+reference-resolution, and removal flow. The runtime package audit passes.
+
+Tradeoff: RoadWatcher downloads the Python archive itself before handing it to
+uv, instead of letting uv make an unobservable second network request. This adds
+a second catalog artifact and download progress phase, but makes the executable
+payload independently size/hash bounded and allows uv to run offline. The
+remaining FFmpeg, GDAL, Valhalla data, CV, and GIS rows are still unchanged and
+owner-gated.
+
+1. Complete the remaining owner choices in `docs/managed-source-approval.md`,
+   beginning with the pyvalhalla delivery policy and exact FFmpeg/GDAL archives.
+2. Approve immutable York/OSM/model/GIS inputs, build the real Valhalla/ONNX
+   assets, publish them to exact versioned GitHub Release URLs, and promote only
+   the independently re-hashed bytes.
+3. Run and sign off the documented clean-Windows internal pilot with
+   representative private evidence. Keep signing and `publicReleaseReady` out of
+   this internal milestone.
+4. After the internal milestone is accepted, acquire/configure the intended
+   Windows code-signing identity and run the public clean-VM workflow.
+5. Add PostGIS/spatial indexing only if dataset scale proves the SQLite
    representative-feature model insufficient.
 
 ## Boundaries To Preserve

@@ -21,12 +21,23 @@ pub enum BoundedProcessError {
     OutputLimit { stream: &'static str, limit: u64 },
     #[error("process {0} reader thread failed")]
     Reader(&'static str),
+    #[error("process was cancelled")]
+    Cancelled,
 }
 
 pub fn run_bounded_process(
     command: &mut Command,
     timeout: Duration,
     output_limit: u64,
+) -> Result<BoundedProcessOutput, BoundedProcessError> {
+    run_bounded_process_cancellable(command, timeout, output_limit, || false)
+}
+
+pub fn run_bounded_process_cancellable(
+    command: &mut Command,
+    timeout: Duration,
+    output_limit: u64,
+    should_cancel: impl Fn() -> bool,
 ) -> Result<BoundedProcessOutput, BoundedProcessError> {
     let mut child = command
         .stdin(Stdio::null())
@@ -47,6 +58,7 @@ pub fn run_bounded_process(
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
+            Ok(None) if should_cancel() => break Err(BoundedProcessError::Cancelled),
             Ok(None) if started.elapsed() < timeout => thread::sleep(Duration::from_millis(25)),
             Ok(None) => break Err(BoundedProcessError::Timeout(timeout)),
             Err(error) => break Err(BoundedProcessError::Io(error)),
@@ -89,8 +101,9 @@ fn read_bounded(
 
 #[cfg(test)]
 mod tests {
-    use super::run_bounded_process;
+    use super::{run_bounded_process, run_bounded_process_cancellable, BoundedProcessError};
     use std::process::Command;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     #[test]
@@ -102,5 +115,31 @@ mod tests {
         assert!(output.status.success());
         assert!(!output.stdout.is_empty());
         assert!(output.stderr.len() < 256 * 1024);
+    }
+
+    #[test]
+    fn cancellation_stops_the_exact_spawned_process() {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .arg("--exact")
+            .arg("bounded_process::tests::cancellable_child_fixture")
+            .arg("--nocapture")
+            .env("ROADWATCHER_BOUNDED_CHILD_SLEEP", "1");
+        let checks = AtomicUsize::new(0);
+        let error = run_bounded_process_cancellable(
+            &mut command,
+            Duration::from_secs(10),
+            256 * 1024,
+            || checks.fetch_add(1, Ordering::SeqCst) > 1,
+        )
+        .unwrap_err();
+        assert!(matches!(error, BoundedProcessError::Cancelled));
+    }
+
+    #[test]
+    fn cancellable_child_fixture() {
+        if std::env::var_os("ROADWATCHER_BOUNDED_CHILD_SLEEP").is_some() {
+            std::thread::sleep(Duration::from_secs(30));
+        }
     }
 }

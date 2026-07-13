@@ -72,8 +72,10 @@ On the same VM:
 
 1. Confirm the installed-runtime panel initially reports external prerequisites
    and both managed sidecar environments honestly.
-2. Provide an approved external `uv`/Python installation, select **Prepare
-   sidecar environments**, and confirm all required preparation components pass.
+2. In Setup Center, consent to and install the approved managed uv/Python
+   component, then select **Prepare sidecar environments** and confirm all
+   required preparation components pass without elevation or PATH changes. An
+   explicit external override remains a separately recorded fallback test.
 3. Provide the approved FFmpeg/ffprobe build and confirm installed-runtime
    preflight plus a representative proxy job.
 4. Create a project outside the installation directory, import representative

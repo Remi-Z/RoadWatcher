@@ -1,9 +1,9 @@
 # Managed Source Approval Matrix
 
-Status: **proposal only**. This document narrows the owner decisions required to
-promote managed components. It does not record license acceptance, redistribution
-approval, publication authorization, or municipal-term approval. Only the owner
-may complete those actions.
+Status: **decision record**. The owner explicitly approved official uv 0.11.23
+and uv-managed app-local CPython 3.12.13 in the RoadWatcher task on 2026-07-13.
+Every other row remains a proposal only; no other license, redistribution,
+publication, or municipal-term approval is inferred.
 
 The bundled catalog must remain `pendingApproval` or `blockedOnUser` until the
 corresponding row is approved and every missing identity is filled. An executable,
@@ -15,8 +15,8 @@ layout.
 
 | Component | Proposed source and locally proven identity | Owner decision or missing evidence | Agent work after approval |
 | --- | --- | --- | --- |
-| `uv-python` / uv | Official uv 0.11.23 Windows x64 ZIP: `https://releases.astral.sh/github/uv/releases/download/0.11.23/uv-x86_64-pc-windows-msvc.zip`; publisher SHA-256 `02ad29f07e674d68726ba3bb1ff25b335d83515756e2b1a194bb56c3cc30e07c`; official release supports artifact attestation. The locally tested `uv.exe` reported 0.11.23 and had SHA-256 `2A406D26F0F696D47314E5940006D99A3C450890383A0463CA776F3E47BBCF22`. | Approve the official archive, Apache-2.0 OR MIT terms/notices, and app-local use. The different archive and extracted-executable hashes are expected but must both remain documented. | Download and independently verify the archive/attestation, inventory its exact tree, replace the catalog placeholder with the archive URL/size/hash/layout and license digest, then run managed-install and removal tests. |
-| `uv-python` / CPython | uv is already pinned to install CPython 3.12.13 under RoadWatcher's app-local Python directory; real preparation passed with that version. The Python payload URL, publisher hash, and PSF notice set have not yet been captured as release evidence. | Approve uv-mediated Python installation and the applicable Python 3.12.13 PSF terms. Decide whether the internal catalog may rely on uv's signed download inventory or must mirror a separately inventoried Python artifact. | Capture uv's exact selected target, URL, size, SHA-256 and notices; add them to release provenance and prove a clean app-local install without PATH/elevation changes. |
+| `uv-python` / uv | Official uv 0.11.23 Windows x64 ZIP: `https://releases.astral.sh/github/uv/releases/download/0.11.23/uv-x86_64-pc-windows-msvc.zip`; 23,758,102 bytes; publisher-matching SHA-256 `02ad29f07e674d68726ba3bb1ff25b335d83515756e2b1a194bb56c3cc30e07c`; archive tree is exactly `uv.exe`, `uvw.exe`, and `uvx.exe`. The extracted `uv.exe` reports 0.11.23. | **Approved by owner on 2026-07-13** for app-local use under Apache-2.0 OR MIT. Runtime users still receive explicit consent; approval does not silently accept on their behalf. | **Implemented.** Catalog is `available`; exact download, consent, extraction, reference, atomic publication, and removal passed through the real manager. |
+| `uv-python` / CPython | uv 0.11.23 selects `https://releases.astral.sh/github/python-build-standalone/releases/download/20260610/cpython-3.12.13%2B20260610-x86_64-pc-windows-msvc-install_only_stripped.tar.gz`; 21,932,694 bytes; SHA-256 `99dce0b23bf3c3b28d350cdd7bfe3cd3be51cc4f285faae7c0df110d106d1a8d`. The archive retains `python/LICENSE.txt`, pip/vendor licenses, and Tcl/Tk terms. | **Approved by owner on 2026-07-13** for uv-managed app-local installation. Runtime users separately consent to PSF-2.0 and bundled distribution notices. | **Implemented.** RoadWatcher verifies the archive itself, supplies it to uv through a confined local mirror, disables network/config discovery during extraction, disables bin/registry integration, probes exact Python 3.12.13, and atomically promotes/removes the owned component. |
 | `managed-valhalla` | Bundled lock resolves `pyvalhalla==3.7.0`; the Windows x64 wheel SHA-256 is `edfc7ae3dbff0ba2de7f555a8c6e2e1e736d2cd08ff1c5781026622f2ad7b4ef`. A disposable real sync and native import passed. Source page: `https://pypi.org/project/pyvalhalla/3.7.0/`; license: MIT. | Approve the exact wheel, MIT terms/notices, and whether installation should remain a uv-prepared environment or be published as a RoadWatcher-built environment archive. The latter requires a complete transitive package/license inventory. | Prefer the existing uv-prepared locked environment unless the owner explicitly approves redistribution. Promote the catalog contract, verify the exact native service reference, and rerun one-shot matcher/fallback/provenance tests. |
 | `ffmpeg` | Windows real smoke passed with Gyan FFmpeg 8.1.1 full build. `ffmpeg.exe` SHA-256 was `09948D4CDD0650DA6FF5A87577469F2A218DC2615AE379F8F734D24C49DE0F73`; `ffprobe.exe` was `A6618E99BB58869DED3C6F37B53AA1A8D701C3591DBB7B5B317D47369C112BE2`. Its configuration was static GPLv3 with many optional libraries. The original archive URL, archive hash, and full notice inventory were not retained. Official FFmpeg points Windows users to third-party builds: `https://www.ffmpeg.org/download.html`; Gyan publishes the current build catalog at `https://www.gyan.dev/ffmpeg/builds/`. | Choose either (A) recover and approve the exact 8.1.1 full archive plus publisher hash/license inventory, preserving the proven distribution, or (B) approve a currently published Gyan archive (currently 8.1.2) and accept a new qualification run. Do not infer that executable hashes identify a redistributable archive. | Inventory the chosen archive, pin URL/size/SHA/layout and license digest, install it app-locally, verify both executables, and rerun the real proxy/GPStitch smoke. |
 | `gdal` | Windows adapter smoke passed with GISInternals MSVC 2022 x64 GDAL 3.12.4. The downloaded archive was 61,735,748 bytes with SHA-256 `B0FC7620B965FA6A176C4B9F2110564233A58A4EBBEEC8E37C1F69443E24C048`. The exact filename/URL and included plugin/license inventory were not retained. GDAL lists GISInternals as a third-party Windows distribution at `https://gdal.org/en/latest/download.html`; distributor terms are at `https://www.gisinternals.com/licensing.html`. | Approve the exact distribution only after its original filename/URL and complete dependency/plugin notices are recovered. Decide whether optional plugins are excluded to minimize the inventory. | Re-download by exact identity, verify the recorded archive hash/size, inventory the tree and notices, pin the catalog artifact, then rerun OGR normalization and removal tests. |
@@ -26,8 +26,9 @@ layout.
 
 ## Owner Approval Record
 
-Leave every item unchecked until the owner explicitly supplies the decision. An
-agent must not check these boxes.
+Agents do not check owner-context boxes. The first two decisions were supplied
+explicitly in the task and are recorded beside their rows above; their boxes
+remain visually owner-maintained. All remaining boxes are undecided.
 
 - [ ] Approve uv 0.11.23 archive, dual license, and app-local installation.
 - [ ] Approve CPython 3.12.13 terms and uv-mediated retrieval policy.
@@ -38,6 +39,19 @@ agent must not check these boxes.
 - [ ] Select and approve YOLO weights/model, labels, AGPL terms, and consent copy.
 - [ ] Select and approve each York official GIS layer and its terms.
 - [ ] Publish or authorize the exact Valhalla and ONNX GitHub Release assets.
+
+## Approved uv/Python Consent Identities
+
+The catalog's uv digest is SHA-256 of this UTF-8 identity:
+
+`uv 0.11.23|Apache-2.0 OR MIT|https://github.com/astral-sh/uv/blob/0.11.23/LICENSE-APACHE|https://github.com/astral-sh/uv/blob/0.11.23/LICENSE-MIT`
+
+The Python digest is SHA-256 of this UTF-8 identity:
+
+`CPython 3.12.13 python-build-standalone 20260610|PSF-2.0 and bundled notices|https://docs.python.org/3.12/license.html|99dce0b23bf3c3b28d350cdd7bfe3cd3be51cc4f285faae7c0df110d106d1a8d`
+
+They are separate runtime checkboxes. The backend rejects installation unless
+both exact digests are submitted for this composite component.
 
 ## Promotion Rules
 

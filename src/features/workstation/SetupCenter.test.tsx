@@ -37,6 +37,29 @@ describe("Setup Center", () => {
     expect(props.onInstall).toHaveBeenCalledWith(["tool"], ["license-digest"]);
   });
 
+  it("includes a managed bootstrap payload in displayed download guidance", () => {
+    const withBootstrap = {
+      ...installable,
+      bootstrap: {
+        kind: "uv-managed-python" as const,
+        version: "3.12.13",
+        sourceUrl: "https://releases.astral.sh/python-build-standalone",
+        license: { id: "psf-2-0", label: "PSF-2.0", url: "https://docs.python.org/3.12/license.html", digest: "python-digest", consentRequired: true },
+        artifact: { url: "https://releases.astral.sh/python.tar.gz", sha256: "b".repeat(64), maxBytes: 22_000_000, archive: "file" as const, fileName: "20260610/python.tar.gz" }
+      }
+    };
+    renderSetup({ catalog: { ...catalog, components: [withBootstrap] } });
+    expect(screen.getByText("47 MB maximum download")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Python source" })).toHaveAttribute("href", withBootstrap.bootstrap.sourceUrl);
+    const consents = screen.getAllByRole("checkbox");
+    const install = screen.getByRole("button", { name: "Install recommended" });
+    expect(consents).toHaveLength(2);
+    fireEvent.click(consents[0]);
+    expect(install).toBeDisabled();
+    fireEvent.click(consents[1]);
+    expect(install).toBeEnabled();
+  });
+
   it("requires an explicit per-dataset project import action", () => {
     const projectImport = { id: "signals", label: "Traffic signals", sourcePath: "C:/managed/signals.gpkg", sourceCrs: "EPSG:4326", layerName: "signals", layerKind: "traffic_light" as const };
     const ready = { ...installable, state: "ready" as const, managedProjectImports: [projectImport] };

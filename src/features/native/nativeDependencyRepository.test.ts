@@ -95,4 +95,40 @@ describe("native dependency repository", () => {
     } });
     await expect(createNativeDependencyRepository({ invoke }).catalog()).resolves.toMatchObject({ status: "unavailable" });
   });
+
+  it("parses only the fixed uv-managed Python bootstrap contract", async () => {
+    const bootstrapArtifact = {
+      url: "https://releases.astral.sh/python.tar.gz", sha256: "b".repeat(64),
+      maxBytes: 22_000_000, archive: "file", fileName: "20260610/python.tar.gz"
+    };
+    const uvComponent = {
+      ...component,
+      id: "uv-python",
+      bootstrap: {
+        kind: "uv-managed-python", version: "3.12.13",
+        sourceUrl: "https://releases.astral.sh/python-build-standalone",
+        license: { id: "psf-2-0", label: "PSF-2.0", url: "https://docs.python.org/3.12/license.html", digest: "python-digest", consentRequired: true },
+        artifact: bootstrapArtifact
+      },
+      references: [
+        { id: "executable", path: "uv.exe", kind: "file" },
+        { id: "python-installations", path: "python-installations", kind: "directory" }
+      ]
+    };
+    const invoke = vi.fn<NativeCommandBridge["invoke"]>().mockResolvedValue({
+      ok: true, status: "invoked", command: "dependency_catalog", response: {
+        schemaVersion: 1, platform: "windows-x86_64", catalogVersion: "test", components: [uvComponent]
+      }
+    });
+    await expect(createNativeDependencyRepository({ invoke }).catalog()).resolves.toMatchObject({
+      status: "loaded", catalog: { components: [{ id: "uv-python", bootstrap: { version: "3.12.13" } }] }
+    });
+
+    invoke.mockResolvedValueOnce({ ok: true, status: "invoked", command: "dependency_catalog", response: {
+      schemaVersion: 1, platform: "windows-x86_64", catalogVersion: "test", components: [{
+        ...uvComponent, bootstrap: { ...uvComponent.bootstrap, kind: "command", artifact: bootstrapArtifact }
+      }]
+    } });
+    await expect(createNativeDependencyRepository({ invoke }).catalog()).resolves.toMatchObject({ status: "unavailable" });
+  });
 });
