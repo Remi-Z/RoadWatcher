@@ -92,8 +92,13 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   replacement before York/ONNX-specific build recipes are approved.
 - [ ] `[AGENT]` Add reproducible York-buffered OSM/Valhalla tile and ONNX
   artifact builders.
+  - [x] `[AGENT]` Add the source-locked York/Valhalla builder with verified
+    York-boundary-plus-10-km coverage, fixed commands, bounded execution,
+    deterministic packaging, and atomic output publication.
 - [ ] `[AGENT]` Emit source, license, version, size, SHA-256, build-tool version,
   and generation-time manifests.
+  - [x] `[AGENT]` Emit and re-verify the complete York artifact manifest,
+    definition, and package lock before publishing any output set.
 - [x] `[AGENT]` Add bounded one-shot managed Valhalla matching without Docker or
   a persistent service.
 - [x] `[AGENT]` Preserve configured HTTP Valhalla and OSRM fallbacks.
@@ -196,6 +201,9 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   identity/license/host/hash/archive rejection, size and integrity failures,
   cancellation, traversal-safe extraction, confined resolved references,
   atomic promotion and rollback, restart cleanup, and ownership enforcement.
+- [x] `[AGENT]` Four York builder tests cover a portable staged tile tree,
+  boundary/hash/config rejection, strict recipe fields, and complete
+  archive/lock/definition/manifest publication with fake fixed-command tools.
 - [ ] `[USER-CONTEXT]` Decide whether internal qualification may exclude
   GPStitch's upstream browser suite or whether RoadWatcher should carry a
   reviewed GPStitch Windows-test patch and the separate Playwright browser.

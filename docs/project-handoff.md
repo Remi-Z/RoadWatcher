@@ -920,6 +920,29 @@ paths do not change artifact identity. A focused matcher test covers successful
 materialization plus rejection of baked-in paths and competing tile extracts;
 the runtime audit pins the required archive layout.
 
+The York-specific artifact builder is now implemented at
+`scripts/build_york_valhalla_asset.py`. Its strict recipe binds the upstream OSM
+PBF, WGS84 York boundary, and portable config template to complete source and
+license provenance plus local SHA-256 identity. It calculates the boundary
+extent itself and rejects extraction bounds that provide less than 10 km of
+latitude-aware coverage. Tool paths and versions are pinned, while actual build
+commands are fixed in code and run with closed stdin, time limits, and output
+limits. It rejects source drift, baked tile paths, empty/special/link outputs,
+and existing destinations.
+
+The builder emits a deterministic archive, package lock, normalized definition,
+and managed-artifact manifest in an isolated same-volume staging directory,
+verifies the final manifest, then publishes the four-file set without overwrite
+and rolls back its own partial links on failure. Four tests include an end-to-end
+fake-tool publication through the real deterministic packager and Node manifest
+verifier. `pnpm test:artifacts` and the release audit now run these tests.
+
+Tradeoff/external gate: the builder uses a proven conservative bounding
+rectangle, not an exact buffered polygon, so hosted tiles may be larger. No
+production recipe, source, license approval, artifact, or release URL was
+invented; an owner-approved input set is still required before the real build.
+The ONNX-specific builder remains the next source-independent implementation.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

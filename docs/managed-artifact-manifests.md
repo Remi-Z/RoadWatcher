@@ -107,3 +107,48 @@ and deletes it with the request/result workspace. The provenance
 `configSha256` remains the SHA-256 of the immutable portable template, not the
 machine-specific materialized copy. This keeps the artifact byte-reproducible
 and prevents a build-machine path from becoming an installation dependency.
+
+## York release builder
+
+`scripts/build_york_valhalla_asset.py` executes the York-specific build after an
+owner-approved recipe exists. It performs no downloads and accepts no command
+templates. The recipe identifies exactly three local, hash-locked sources:
+
+- the pinned upstream OSM PBF extract;
+- the approved WGS84 York Region boundary GeoJSON;
+- the portable Valhalla configuration template.
+
+It also pins the exact osmium and `valhalla_build_tiles` executables, versions,
+and bounded version-query arguments. Local paths are build-machine inputs only
+and are removed from the emitted provenance definition. Every source still
+retains its approved HTTPS endpoint, version, license, downloaded hash,
+retrieval time, and publisher hash or HTTP identity.
+
+The recipe's bounding rectangle is checked against the actual approved boundary
+coordinates. It must extend at least 10 km in every cardinal direction using a
+latitude-aware longitude conversion. The builder then runs the fixed commands
+`osmium extract -s complete_ways` and `valhalla_build_tiles -c`; no recipe field
+can inject another command. Processes have time and output limits, and their
+standard input is closed.
+
+```powershell
+python scripts/build_york_valhalla_asset.py `
+  C:\approved-inputs\york-valhalla-recipe.json `
+  C:\approved-output\RoadWatcher-0.1.0
+```
+
+On success the output directory receives exactly four new sibling files: the
+deterministic ZIP, managed-artifact manifest, package lock, and normalized
+provenance definition. All are built and verified in a same-volume unique
+staging directory first. Existing destinations are never overwritten; a
+partial hard-link publication is rolled back.
+
+Tradeoff: the rectangular extract is intentionally a conservative superset of
+the irregular York-plus-10-km shape, so it can include extra nearby OSM data and
+produce larger tiles. It never claims an exact polygon clip. This avoids a new
+geometry-tool dependency while the explicit boundary calculation proves that
+the required area is not under-covered. A future approved polygon extractor may
+reduce size without changing the coverage requirement.
+
+No production recipe is checked in yet. Exact OSM/boundary/config endpoints,
+hashes, license evidence, bounds, and executable paths remain owner-gated.
