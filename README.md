@@ -117,6 +117,14 @@ In this Codex sandbox, Vitest/Vite config resolution may need elevated access
 because esbuild is blocked from reading parent directories. The app itself is
 ordinary Vite once dependencies are installed.
 
+## CI/CD
+
+GitHub Actions runs Windows CI on every push and pull request. A separate
+manual-only workflow builds unsigned internal installer bundles and uploads them
+as short-lived workflow artifacts; it never publishes a GitHub Release or enables
+automatic updates. See [GitHub Actions](docs/github-actions.md) for the exact
+checks and internal-package procedure.
+
 ## Intended Tooling
 
 - Frontend: React 19, Vite, TypeScript, dnd-kit, MapLibre-ready map surface.

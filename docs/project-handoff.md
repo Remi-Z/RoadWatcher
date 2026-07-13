@@ -1204,6 +1204,22 @@ unreviewed static dependency; actual link-input review, a real-build driver
 inventory, and the second clean Windows MSVC/vcpkg comparison remain required
 before any release asset or catalog promotion.
 
+### GitHub Actions CI/CD (awaiting first remote run)
+
+`.github/workflows/ci.yml` now runs the supported Windows x64 checks on every
+push, pull request, and manual dispatch: frontend tests/build, managed artifact
+and release-contract verification, internal-pilot evidence contract, Rust format,
+and Rust test checks. `.github/workflows/internal-package.yml` is deliberately
+manual and requires an internal-only acknowledgement. It verifies the release
+guardrails, builds unsigned Tauri bundles, and uploads them as a 14-day workflow
+artifact. It does not publish a GitHub Release, sign binaries, enable automatic
+updates, or change `publicReleaseReady`.
+
+The workflows have read-only repository permissions. Their first GitHub-hosted
+run is still required to prove the runner/toolchain contract; record the run URL,
+commit, artifact name, installer filename, and SHA-256 before using an internal
+package in the owner pilot.
+
 1. Qualify a reproducible minimal open-driver GDAL package; keep its runtime
    consent and complete notice inventory.
 2. Approve immutable York/OSM/model/GIS inputs, build the real Valhalla/ONNX

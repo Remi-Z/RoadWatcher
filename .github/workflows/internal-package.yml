@@ -1,0 +1,72 @@
+name: Internal Windows package
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_internal_only:
+        description: Confirm that this is an unsigned internal package, not a public release
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internal-package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Build internal Windows package
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Require internal-only acknowledgement
+        if: ${{ !inputs.confirm_internal_only }}
+        run: throw 'This workflow only creates unsigned internal package artifacts. Re-run after confirming that scope.'
+
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.7.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify internal-release guardrails
+        run: pnpm verify:release
+
+      - name: Build unsigned Windows installer bundles
+        run: |
+          $env:CARGO_TARGET_DIR = Join-Path $env:RUNNER_TEMP 'roadwatcher-target'
+          pnpm tauri:build
+
+      - name: Upload internal installer bundles
+        uses: actions/upload-artifact@v7
+        with:
+          name: roadwatcher-internal-${{ github.sha }}
+          path: ${{ runner.temp }}/roadwatcher-target/release/bundle/**
+          if-no-files-found: error
+          retention-days: 14

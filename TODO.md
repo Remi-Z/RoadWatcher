@@ -185,6 +185,15 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Keep release metadata development/internal, unsigned, and
   `publicReleaseReady: false`.
 
+### CI/CD
+
+- [x] `[AGENT]` Add read-only Windows GitHub Actions CI for frontend, artifact,
+  release-contract, internal-pilot, formatting, and Rust test checks.
+- [x] `[AGENT]` Add a manual-only internal Windows packaging workflow that
+  verifies release guardrails and uploads short-lived unsigned bundles without
+  creating a GitHub Release, enabling application updates, or changing public
+  release readiness. The first remote workflow execution remains pending.
+
 ## User Context — Agents Must Not Complete These
 
 - [ ] `[USER-CONTEXT]` Approve the exact executable, data, and model sources and
