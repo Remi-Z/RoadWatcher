@@ -4,7 +4,7 @@ import { createNativeRuntimePreflightRepository } from "./nativeRuntimePreflight
 
 const config = { uvExecutable: "uv", ffmpegBinaryDirectory: "D:/ffmpeg/bin", gdalBinaryDirectory: "D:/gdal/bin" };
 const definitions = [
-  ["gpstitch-source", true], ["cv-source", true], ["uv", true], ["python", true],
+  ["gpstitch-source", true], ["cv-source", true], ["uv", false], ["python", false],
   ["ffmpeg", true], ["ffprobe", true], ["ogrinfo", false], ["ogr2ogr", false],
   ["gpstitch-environment", true], ["cv-environment", true]
 ] as const;

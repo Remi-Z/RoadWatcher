@@ -795,15 +795,15 @@ describe("RoadWatcher workstation", () => {
     expect(exportPanel as HTMLElement).toHaveTextContent("No CV findings saved.");
   });
 
-  it("runs one native installed-runtime preflight and renders component evidence", async () => {
+  it("keeps preparation tools visible without blocking prepared runtime execution", async () => {
     const sqlitePath = "D:/RoadWatcherProjects/preflight/project.sqlite";
     const snapshot = createProjectSnapshot({ clips: initialClips, componentSlots: missingSlots, incident: incidentDraft,
       jobs: initialJobs, media: mediaAssets, projectId: "native-preflight-project" as ProjectId, projectedFeatures });
     const definitions = [
       ["gpstitch-source", "GPStitch bundled source", true, "ready"],
       ["cv-source", "RoadWatcher CV bundled source", true, "ready"],
-      ["uv", "uv package runner", true, "ready"],
-      ["python", "Python 3.12+ through uv", true, "missing"],
+      ["uv", "uv environment preparer", false, "ready"],
+      ["python", "Python resolver through uv", false, "missing"],
       ["ffmpeg", "FFmpeg video processor", true, "ready"],
       ["ffprobe", "ffprobe metadata reader", true, "ready"],
       ["ogrinfo", "GDAL ogrinfo", false, "missing"],
@@ -813,7 +813,7 @@ describe("RoadWatcher workstation", () => {
     ] as const;
     const nativeInvoke = vi.fn<NativeInvoke>().mockImplementation(async (command) => {
       if (command === "project_load") return { projectId: snapshot.projectId, schemaVersion: snapshot.schemaVersion, savedAtIso: snapshot.savedAtIso, snapshotJson: serializeSnapshot(snapshot) };
-      if (command === "runtime_preflight") return { checkedAtUnix: 1_788_000_000, status: "incomplete", components: definitions.map(([id, label, required, status]) => ({
+      if (command === "runtime_preflight") return { checkedAtUnix: 1_788_000_000, status: "ready", components: definitions.map(([id, label, required, status]) => ({
         id, label, required, status, executable: status === "ready" ? `D:/${id}` : id, version: status === "ready" && !id.includes("source") ? "1.0" : "", detail: status === "ready" ? "probe succeeded" : "not installed"
       })) };
       throw new Error(`Unexpected command ${command}`);
@@ -826,11 +826,11 @@ describe("RoadWatcher workstation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Check installed runtime" }));
 
-    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("missing required components"));
+    await waitFor(() => expect(screen.getByRole("status", { name: "App status" })).toHaveTextContent("preflight passed"));
     expect(nativeInvoke).toHaveBeenCalledWith("runtime_preflight", { uvExecutable: "uv", ffmpegBinaryDirectory: "", gdalBinaryDirectory: "" });
     const results = screen.getByLabelText("Installed runtime preflight results");
-    expect(results).toHaveTextContent("Installed runtime: incomplete");
-    expect(results).toHaveTextContent("Python 3.12+ through uv");
+    expect(results).toHaveTextContent("Installed runtime: ready");
+    expect(results).toHaveTextContent("Python resolver through uv");
     expect(results).toHaveTextContent("not installed");
     expect(screen.getByText(/runtime_preflight: invoked/)).toBeInTheDocument();
   });
@@ -850,7 +850,7 @@ describe("RoadWatcher workstation", () => {
         { id: "cv-environment", status: "ready", environmentPath: "D:/AppData/roadwatcher-cv-0.1.0", detail: "prepared" }
       ] };
       if (command === "runtime_preflight") return { checkedAtUnix: 1_788_000_001, status: "ready", components: componentIds.map((id) => ({
-        id, label: id, required: id !== "ogrinfo" && id !== "ogr2ogr", status: "ready",
+        id, label: id, required: !["uv", "python", "ogrinfo", "ogr2ogr"].includes(id), status: "ready",
         executable: `D:/${id}`, version: id.includes("source") || id.includes("environment") ? "0.1.0" : "1.0", detail: "ready"
       })) };
       throw new Error(`Unexpected command ${command}`);

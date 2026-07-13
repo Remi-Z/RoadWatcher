@@ -78,14 +78,17 @@ validation canonicalizes both returned and claimed files before comparison, so
 equivalent `C:\...` and `\\?\C:\...` paths remain strict but no longer conflict.
 The native CV and GPStitch start contracts now reflect that architecture:
 `uvExecutable` was removed from both per-job APIs, worker requests, frontend
-repositories, and polling dependencies. `uv` remains required only for the
-commands that use it—runtime preparation and preflight.
+repositories, and polling dependencies. `uv` is used only by runtime preparation
+and its diagnostic preflight probes.
 Managed-environment readiness now probes the exact installed Python package
 version rather than treating launcher-file presence as execution evidence. Both
 staging and promoted targets are probed; failed promotion removes the invalid
 environment and restores a previous RoadWatcher-owned target. Preflight runs the
 same bounded imports, and the real managed-uv smoke passes for GPStitch 0.18.0
 and RoadWatcher CV 0.1.0.
+Because those managed imports are the operational execution evidence, missing
+uv or its Python resolver after successful preparation remains visible but no
+longer makes aggregate runtime preflight incomplete.
 
 ## Required External Gates
 

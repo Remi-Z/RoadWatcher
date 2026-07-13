@@ -267,6 +267,9 @@ ignored Rust smoke prepared and validated both environments successfully. A
 second opt-in system smoke uses a private 128 MB ride sample plus 4,484-point
 GPX track and passes proxy generation, ONNX CV, and GPStitch rendering without
 modifying the source dataset.
+Installed-runtime aggregation now treats those exact managed imports as the
+sidecar execution requirement. uv and its Python resolver remain visible
+preparation diagnostics but do not block a prepared runtime if later absent.
 
 ```powershell
 pnpm test
@@ -473,8 +476,8 @@ network/DNS access.
 | Slot | Needed For | Current Placeholder |
 | --- | --- | --- |
 | Rust/Cargo | Tauri dev/build and Rust command implementation | `src-tauri/` scaffold |
-| GPStitch sidecar | Telemetry sync and overlay processing | Pinned/bundled source v0.18.0; uv/Python/FFmpeg runtime remains external |
-| uv + Python 3.12+ | Locked GPStitch/CV execution | External executable; UI prepares versioned app-local environments |
+| GPStitch sidecar | Telemetry sync and overlay processing | Pinned/bundled source v0.18.0; environment preparation and FFmpeg remain external |
+| uv + Python 3.12+ | Locked GPStitch/CV environment preparation | External setup executable; UI prepares versioned app-local environments, which execute independently afterward |
 | Valhalla York/GTA data | Local map matching | Editable UI slot + blocked job |
 | OSRM Match fallback | Simpler GPX matching fallback | Editable optional UI slot |
 | Official GIS layers | Stop signs/lights/bike lanes projection | Editable UI slot |

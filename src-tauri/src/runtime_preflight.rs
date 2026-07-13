@@ -114,15 +114,15 @@ fn run_with_executor(
         ),
         tool_spec(
             "uv",
-            "uv package runner",
-            true,
+            "uv environment preparer",
+            false,
             executable(&request.uv_executable, "uv"),
             vec!["--version"],
         ),
         tool_spec(
             "python",
-            "Python 3.12+ through uv",
-            true,
+            "Python resolver through uv",
+            false,
             executable(&request.uv_executable, "uv"),
             vec!["python", "find"],
         ),
@@ -400,7 +400,7 @@ mod tests {
     impl ToolProbeExecutor for FakeExecutor {
         fn run(&self, executable: &Path, args: &[&str]) -> Result<String, String> {
             let name = executable.to_string_lossy();
-            if name.contains("ogr") {
+            if name == "uv" || name.contains("ogr") {
                 Err("not installed".to_string())
             } else if args.iter().any(|value| value.contains("import gpstitch")) {
                 Ok("0.18.0".to_string())
@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_required_tools_ready_and_optional_gdal_missing() {
+    fn reports_runtime_ready_when_only_preparation_and_optional_tools_are_missing() {
         let root =
             std::env::temp_dir().join(format!("roadwatcher-preflight-{}", std::process::id()));
         let gpstitch = source(&root.join("gpstitch"), "0.18.0", true);
@@ -460,6 +460,14 @@ mod tests {
             .iter()
             .filter(|item| !item.required)
             .all(|item| item.status == "missing"));
+        assert!(response
+            .components
+            .iter()
+            .any(|item| item.id == "uv" && !item.required && item.status == "missing"));
+        assert!(response
+            .components
+            .iter()
+            .any(|item| item.id == "python" && !item.required && item.status == "missing"));
         let _ = fs::remove_dir_all(root);
     }
 

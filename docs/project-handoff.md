@@ -30,8 +30,9 @@ The runnable app today is the React/Vite evidence workstation:
   runtime manifest. A build-script gate and `pnpm verify:runtime` reject missing
   source/version/license/resource mappings or falsely bundled external tools.
   Native sidecar commands resolve installed resources through Tauri instead of
-  relying on the process working directory. `uv`, Python, FFmpeg/ffprobe,
-  GDAL/OGR, Valhalla, and OSRM remain explicit external prerequisites.
+  relying on the process working directory. `uv` and its Python resolver remain
+  explicit preparation prerequisites; FFmpeg/ffprobe, GDAL/OGR, Valhalla, and
+  OSRM remain explicit external runtime/data prerequisites.
 - Release governance is machine-readable in the bundled `release-manifest.json`.
   `pnpm verify:release` synchronizes the `0.1.0` identity across Node, Cargo,
   Cargo.lock, Tauri, and that manifest; verifies the manual-update policy; and
@@ -43,7 +44,9 @@ The runnable app today is the React/Vite evidence workstation:
 - `runtime_preflight` now checks packaged GPStitch/CV sources plus uv, Python,
   FFmpeg, ffprobe, ogrinfo, and ogr2ogr. Independent no-shell probes run in
   parallel with 10-second/64-KiB bounds; strict frontend validation and the
-  readiness UI expose per-component paths, versions, and failures. CV and
+  readiness UI expose per-component paths, versions, and failures. Prepared
+  managed imports, source, and FFmpeg drive execution readiness; uv/Python are
+  visible preparation-only diagnostics, and GDAL remains optional. CV and
   GPStitch now share the bounded-process runner, giving CV a four-hour timeout
   and streaming output cap.
 - `runtime_prepare` now creates versioned GPStitch/CV environments below
@@ -686,6 +689,13 @@ workers use the same module boundary, so a missing or wrong package version is
 reported before work proceeds. Pure tests cover missing imports and rollback;
 the explicitly enabled real uv smoke prepared and imported both exact versions
 in 2.58 seconds.
+
+The preflight-semantics follow-up makes those verified managed environments
+authoritative. uv and `uv python find` are still probed and rendered so a future
+rebuild has actionable diagnostics, but they are no longer required components
+once the exact GPStitch/CV environments execute. Rust aggregate logic, the
+strict TypeScript component map, and App evidence agree: missing preparation
+tools do not downgrade an otherwise ready installed runtime.
 
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep

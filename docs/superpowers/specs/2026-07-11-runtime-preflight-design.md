@@ -1,6 +1,6 @@
 # Installed Runtime Preflight Design
 
-Date: 2026-07-11
+Date: 2026-07-13
 
 ## Purpose
 
@@ -20,9 +20,10 @@ Tauri resources, then concurrently probes:
 Each command is launched directly without a shell, has a ten-second timeout,
 captures at most 64 KiB per stream, and returns only a bounded first output line.
 Configured FFmpeg/GDAL directories must be existing absolute directories;
-otherwise PATH is used. Required-source, managed-environment, uv/Python, and
-FFmpeg components drive
-the aggregate `ready`/`incomplete` result while GDAL remains optional.
+otherwise PATH is used. Required source, exact managed-package environments,
+and FFmpeg components drive the aggregate `ready`/`incomplete` result. uv and
+its Python resolver remain visible preparation diagnostics but are optional for
+execution after both environments have been prepared. GDAL remains optional.
 
 ## Shared Process Refactor
 
@@ -37,7 +38,8 @@ The TypeScript adapter requires exactly ten unique known component identities,
 their expected required flags, valid states, and a consistent aggregate result.
 One user action invokes the preflight once; React renders the returned report
 directly and records an auditable native command attempt. Independent probes run
-in Rust rather than a frontend request waterfall.
+in Rust rather than a frontend request waterfall. A missing preparation tool
+cannot downgrade otherwise executable prepared environments.
 
 ## Live Evidence
 
