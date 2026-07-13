@@ -39,3 +39,49 @@ The generator does not approve licenses, choose sources, publish GitHub assets,
 or make an artifact installable. Those remain explicit owner gates. Definitions
 and produced artifacts are intentionally absent until exact sources and terms
 are approved; builders must never substitute toy data or placeholder hashes.
+
+## Deterministic packaging
+
+`scripts/deterministic_artifact_zip.py` packages the already-built output tree
+before manifest generation. It accepts only a strict JSON package lock:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "york-valhalla-tiles",
+  "sourceDateEpoch": "2026-07-13T12:00:00Z",
+  "files": [
+    {
+      "path": "valhalla.json",
+      "sha256": "<64 lowercase hexadecimal characters>"
+    }
+  ]
+}
+```
+
+Run it with the locked Python 3.12 build environment:
+
+```powershell
+python scripts/deterministic_artifact_zip.py `
+  artifacts/locks/york-valhalla-package.json `
+  artifacts/staging/york-valhalla `
+  artifacts/output/york-valhalla-tiles.zip
+```
+
+The source tree must contain exactly the declared regular files. Paths are
+ASCII, relative, forward-slash-separated archive names. The builder rejects
+missing or extra files, duplicate JSON keys and archive paths, SHA-256 drift,
+links, Windows reparse points, special files, and existing outputs. It stages in
+the output directory and publishes with an atomic no-overwrite hard link.
+
+ZIP entries are sorted, fixed to `sourceDateEpoch`, normalized to mode `0644`,
+ZIP64-capable, and intentionally stored without compression. Stored entries
+make the archive independent of zlib implementation/version and therefore
+byte-reproducible, at the cost of larger downloads. If the target filesystem
+cannot support same-volume hard-link publication, the builder fails closed; it
+does not fall back to a potentially overwriting copy.
+
+This packager does not download inputs, run Valhalla, export ONNX, decide which
+files belong in an artifact, or approve a source/license. York and ONNX recipe
+scripts must produce their isolated staging trees and package locks only after
+the adjacent owner approval gates in `TODO.md` are satisfied.

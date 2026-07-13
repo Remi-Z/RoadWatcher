@@ -790,6 +790,23 @@ paths, and `pnpm verify:release` now runs them. This is provenance infrastructur
 not an asset approval or builder: no unapproved definition, binary, tile, model,
 or placeholder hash was added.
 
+The shared deterministic packaging layer is now
+`scripts/deterministic_artifact_zip.py`. A strict package lock enumerates every
+allowed relative file and its SHA-256. The packager rejects missing/extra files,
+content drift, duplicate or unsafe paths, symlinks/reparse points, special files,
+and existing outputs. Entries are sorted, timestamp/mode normalized, ZIP64
+enabled, and stored without compression; output is staged beside its destination
+and published atomically without replacement. Three Python tests prove identical
+archive bytes and the principal rejection paths. `pnpm test:artifacts` and the
+release audit run both the manifest and packaging suites.
+
+Packaging tradeoff: uncompressed ZIP entries avoid zlib-version variance but can
+make hosted assets larger. Publication also requires hard-link support on the
+target filesystem and fails closed otherwise. The York-buffer extraction and
+Valhalla build commands, the pinned YOLO exporter recipe, and their exact package
+locks remain unfinished because their upstream URLs/licenses are owner approval
+gates; the shared packager does not weaken or bypass those gates.
+
 1. Acquire/configure the intended Windows code-signing identity and run the
    documented installer workflow on a clean supported Windows VM. Keep
    `publicReleaseReady` false until signed-artifact and clean-machine evidence

@@ -85,6 +85,9 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [x] `[AGENT]` Add a strict managed-artifact manifest generator/verifier for
   final file identity, source retrieval evidence, licenses, build-tool versions,
   recipe parameters, sizes, hashes, and generation timestamps.
+- [x] `[AGENT]` Add a deterministic, content-locked ZIP foundation that rejects
+  undeclared files, hash drift, unsafe paths, links/reparse points, and output
+  replacement before York/ONNX-specific build recipes are approved.
 - [ ] `[AGENT]` Add reproducible York-buffered OSM/Valhalla tile and ONNX
   artifact builders.
 - [ ] `[AGENT]` Emit source, license, version, size, SHA-256, build-tool version,
