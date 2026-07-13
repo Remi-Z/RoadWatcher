@@ -213,7 +213,7 @@ Build a Windows-first, local-first evidence workstation:
 
 Latest module verification on 2026-07-13: 186 frontend tests across 30 files,
 TypeScript compilation, production Vite build, complete runtime/release audit,
-and 98 default Rust tests across all targets passed. Eight real/external smokes
+and 101 default Rust tests across all targets passed. Eight real/external smokes
 remain explicitly gated; the complete networked uv 0.11.23/CPython 3.12.13/
 pyvalhalla 3.7.0 and FFmpeg 8.1.1 manager smokes passed separately.
 The ignored managed-uv, installed-FFmpeg, installed-GDAL, live-OSRM, and private
@@ -498,7 +498,7 @@ network/DNS access.
    and real-smoke qualified; GPL
    source and notice delivery for GPStitch is implemented. Production GIS container
    normalization, local CV, and GPStitch reconciliation are complete:
-   verification passes 186 frontend tests, 98 default Rust tests plus the
+   verification passes 186 frontend tests, 101 default Rust tests plus the
    explicitly enabled managed uv/Python/pyvalhalla, installed-FFmpeg, installed-GDAL, and
    live-OSRM and private-ride smokes,
    four locked/offline Python tests, and the

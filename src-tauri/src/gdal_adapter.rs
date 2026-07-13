@@ -10,6 +10,23 @@ use thiserror::Error;
 const MAX_INSPECTION_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_GEOJSON_BYTES: u64 = 64 * 1024 * 1024;
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(120);
+const MANAGED_ENVIRONMENT_REMOVALS: &[&str] = &[
+    "GDAL_CONFIG_FILE",
+    "GDAL_DATA",
+    "GDAL_DRIVER_PATH",
+    "GDAL_PYTHON_DRIVER_PATH",
+    "GDAL_SKIP",
+    "OGR_DRIVER_PATH",
+    "OGR_SKIP",
+    "PROJ_AUX_DB",
+    "PROJ_CURL_CA_BUNDLE",
+    "PROJ_DATA",
+    "PROJ_LIB",
+    "PROJ_NETWORK",
+    "PROJ_NETWORK_ENDPOINT",
+    "PROJ_USER_WRITABLE_DIRECTORY",
+    "PYTHONSO",
+];
 
 #[derive(Clone, Debug)]
 pub struct GdalNormalizeRequest {
@@ -17,6 +34,13 @@ pub struct GdalNormalizeRequest {
     pub source_crs: String,
     pub layer_name: String,
     pub binary_directory: String,
+    pub runtime_environment: GdalRuntimeEnvironment,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GdalRuntimeEnvironment {
+    pub gdal_data_directory: Option<PathBuf>,
+    pub proj_data_directory: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -30,6 +54,10 @@ pub struct GdalNormalizedDataset {
 pub enum GdalAdapterError {
     #[error("GDAL binary directory is not an existing directory: {0}")]
     InvalidBinaryDirectory(String),
+    #[error("GDAL runtime data directory is not an existing directory: {0}")]
+    InvalidRuntimeDataDirectory(String),
+    #[error("Managed GDAL requires both GDAL_DATA and PROJ_DATA directories.")]
+    IncompleteRuntimeEnvironment,
     #[error("Could not launch {executable}: {detail}")]
     Launch { executable: String, detail: String },
     #[error("{executable} exceeded the 120 second execution limit.")]
@@ -59,8 +87,25 @@ trait GdalExecutor {
         &self,
         executable: &Path,
         args: &[OsString],
+        environment: &GdalProcessEnvironment,
         max_stdout_bytes: u64,
     ) -> Result<ProcessResult, GdalAdapterError>;
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct GdalProcessEnvironment {
+    values: Vec<(OsString, OsString)>,
+    removed: Vec<OsString>,
+}
+
+impl GdalProcessEnvironment {
+    pub(crate) fn values(&self) -> &[(OsString, OsString)] {
+        &self.values
+    }
+
+    pub(crate) fn removed(&self) -> &[OsString] {
+        &self.removed
+    }
 }
 
 #[derive(Debug)]
@@ -77,19 +122,24 @@ impl GdalExecutor for ProcessExecutor {
         &self,
         executable: &Path,
         args: &[OsString],
+        environment: &GdalProcessEnvironment,
         max_stdout_bytes: u64,
     ) -> Result<ProcessResult, GdalAdapterError> {
         let executable_label = executable.to_string_lossy().into_owned();
-        let mut child = Command::new(executable)
+        let mut command = Command::new(executable);
+        for name in &environment.removed {
+            command.env_remove(name);
+        }
+        command
             .args(args)
+            .envs(environment.values.iter().cloned())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|error| GdalAdapterError::Launch {
-                executable: executable_label.clone(),
-                detail: error.to_string(),
-            })?;
+            .stderr(Stdio::piped());
+        let mut child = command.spawn().map_err(|error| GdalAdapterError::Launch {
+            executable: executable_label.clone(),
+            detail: error.to_string(),
+        })?;
         let stdout = child.stdout.take().expect("piped GDAL stdout");
         let stderr = child.stderr.take().expect("piped GDAL stderr");
         let stdout_reader = thread::spawn(move || read_bounded(stdout, max_stdout_bytes));
@@ -147,6 +197,7 @@ fn normalize_with_executor(
     executor: &dyn GdalExecutor,
 ) -> Result<GdalNormalizedDataset, GdalAdapterError> {
     let (ogrinfo, ogr2ogr) = executables(&request.binary_directory)?;
+    let environment = managed_process_environment(&request.runtime_environment)?;
     let source = request.source_path.as_os_str().to_os_string();
     let inspection = executor.run(
         &ogrinfo,
@@ -157,6 +208,7 @@ fn normalize_with_executor(
             "-json".into(),
             source.clone(),
         ],
+        &environment,
         MAX_INSPECTION_BYTES,
     )?;
     ensure_success(&ogrinfo, &inspection)?;
@@ -196,7 +248,7 @@ fn normalize_with_executor(
         args.extend(["-s_srs".into(), crs.into()]);
     }
     args.extend([source, layer_name.clone().into()]);
-    let converted = executor.run(&ogr2ogr, &args, MAX_GEOJSON_BYTES)?;
+    let converted = executor.run(&ogr2ogr, &args, &environment, MAX_GEOJSON_BYTES)?;
     ensure_success(&ogr2ogr, &converted)?;
     let geojson = String::from_utf8(converted.stdout)
         .map_err(|error| GdalAdapterError::InvalidMetadata(error.to_string()))?;
@@ -205,6 +257,60 @@ fn normalize_with_executor(
         source_crs,
         layer_name,
     })
+}
+
+pub(crate) fn managed_process_environment(
+    configured: &GdalRuntimeEnvironment,
+) -> Result<GdalProcessEnvironment, GdalAdapterError> {
+    let (Some(gdal_data), Some(proj_data)) = (
+        configured.gdal_data_directory.as_ref(),
+        configured.proj_data_directory.as_ref(),
+    ) else {
+        return if configured.gdal_data_directory.is_none()
+            && configured.proj_data_directory.is_none()
+        {
+            Ok(GdalProcessEnvironment::default())
+        } else {
+            Err(GdalAdapterError::IncompleteRuntimeEnvironment)
+        };
+    };
+    let gdal_data = canonical_runtime_data_directory(gdal_data)?;
+    let proj_data = canonical_runtime_data_directory(proj_data)?;
+    Ok(GdalProcessEnvironment {
+        values: vec![
+            (OsString::from("GDAL_DATA"), gdal_data.into_os_string()),
+            (OsString::from("PROJ_DATA"), proj_data.into_os_string()),
+            (
+                OsString::from("GDAL_DRIVER_PATH"),
+                OsString::from("disable"),
+            ),
+            (OsString::from("OGR_DRIVER_PATH"), OsString::from("disable")),
+            (OsString::from("PROJ_NETWORK"), OsString::from("OFF")),
+            (OsString::from("GDAL_PAM_ENABLED"), OsString::from("NO")),
+            (
+                OsString::from("GDAL_VRT_ENABLE_PYTHON"),
+                OsString::from("NO"),
+            ),
+            (
+                OsString::from("GDAL_VRT_ENABLE_RAWRASTERBAND"),
+                OsString::from("NO"),
+            ),
+        ],
+        removed: MANAGED_ENVIRONMENT_REMOVALS
+            .iter()
+            .map(OsString::from)
+            .collect(),
+    })
+}
+
+fn canonical_runtime_data_directory(directory: &Path) -> Result<PathBuf, GdalAdapterError> {
+    if !directory.is_absolute() || !directory.is_dir() {
+        return Err(GdalAdapterError::InvalidRuntimeDataDirectory(
+            directory.display().to_string(),
+        ));
+    }
+    std::fs::canonicalize(directory)
+        .map_err(|_| GdalAdapterError::InvalidRuntimeDataDirectory(directory.display().to_string()))
 }
 
 fn select_layer<'a>(layers: &'a [Value], requested: &str) -> Result<&'a Value, GdalAdapterError> {
@@ -339,7 +445,7 @@ fn bounded_detail(bytes: &[u8]) -> String {
 mod tests {
     use super::{
         normalize_with_executor, normalize_with_gdal, GdalAdapterError, GdalExecutor,
-        GdalNormalizeRequest, ProcessResult,
+        GdalNormalizeRequest, GdalRuntimeEnvironment, ProcessResult,
     };
     use std::ffi::OsString;
     use std::fs;
@@ -347,8 +453,15 @@ mod tests {
     use std::sync::Mutex;
 
     struct FakeExecutor {
-        calls: Mutex<Vec<(String, Vec<String>)>>,
+        calls: Mutex<Vec<GdalCall>>,
         results: Mutex<Vec<ProcessResult>>,
+    }
+
+    struct GdalCall {
+        executable: String,
+        args: Vec<String>,
+        environment: Vec<(String, String)>,
+        removed_environment: Vec<String>,
     }
 
     impl GdalExecutor for FakeExecutor {
@@ -356,14 +469,31 @@ mod tests {
             &self,
             executable: &Path,
             args: &[OsString],
+            environment: &super::GdalProcessEnvironment,
             _limit: u64,
         ) -> Result<ProcessResult, GdalAdapterError> {
-            self.calls.lock().unwrap().push((
-                executable.to_string_lossy().into_owned(),
-                args.iter()
+            self.calls.lock().unwrap().push(GdalCall {
+                executable: executable.to_string_lossy().into_owned(),
+                args: args
+                    .iter()
                     .map(|value| value.to_string_lossy().into_owned())
                     .collect(),
-            ));
+                environment: environment
+                    .values
+                    .iter()
+                    .map(|(name, value)| {
+                        (
+                            name.to_string_lossy().into_owned(),
+                            value.to_string_lossy().into_owned(),
+                        )
+                    })
+                    .collect(),
+                removed_environment: environment
+                    .removed
+                    .iter()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .collect(),
+            });
             Ok(self.results.lock().unwrap().remove(0))
         }
     }
@@ -382,13 +512,13 @@ mod tests {
         assert_eq!(result.source_crs, "EPSG:26917");
         assert_eq!(result.layer_name, "signals");
         let calls = executor.calls.lock().unwrap();
-        assert_eq!(calls[0].0, "ogrinfo");
+        assert_eq!(calls[0].executable, "ogrinfo");
         assert!(calls[1]
-            .1
+            .args
             .windows(2)
             .any(|pair| pair == ["-t_srs", "EPSG:4326"]));
-        assert!(!calls[1].1.contains(&"-s_srs".to_string()));
-        assert_eq!(calls[1].1.last().map(String::as_str), Some("signals"));
+        assert!(!calls[1].args.contains(&"-s_srs".to_string()));
+        assert_eq!(calls[1].args.last().map(String::as_str), Some("signals"));
     }
 
     #[test]
@@ -413,10 +543,91 @@ mod tests {
         normalize_with_executor(&request("EPSG:32188", "lanes"), &selected).unwrap();
         let calls = selected.calls.lock().unwrap();
         assert!(calls[1]
-            .1
+            .args
             .windows(2)
             .any(|pair| pair == ["-s_srs", "EPSG:32188"]));
-        assert_eq!(calls[1].1.last().map(String::as_str), Some("lanes"));
+        assert_eq!(calls[1].args.last().map(String::as_str), Some("lanes"));
+    }
+
+    #[test]
+    fn confines_managed_gdal_and_proj_data_to_the_ogr_children() {
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-gdal-runtime-data-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let gdal_data = root.join("gdal-data");
+        let proj_data = root.join("proj-data");
+        fs::create_dir_all(&gdal_data).unwrap();
+        fs::create_dir_all(&proj_data).unwrap();
+        let executor = FakeExecutor {
+            calls: Mutex::new(Vec::new()),
+            results: Mutex::new(vec![
+                success(br#"{"layers":[{"name":"signals","geometryFields":[{"coordinateSystem":{"projjson":{"id":{"authority":"EPSG","code":26917}}}}]}]}"#),
+                success(br#"{"type":"FeatureCollection","features":[]}"#),
+            ]),
+        };
+        let mut request = request("AUTO", "");
+        request.runtime_environment = GdalRuntimeEnvironment {
+            gdal_data_directory: Some(gdal_data.canonicalize().unwrap()),
+            proj_data_directory: Some(proj_data.canonicalize().unwrap()),
+        };
+        normalize_with_executor(&request, &executor).unwrap();
+        let calls = executor.calls.lock().unwrap();
+        let gdal_data = gdal_data.canonicalize().unwrap().display().to_string();
+        let proj_data = proj_data.canonicalize().unwrap().display().to_string();
+        for call in calls.iter() {
+            assert!(call
+                .environment
+                .iter()
+                .any(|(name, value)| name == "GDAL_DATA" && value == &gdal_data));
+            assert!(call
+                .environment
+                .iter()
+                .any(|(name, value)| name == "PROJ_DATA" && value == &proj_data));
+            assert!(call
+                .environment
+                .iter()
+                .any(|(name, value)| { name == "GDAL_DRIVER_PATH" && value == "disable" }));
+            assert!(call
+                .environment
+                .iter()
+                .any(|(name, value)| name == "PROJ_NETWORK" && value == "OFF"));
+            for removed in [
+                "GDAL_CONFIG_FILE",
+                "GDAL_PYTHON_DRIVER_PATH",
+                "GDAL_SKIP",
+                "PROJ_LIB",
+                "PROJ_NETWORK_ENDPOINT",
+                "PYTHONSO",
+            ] {
+                assert!(call.removed_environment.iter().any(|name| name == removed));
+            }
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_a_partial_managed_gdal_runtime() {
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-gdal-runtime-data-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let executor = FakeExecutor {
+            calls: Mutex::new(Vec::new()),
+            results: Mutex::new(Vec::new()),
+        };
+        let mut request = request("AUTO", "");
+        request.runtime_environment = GdalRuntimeEnvironment {
+            gdal_data_directory: Some(root.clone()),
+            proj_data_directory: None,
+        };
+        assert!(matches!(
+            normalize_with_executor(&request, &executor),
+            Err(GdalAdapterError::IncompleteRuntimeEnvironment)
+        ));
+        assert!(executor.calls.lock().unwrap().is_empty());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -439,6 +650,7 @@ mod tests {
             source_crs: "AUTO".to_string(),
             layer_name: String::new(),
             binary_directory,
+            runtime_environment: GdalRuntimeEnvironment::default(),
         })
         .unwrap();
         let geojson: serde_json::Value = serde_json::from_str(&result.geojson).unwrap();
@@ -461,6 +673,7 @@ mod tests {
             source_crs: source_crs.to_string(),
             layer_name: layer_name.to_string(),
             binary_directory: String::new(),
+            runtime_environment: GdalRuntimeEnvironment::default(),
         }
     }
 

@@ -30,7 +30,7 @@ unpublished hashes in final evidence.
 | Durable local project storage | SQLite schema/migration/store tests; create/save/load command integration | Proven complete |
 | Referenced media, proxy, thumbnails, progress, cancellation, recovery | Native media/proxy code and Rust tests; explicitly enabled real FFmpeg smoke | Proven complete |
 | GPX import and Valhalla/OSRM matching behavior | Real GPX parse/import test; transport/fallback/identity tests; strict frontend polling; live OSRM v5.27.1 loopback smoke | Proven complete |
-| Production GIS containers, CRS normalization, projection, review | GDAL boundary tests, durable import/projection tests, frontend reconciliation, real GDAL 3.12.4 Windows adapter smoke | Proven complete |
+| Production GIS containers, CRS normalization, projection, review | GDAL boundary tests, durable import/projection tests, frontend reconciliation, real GDAL 3.12.4 Windows adapter smoke | Adapter behavior proven with an externally supplied GDAL runtime; managed GDAL distribution remains incomplete |
 | Local conservative CV scanning and reviewer decisions | Locked sidecar tests, durable CV Rust/frontend tests, hash-verified YOLO11n/real GoPro video smoke | Proven complete |
 | GPStitch telemetry render and provenance | Pinned v0.18.0 source/license, durable worker tests, real locked/offline fixture render | Proven complete |
 | Evidence packet and native immutable export | Strict artifact contracts, confined atomic publication, hash/manifest/store tests | Proven complete |
@@ -38,7 +38,7 @@ unpublished hashes in final evidence.
 | Managed dependency command/security boundary | Build-validated catalog, strict ID/license commands, ownership/staging/recovery tests, strong-ETag/exact-range resume tests, manual allowlisted redirects, backend-resolved reference contracts, Setup Center dependency-order tests | Proven complete; uv/Python, pyvalhalla, and FFmpeg are available while data/model artifacts stay gated |
 | Managed one-shot Valhalla adapter | Exact Python 3.12/pyvalhalla 3.7.0 wheel, offline uv environment install, exact package/Python/service probe, ownership-resolved config/tile references, bounded process/request/result files, HTTP/OSRM fallback tests, durable provenance | Managed runtime complete; production York tile artifact missing |
 | Managed artifact provenance manifests | Strict generator/verifier, three Node tests, release-audit integration, manifest documentation | Proven complete |
-| Deterministic release-asset packaging | Exact-tree/SHA lock, normalized stored ZIPs, atomic no-overwrite publication, three Python tests | Proven complete as shared packaging foundation; York/ONNX recipes missing |
+| Deterministic release-asset packaging | Exact-tree/SHA lock, normalized stored ZIPs, atomic no-overwrite publication, three Python tests | Proven complete as shared packaging foundation; real approved York/ONNX recipes and assets are missing |
 | Reproducible York/ONNX release-asset production | Strict York boundary/OSM/config/tool recipe and strict weights/labels/exporter ONNX recipe; coverage/tensor validation, fixed bounded commands, deterministic archives and verified manifest publication; catalog placeholders | Both builders proven with fake tools/workers; real approved recipes/assets remain owner-gated |
 | Managed source approval evidence | Exact decision matrix for uv/Python, Valhalla, FFmpeg, GDAL, York OSM/boundary, YOLO, and municipal GIS; preserves source gaps and owner-only decisions | Software libraries approved; uv/Python/pyvalhalla/FFmpeg promoted; data/model/publication gates remain |
 | Managed GIS install-to-project handoff | Catalog/build/runtime validation, ownership-confined backend resolution, strict frontend parsing, explicit Setup Center action, existing native import command | Contract and UI proven; production datasets remain owner-gated |
@@ -53,7 +53,7 @@ unpublished hashes in final evidence.
 - Frontend: 30 files / 186 tests pass, including the managed installer and Setup
   Center flows; the production build passes.
 - App integration: 68 tests pass without React asynchronous-update warnings.
-- Rust: 98 default tests pass; eight external real smokes are ignored by default.
+- Rust: 101 default tests pass; eight external real smokes are ignored by default.
   They cover the approved uv/Python/pyvalhalla and FFmpeg manager install paths, locked environment sync,
   installed FFmpeg, installed GDAL, live OSRM, and the private ride dataset.
   Both complete networked managed-manager smokes passed separately with the
@@ -129,9 +129,10 @@ than a false global failure.
 4. Select/provide approved deployment CV weights and labels if CV is included
    operationally. The real development smoke is complete; weights remain
    external and are not redistributed.
-5. Select and license approved deployment GDAL/OGR binaries if non-GeoJSON or
-   arbitrary-CRS ingestion is in operational scope. Real Windows adapter
-   normalization evidence is complete; binaries remain external.
+5. Build and qualify the pinned minimal open-driver GDAL/OGR package if
+   non-GeoJSON or arbitrary-CRS ingestion is in operational scope. The real
+   adapter normalization is proven with an external runtime; managed binary,
+   notice, and clean-build-comparison evidence remains open.
 6. Supply and validate the intended York/GTA Valhalla/OSRM data for deployment.
    The live loopback integration smoke is complete; the temporary three-node
    graph is not production map data.

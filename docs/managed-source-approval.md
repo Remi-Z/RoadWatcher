@@ -130,3 +130,17 @@ Shapefile, GeoPackage, FlatGeobuf, OpenFileGDB, SQLite, PROJ, and necessary
 open-codec support enabled. Its build definition must pin every source/dependency
 and license, emit a complete tree manifest, and prove the four required OGR
 drivers plus EPSG:26917-to-WGS84 normalization before an asset is publishable.
+
+Catalog `2026.07.13-internal.8` reserves the expected source-build layout as
+`bin`, `share/gdal`, and `share/proj`, but still leaves `gdal` unavailable. When
+that owned component exists, Rust resolves all three references itself. It passes
+`GDAL_DATA` and `PROJ_DATA` only to the two OGR child processes, clears inherited
+GDAL/PROJ/plugin configuration, disables plugin discovery, PROJ networking, VRT
+Python/raw bands, and persistent auxiliary metadata for that managed path. An
+explicit user GDAL override remains unchanged. This is a runtime containment
+boundary, not approval or distribution of a new binary archive.
+
+Before publishing a native asset, retain the full GDAL/PROJ/SQLite/EPSG notice
+closure and compare the locked output from a second clean Windows MSVC/vcpkg
+builder. A deterministic archive makes the declared package reproducible, but
+does not alone prove separately compiled PE binaries are byte-identical.

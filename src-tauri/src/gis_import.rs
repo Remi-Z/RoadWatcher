@@ -1,4 +1,6 @@
-use crate::gdal_adapter::{normalize_with_gdal, GdalAdapterError, GdalNormalizeRequest};
+use crate::gdal_adapter::{
+    normalize_with_gdal, GdalAdapterError, GdalNormalizeRequest, GdalRuntimeEnvironment,
+};
 use crate::project_store::{
     import_feature_source_at, FeatureImportRequest, FeatureImportResponse,
     NormalizedOfficialFeature, ProjectStoreError,
@@ -25,6 +27,7 @@ pub struct GisImportRequest {
     pub layer_kind: String,
     pub layer_name: String,
     pub gdal_binary_directory: String,
+    pub gdal_runtime_environment: GdalRuntimeEnvironment,
 }
 
 #[derive(Debug, Error)]
@@ -96,6 +99,7 @@ pub fn import_gis(request: GisImportRequest) -> Result<FeatureImportResponse, Gi
             source_crs,
             layer_name: request.layer_name,
             binary_directory: request.gdal_binary_directory,
+            runtime_environment: request.gdal_runtime_environment,
         })?;
         (
             normalized.geojson,

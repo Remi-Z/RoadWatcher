@@ -92,6 +92,11 @@ later agent does not mistake an intentional boundary for an unfinished feature.
   - [x] `[AGENT]` Reject binary-tree pruning as the minimal-package strategy:
     the proven `gdal.dll` directly links database/client libraries and the
     archive does not carry a complete license set for that dependency closure.
+  - [x] `[AGENT]` Reserve the managed source-build layout (`bin`, `share/gdal`,
+    `share/proj`) and resolve it only in Rust. Pass those data paths only to
+    RoadWatcher's OGR children; clear inherited GDAL/PROJ/plugin configuration,
+    disable PROJ networking and VRT Python/raw bands, and leave user overrides
+    unchanged.
   - [ ] `[AGENT]` Produce and qualify the owner-approved minimal open-driver
     package from pinned source with unused database/proprietary drivers disabled;
     do not use the mutable daily bundle or its license-gated plugins.
@@ -211,11 +216,23 @@ later agent does not mistake an intentional boundary for an unfinished feature.
 - [ ] `[FUTURE]` Acquire public Windows signing and complete clean-VM public
   release certification after the internal milestone is accepted.
 
+## Recorded Tradeoffs and External Review
+
+- [ ] `[USER-CONTEXT]` Before publishing a native GDAL asset, arrange a second
+  clean Windows MSVC/vcpkg builder (local or CI) to compare its locked PE output
+  with the release build. A deterministic ZIP proves the package inputs and
+  layout, but does not by itself prove independently compiled binaries are
+  byte-identical.
+- [x] `[AGENT]` Keep managed GDAL constrained to the four requested open vector
+  formats and local CRS resources. This intentionally excludes optional
+  database, proprietary, network, plugin, Python-VRT, and remote-grid features
+  rather than shipping a broad third-party GIS runtime.
+
 ## Latest Qualification Evidence (2026-07-13)
 
 - [x] `[AGENT]` Frontend: 186 tests passed across 30 files, including Setup
   Center dependency ordering and managed GPStitch FFmpeg command contracts.
-- [x] `[AGENT]` Rust: 98 tests passed; eight explicit real/native smokes remain
+- [x] `[AGENT]` Rust: 101 tests passed; eight explicit real/native smokes remain
   ignored by default because they use network downloads, installed tools, a live
   service, or private evidence.
 - [x] `[AGENT]` CV sidecar: four tests passed in the locked environment with a

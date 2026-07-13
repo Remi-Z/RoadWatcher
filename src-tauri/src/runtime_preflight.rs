@@ -1,4 +1,5 @@
 use crate::bounded_process::run_bounded_process;
+use crate::gdal_adapter::{managed_process_environment, GdalRuntimeEnvironment};
 use crate::managed_runtime::{
     environment_probe_code, environment_python, environment_structure_ready, environment_version,
 };
@@ -18,6 +19,7 @@ pub struct RuntimePreflightRequest {
     pub uv_executable: String,
     pub ffmpeg_binary_directory: String,
     pub gdal_binary_directory: String,
+    pub gdal_runtime_environment: GdalRuntimeEnvironment,
     pub gpstitch_source: PathBuf,
     pub cv_source: PathBuf,
     pub valhalla_source: PathBuf,
@@ -52,7 +54,7 @@ trait ToolProbeExecutor: Send + Sync {
         &self,
         executable: &Path,
         args: &[&str],
-        environment: &[(OsString, OsString)],
+        environment: &ToolProbeEnvironment,
     ) -> Result<String, String>;
 }
 
@@ -63,10 +65,13 @@ impl ToolProbeExecutor for ProcessToolProbeExecutor {
         &self,
         executable: &Path,
         args: &[&str],
-        environment: &[(OsString, OsString)],
+        environment: &ToolProbeEnvironment,
     ) -> Result<String, String> {
         let mut command = Command::new(executable);
-        command.args(args).envs(environment.iter().cloned());
+        for name in &environment.removed {
+            command.env_remove(name);
+        }
+        command.args(args).envs(environment.values.iter().cloned());
         let output = run_bounded_process(&mut command, PROBE_TIMEOUT, PROBE_OUTPUT_LIMIT)
             .map_err(|error| error.to_string())?;
         let text = first_nonblank_line(&output.stdout)
@@ -130,10 +135,13 @@ fn run_with_executor(
         executable(&request.uv_executable, "uv"),
         vec!["python", "find", "3.12.13", "--managed-python"],
     );
-    python_spec.environment.push((
+    python_spec.environment.values.push((
         OsString::from("UV_PYTHON_INSTALL_DIR"),
         request.python_install_root.as_os_str().to_owned(),
     ));
+    let managed_gdal_environment = managed_process_environment(&request.gdal_runtime_environment)
+        .map(ToolProbeEnvironment::from)
+        .map_err(|error| error.to_string());
     let specs = vec![
         environment_tool_spec(
             "gpstitch-environment",
@@ -178,18 +186,22 @@ fn run_with_executor(
             directory_executable(&request.ffmpeg_binary_directory, "ffprobe"),
             vec!["-version"],
         ),
-        tool_spec(
+        gdal_tool_spec(
             "ogrinfo",
             "GDAL ogrinfo",
             false,
-            directory_executable(&request.gdal_binary_directory, "ogrinfo"),
+            &request.gdal_binary_directory,
+            "ogrinfo",
+            &managed_gdal_environment,
             vec!["--version"],
         ),
-        tool_spec(
+        gdal_tool_spec(
             "ogr2ogr",
             "GDAL ogr2ogr",
             false,
-            directory_executable(&request.gdal_binary_directory, "ogr2ogr"),
+            &request.gdal_binary_directory,
+            "ogr2ogr",
+            &managed_gdal_environment,
             vec!["--version"],
         ),
     ];
@@ -265,8 +277,23 @@ struct ToolSpec {
     required: bool,
     executable: Result<PathBuf, String>,
     args: Vec<&'static str>,
-    environment: Vec<(OsString, OsString)>,
+    environment: ToolProbeEnvironment,
     expected_version: Option<&'static str>,
+}
+
+#[derive(Clone, Default)]
+struct ToolProbeEnvironment {
+    values: Vec<(OsString, OsString)>,
+    removed: Vec<OsString>,
+}
+
+impl From<crate::gdal_adapter::GdalProcessEnvironment> for ToolProbeEnvironment {
+    fn from(environment: crate::gdal_adapter::GdalProcessEnvironment) -> Self {
+        Self {
+            values: environment.values().to_vec(),
+            removed: environment.removed().to_vec(),
+        }
+    }
 }
 
 fn tool_spec(
@@ -282,9 +309,29 @@ fn tool_spec(
         required,
         executable,
         args,
-        environment: vec![],
+        environment: ToolProbeEnvironment::default(),
         expected_version: None,
     }
+}
+
+fn gdal_tool_spec(
+    id: &'static str,
+    label: &'static str,
+    required: bool,
+    directory: &str,
+    executable_name: &str,
+    environment: &Result<ToolProbeEnvironment, String>,
+    args: Vec<&'static str>,
+) -> ToolSpec {
+    let executable = match environment {
+        Ok(_) => directory_executable(directory, executable_name),
+        Err(detail) => Err(detail.clone()),
+    };
+    let mut spec = tool_spec(id, label, required, executable, args);
+    if let Ok(environment) = environment {
+        spec.environment = environment.clone();
+    }
+    spec
 }
 
 fn probe_tool(spec: ToolSpec, executor: &dyn ToolProbeExecutor) -> RuntimeComponentStatus {
@@ -434,7 +481,7 @@ fn first_nonblank_line(bytes: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{run_with_executor, RuntimePreflightRequest, ToolProbeExecutor};
-    use std::ffi::OsString;
+    use crate::gdal_adapter::GdalRuntimeEnvironment;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -445,7 +492,7 @@ mod tests {
             &self,
             executable: &Path,
             args: &[&str],
-            _environment: &[(OsString, OsString)],
+            _environment: &super::ToolProbeEnvironment,
         ) -> Result<String, String> {
             let name = executable.to_string_lossy();
             if name == "uv" || name.contains("ogr") {
@@ -471,10 +518,30 @@ mod tests {
             &self,
             executable: &Path,
             args: &[&str],
-            environment: &[(OsString, OsString)],
+            environment: &super::ToolProbeEnvironment,
         ) -> Result<String, String> {
             if args.iter().any(|value| value.contains(self.0)) {
                 Err(format!("No module for probe {}", self.0))
+            } else {
+                FakeExecutor.run(executable, args, environment)
+            }
+        }
+    }
+
+    struct GdalProbeExecutor {
+        environments: std::sync::Mutex<Vec<super::ToolProbeEnvironment>>,
+    }
+
+    impl ToolProbeExecutor for GdalProbeExecutor {
+        fn run(
+            &self,
+            executable: &Path,
+            args: &[&str],
+            environment: &super::ToolProbeEnvironment,
+        ) -> Result<String, String> {
+            if executable.to_string_lossy().contains("ogr") {
+                self.environments.lock().unwrap().push(environment.clone());
+                Ok("GDAL 3.12.4".to_string())
             } else {
                 FakeExecutor.run(executable, args, environment)
             }
@@ -497,6 +564,7 @@ mod tests {
                 uv_executable: "uv".to_string(),
                 ffmpeg_binary_directory: String::new(),
                 gdal_binary_directory: String::new(),
+                gdal_runtime_environment: GdalRuntimeEnvironment::default(),
                 gpstitch_source: gpstitch,
                 cv_source: cv,
                 valhalla_source: valhalla,
@@ -542,6 +610,7 @@ mod tests {
             uv_executable: "uv".to_string(),
             ffmpeg_binary_directory: String::new(),
             gdal_binary_directory: String::new(),
+            gdal_runtime_environment: GdalRuntimeEnvironment::default(),
             gpstitch_source: gpstitch,
             cv_source: cv,
             valhalla_source: valhalla,
@@ -577,6 +646,7 @@ mod tests {
             uv_executable: "uv".to_string(),
             ffmpeg_binary_directory: String::new(),
             gdal_binary_directory: String::new(),
+            gdal_runtime_environment: GdalRuntimeEnvironment::default(),
             gpstitch_source: source(&root.join("gpstitch-again"), "0.18.0", true),
             cv_source: source(&root.join("cv-again"), "0.1.0", false),
             valhalla_source: source(&root.join("valhalla-again"), "0.1.0", false),
@@ -594,6 +664,77 @@ mod tests {
             item.id == "valhalla-environment" && item.required && item.status == "missing"
         }));
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn confines_managed_gdal_preflight_to_its_owned_environment() {
+        let root = std::env::temp_dir().join(format!(
+            "roadwatcher-preflight-gdal-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let gpstitch = source(&root.join("gpstitch"), "0.18.0", true);
+        let cv = source(&root.join("cv"), "0.1.0", false);
+        let valhalla = source(&root.join("valhalla"), "0.1.0", false);
+        let environments = crate::managed_runtime::managed_environment_paths(&root);
+        environment(&environments.gpstitch, "gpstitch-0.18.0");
+        environment(&environments.cv, "roadwatcher-cv-0.1.0");
+        environment(&environments.valhalla, "pyvalhalla-3.7.0");
+        let gdal_binary_directory = root.join("gdal/bin");
+        let gdal_data = root.join("gdal/share/gdal");
+        let proj_data = root.join("gdal/share/proj");
+        fs::create_dir_all(&gdal_binary_directory).unwrap();
+        fs::create_dir_all(&gdal_data).unwrap();
+        fs::create_dir_all(&proj_data).unwrap();
+        let executor = Arc::new(GdalProbeExecutor {
+            environments: std::sync::Mutex::new(Vec::new()),
+        });
+        let response = run_with_executor(
+            RuntimePreflightRequest {
+                uv_executable: "uv".to_string(),
+                ffmpeg_binary_directory: String::new(),
+                gdal_binary_directory: gdal_binary_directory.display().to_string(),
+                gdal_runtime_environment: GdalRuntimeEnvironment {
+                    gdal_data_directory: Some(gdal_data.canonicalize().unwrap()),
+                    proj_data_directory: Some(proj_data.canonicalize().unwrap()),
+                },
+                gpstitch_source: gpstitch,
+                cv_source: cv,
+                valhalla_source: valhalla,
+                gpstitch_environment: environments.gpstitch,
+                cv_environment: environments.cv,
+                valhalla_environment: environments.valhalla,
+                python_install_root: environments.python_install_root,
+            },
+            Arc::clone(&executor) as Arc<dyn ToolProbeExecutor>,
+        );
+        assert!(response
+            .components
+            .iter()
+            .filter(|component| component.id == "ogrinfo" || component.id == "ogr2ogr")
+            .all(|component| component.status == "ready"));
+        let expected_gdal_data = gdal_data.canonicalize().unwrap().display().to_string();
+        let expected_proj_data = proj_data.canonicalize().unwrap().display().to_string();
+        let environments = executor.environments.lock().unwrap();
+        assert_eq!(environments.len(), 2);
+        for environment in environments.iter() {
+            assert!(environment.values.iter().any(|(name, value)| {
+                name == "GDAL_DATA" && value.to_string_lossy() == expected_gdal_data
+            }));
+            assert!(environment.values.iter().any(|(name, value)| {
+                name == "PROJ_DATA" && value.to_string_lossy() == expected_proj_data
+            }));
+            assert!(environment
+                .values
+                .iter()
+                .any(|(name, value)| name == "PROJ_NETWORK" && value == "OFF"));
+            assert!(environment
+                .removed
+                .iter()
+                .any(|name| name == "GDAL_CONFIG_FILE"));
+            assert!(environment.removed.iter().any(|name| name == "PROJ_LIB"));
+        }
+        drop(environments);
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn source(root: &Path, version: &str, license: bool) -> PathBuf {

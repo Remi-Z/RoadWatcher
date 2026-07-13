@@ -1147,6 +1147,31 @@ payload independently size/hash bounded and allows uv to run offline. The
 remaining GDAL, Valhalla data, CV, and GIS rows are still unchanged and
 owner-gated.
 
+### Managed GDAL runtime containment (catalog `internal.8`)
+
+The pending GDAL component now reserves a source-build payload layout of `bin`,
+`share/gdal`, and `share/proj`. `gis_import` resolves those references only in
+Rust when no explicit GDAL directory is supplied; preflight probes the managed
+`binary-directory` reference rather than the component root. The adapter passes
+the owned GDAL and PROJ data directories only to `ogrinfo` and `ogr2ogr`.
+
+For that managed path, each child clears inherited GDAL/PROJ configuration and
+plugin-path variables, disables plugin discovery, PROJ networking, VRT Python
+and raw bands, and GDAL auxiliary metadata writes. This prevents an ambient
+system plugin/configuration from changing the audited component's behavior
+without changing an explicit user override or PATH fallback. Focused unit tests
+cover both child processes receiving the owned paths and lockdown policy, plus
+rejection of a partial data-directory pair. Module verification passed 101
+default Rust tests with eight explicitly gated real/native smokes, plus the
+runtime and release audits.
+
+No GDAL archive is available yet. The next source-build asset must retain a
+complete GDAL/PROJ/SQLite/EPSG notice closure, package only the requested open
+drivers, pass a PE dependency audit with no plugins/curl/database clients, and
+be compared against a second clean Windows MSVC/vcpkg build before release
+publication. Deterministic ZIP packaging proves the locked package tree, not
+independent PE byte reproducibility.
+
 1. Qualify a reproducible minimal open-driver GDAL package; keep its runtime
    consent and complete notice inventory.
 2. Approve immutable York/OSM/model/GIS inputs, build the real Valhalla/ONNX

@@ -194,6 +194,7 @@ fn gpx_import(
 
 #[tauri::command]
 fn gis_import(
+    dependencies: tauri::State<'_, DependencyManager>,
     sqlite_path: String,
     project_id: String,
     source_path: String,
@@ -202,6 +203,23 @@ fn gis_import(
     layer_name: String,
     gdal_binary_directory: String,
 ) -> Result<project_store::FeatureImportResponse, String> {
+    let use_managed_gdal = gdal_binary_directory.trim().is_empty();
+    let resolved_gdal_directory = if use_managed_gdal {
+        dependencies
+            .managed_reference("gdal", "binary-directory")
+            .map(|path| path.display().to_string())
+            .unwrap_or_default()
+    } else {
+        gdal_binary_directory
+    };
+    let gdal_runtime_environment = if use_managed_gdal {
+        gdal_adapter::GdalRuntimeEnvironment {
+            gdal_data_directory: dependencies.managed_reference("gdal", "gdal-data"),
+            proj_data_directory: dependencies.managed_reference("gdal", "proj-data"),
+        }
+    } else {
+        gdal_adapter::GdalRuntimeEnvironment::default()
+    };
     store_import_gis(GisImportRequest {
         sqlite_path: PathBuf::from(sqlite_path),
         project_id,
@@ -209,7 +227,8 @@ fn gis_import(
         source_crs,
         layer_kind,
         layer_name,
-        gdal_binary_directory,
+        gdal_binary_directory: resolved_gdal_directory,
+        gdal_runtime_environment,
     })
     .map_err(|error| error.to_string())
 }
@@ -400,19 +419,29 @@ fn runtime_preflight(
     } else {
         ffmpeg_binary_directory
     };
-    let resolved_gdal_directory = if gdal_binary_directory.trim().is_empty() {
+    let use_managed_gdal = gdal_binary_directory.trim().is_empty();
+    let resolved_gdal_directory = if use_managed_gdal {
         dependencies
-            .managed_component_path("gdal")
+            .managed_reference("gdal", "binary-directory")
             .map(|path| path.display().to_string())
             .unwrap_or_default()
     } else {
         gdal_binary_directory
+    };
+    let gdal_runtime_environment = if use_managed_gdal {
+        gdal_adapter::GdalRuntimeEnvironment {
+            gdal_data_directory: dependencies.managed_reference("gdal", "gdal-data"),
+            proj_data_directory: dependencies.managed_reference("gdal", "proj-data"),
+        }
+    } else {
+        gdal_adapter::GdalRuntimeEnvironment::default()
     };
     Ok(runtime_preflight::run_runtime_preflight(
         runtime_preflight::RuntimePreflightRequest {
             uv_executable: resolved_uv,
             ffmpeg_binary_directory: resolved_ffmpeg_directory,
             gdal_binary_directory: resolved_gdal_directory,
+            gdal_runtime_environment,
             gpstitch_source,
             cv_source,
             valhalla_source,
