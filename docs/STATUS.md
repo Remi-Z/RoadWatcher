@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Current milestone
 
-M04 — portable evidence export and integrity manifest.
+M05 — repeatable Windows portable and installer packaging.
 
 ## Completed
 
@@ -24,17 +24,18 @@ M04 — portable evidence export and integrity manifest.
 - Deterministic demo GPX and M02 screenshot added; focused test count increased to four.
 - M03 durable incident save, 30-second evidence window, frame capture, crop dialog, evidence provenance, optional Tesseract OCR, and local vehicle-colour suggestions implemented.
 - M03 crop-workflow screenshot and milestone notes saved under `docs/milestones/M03-incident/`; focused test count increased to six.
+- M04 canonical JSON/HTML/evidence package and SHA-256 manifest implemented through the existing export port.
+- The existing Exports navigation action now runs the package workflow; M04 screenshot/comparison and notes are saved under `docs/milestones/M04-export/`; focused test count increased to seven.
 
 ## In progress
 
-- No partial code slice. M03 is commit-ready; M04 has not started.
+- No partial code slice. M04 is commit-ready; M05 has not started.
 
 ## Next actions
 
-1. Export canonical project JSON, a readable incident summary, copied evidence, and a SHA-256 manifest.
-2. Wire the existing Exports navigation action to the package workflow and expose its result in the workbench status.
-3. Add Windows portable/installer build scripts and record third-party runtime requirements.
-4. Capture the export milestone and complete the handoff notes.
+1. Add a repeatable self-contained Windows publish/zip script.
+2. Add Inno Setup installer configuration and document the optional compiler prerequisite.
+3. Verify publish output and record the final handoff state.
 
 ## Known risks
 

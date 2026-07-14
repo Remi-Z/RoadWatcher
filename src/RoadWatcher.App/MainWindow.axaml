@@ -38,7 +38,7 @@
               <TextBlock VerticalAlignment="Center" Text="Incidents" />
             </StackPanel>
           </Button>
-          <Button Classes="nav">
+          <Button Classes="nav" Command="{Binding ExportEvidenceCommand}" ToolTip.Tip="Export saved incidents" AutomationProperties.Name="Export evidence package">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <materialIcons:MaterialIcon Kind="ExportVariant" Width="20" Height="20" />
               <TextBlock VerticalAlignment="Center" Text="Exports" />
@@ -271,6 +271,8 @@
               </Button>
             </Grid>
             <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="{Binding RecognitionStatus}" />
+            <TextBlock Margin="0,8,0,0" Classes="muted" Text="Latest export" />
+            <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="{Binding LastExportPath}" />
           </StackPanel>
         </ScrollViewer>
         <StackPanel Grid.Row="2" Margin="14,8,14,14" Spacing="8">

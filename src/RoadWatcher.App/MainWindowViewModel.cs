@@ -104,6 +104,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _recognitionStatus = "Manual values • suggestions require confirmation";
 
+    [ObservableProperty]
+    private string _lastExportPath = "No package exported yet";
+
     public MainWindowViewModel()
     {
         _mediaEngine = new LibVlcMediaEngine();
@@ -392,6 +395,26 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         await _projectStore.SaveAsync(_project, ProjectDirectory);
         IncidentCount = _project.Incidents.Count;
         StatusText = $"Incident saved • {IncidentCount} record(s) • {AttachmentCount} attachment(s)";
+    }
+
+    [RelayCommand]
+    private async Task ExportEvidenceAsync()
+    {
+        if (_project.Incidents.Count == 0)
+        {
+            StatusText = "Save at least one incident before exporting evidence.";
+            return;
+        }
+
+        await _projectStore.SaveAsync(_project, ProjectDirectory);
+        var exportDirectory = Path.Combine(
+            ProjectDirectory,
+            "exports",
+            $"evidence-{DateTimeOffset.Now:yyyyMMdd-HHmmss}");
+        var exporter = new EvidencePackageExporter(ProjectDirectory);
+        var result = await exporter.ExportAsync(_project, exportDirectory);
+        LastExportPath = result.PackageDirectory;
+        StatusText = $"Evidence package exported • {result.Files.Count} files • SHA-256 manifest ready";
     }
 
     [RelayCommand]
