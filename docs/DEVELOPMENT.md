@@ -6,6 +6,7 @@
 - .NET 10 SDK
 - Git
 - Optional for later milestones: FFmpeg 8.x, Tesseract 5.x, Inno Setup
+- Inno Setup 6 only when producing the installer; portable packaging does not require it
 
 ## Commands
 
@@ -14,6 +15,7 @@ dotnet restore RoadWatcher.slnx
 dotnet build RoadWatcher.slnx
 dotnet test RoadWatcher.slnx
 dotnet run --project src/RoadWatcher.App
+.\scripts\build-windows.ps1 -SkipInstaller
 ```
 
 ## Traceability contract
@@ -33,4 +35,3 @@ dotnet run --project src/RoadWatcher.App
 ## Blocker protocol
 
 First exhaust safe local diagnostics. If user help is required, update `docs/STATUS.md` with the failing command, relevant output, attempted remedies, and exact numbered recovery instructions. Stop only when a missing choice, permission, dependency, or external state prevents meaningful progress.
-

@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Current milestone
 
-M05 — repeatable Windows portable and installer packaging.
+V1 foundation implementation complete through M05.
 
 ## Completed
 
@@ -26,23 +26,27 @@ M05 — repeatable Windows portable and installer packaging.
 - M03 crop-workflow screenshot and milestone notes saved under `docs/milestones/M03-incident/`; focused test count increased to six.
 - M04 canonical JSON/HTML/evidence package and SHA-256 manifest implemented through the existing export port.
 - The existing Exports navigation action now runs the package workflow; M04 screenshot/comparison and notes are saved under `docs/milestones/M04-export/`; focused test count increased to seven.
+- M05 guarded Windows packaging script, portable ZIP, Inno Setup configuration, release checklist, and published-app screenshot added.
+- The self-contained `win-x64` app launches successfully with the bundled x64 VLC runtime; the verified portable ZIP is 126.1 MiB.
 
 ## In progress
 
-- No partial code slice. M04 is commit-ready; M05 has not started.
+- None. All planned foundation milestones are implemented and commit-ready.
 
 ## Next actions
 
-1. Add a repeatable self-contained Windows publish/zip script.
-2. Add Inno Setup installer configuration and document the optional compiler prerequisite.
-3. Verify publish output and record the final handoff state.
+1. Run the representative-video acceptance matrix with user-provided 4K60 HEVC and multi-file/gap footage.
+2. Select the first police jurisdiction and document its current submission format before building a submission adapter.
+3. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.
+4. For V2, implement `IIncidentAnalyzer` behind the existing analysis-run/suggestion boundary; do not couple CV output directly to confirmed incident fields.
 
 ## Known risks
 
 - Mapsui 5.1 is pinned because it explicitly supports Avalonia 11.3 and aligns its HarfBuzz/Skia dependencies with the selected UI baseline.
-- VLC, FFmpeg, Tesseract, map tiles, and reverse geocoding carry separate licences/usage policies that packaging must document.
+- VLC, FFmpeg, Tesseract, map tiles, and reverse geocoding carry separate licences/usage policies; the release checklist requires a distribution review.
 - No representative 4K60 HEVC test corpus is committed; performance acceptance needs local user footage or a redistributable fixture.
-- The M01 media adapter is built and native-host startup is verified, but representative playback has not been exercised in this workspace because no source video was provided.
+- The M01 media adapter and packaged native runtime start successfully, but representative playback has not been exercised in this workspace because no source video was provided.
+- Inno Setup configuration is present but its optional compiler was not part of the verified local toolchain.
 
 ## Blockers
 

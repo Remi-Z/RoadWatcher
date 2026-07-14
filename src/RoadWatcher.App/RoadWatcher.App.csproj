@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <Version>0.1.0</Version>
+    <AssemblyName>RoadWatcher.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
@@ -23,5 +25,6 @@
     <AvaloniaResource Include="..\..\assets\demo\cycling-evidence-frame.png" Link="Assets\cycling-evidence-frame.png" />
     <Content Include="..\..\assets\demo\cycling-evidence-frame.png" Link="Demo\cycling-evidence-frame.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\demo\demo-ride.gpx" Link="Demo\demo-ride.gpx" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\PACKAGING.md" Link="PACKAGING.md" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

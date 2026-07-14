@@ -4,4 +4,4 @@ RoadWatcher is a local-first desktop evidence workbench for cyclists. It brings 
 
 The V1 foundation targets Windows on .NET 10 and Avalonia while keeping domain and infrastructure code portable. See [docs/README.md](docs/README.md) for the product specification, architecture, development workflow, and current status.
 
-![RoadWatcher M00 evidence workbench](docs/milestones/M00-foundation/workbench-final.png)
+![RoadWatcher evidence workbench](docs/milestones/M04-export/export-complete.png)

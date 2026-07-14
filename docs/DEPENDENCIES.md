@@ -14,4 +14,4 @@ Pin versions centrally and upgrade intentionally. The application composes matur
 | Media derivatives | FFmpeg | 8.x external tool | Proxy, clip, thumbnail, and annotated-video generation. |
 | OCR | Tesseract | 5.x external tool | Local-first plate suggestion behind an adapter. |
 
-FFmpeg and Tesseract are adapters, not required for the M00 shell. Packaging will either bundle compatible binaries/licences or guide users to a verified install. Do not add another docking framework: Avalonia grids and splitters satisfy the selected layout.
+FFmpeg and Tesseract are optional adapters and are not bundled in the V1 package. The self-contained Windows publish includes .NET and the selected native VLC runtime. Inno Setup 6 is a build-time-only installer compiler. See `PACKAGING.md` for runtime fallbacks and the release licence/signing checklist. Do not add another docking framework: Avalonia grids and splitters satisfy the selected layout.
