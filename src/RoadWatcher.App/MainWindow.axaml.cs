@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using BruTile;
 using BruTile.Predefined;
 using BruTile.Web;
@@ -12,6 +13,7 @@ using Mapsui.Styles;
 using Mapsui.Tiling.Layers;
 using Mapsui.UI.Avalonia;
 using NetTopologySuite.Geometries;
+using RoadWatcher.Core;
 using Brush = Mapsui.Styles.Brush;
 using Color = Mapsui.Styles.Color;
 using Pen = Mapsui.Styles.Pen;
@@ -20,10 +22,16 @@ namespace RoadWatcher.App;
 
 public sealed partial class MainWindow : Window
 {
+    private Map? _map;
+    private MemoryLayer? _routeLayer;
+    private MemoryLayer? _positionLayer;
     public MainWindow()
     {
         InitializeComponent();
-        DataContext = new MainWindowViewModel();
+        var viewModel = new MainWindowViewModel();
+        viewModel.GpxTrackChanged += (_, points) => Dispatcher.UIThread.Post(() => UpdateMapRoute(points));
+        viewModel.TelemetrySampleChanged += (_, sample) => Dispatcher.UIThread.Post(() => UpdateMapPosition(sample));
+        DataContext = viewModel;
         InitializeMap();
         Closed += (_, _) => (DataContext as IDisposable)?.Dispose();
     }
@@ -32,13 +40,21 @@ public sealed partial class MainWindow : Window
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Import action-camera videos",
+            Title = "Import ride videos and GPX",
             AllowMultiple = true,
             FileTypeFilter =
             [
+                new FilePickerFileType("Ride sources")
+                {
+                    Patterns = ["*.mp4", "*.mov", "*.mkv", "*.m4v", "*.avi", "*.gpx"]
+                },
                 new FilePickerFileType("Action-camera video")
                 {
                     Patterns = ["*.mp4", "*.mov", "*.mkv", "*.m4v", "*.avi"]
+                },
+                new FilePickerFileType("GPX track")
+                {
+                    Patterns = ["*.gpx"]
                 }
             ]
         });
@@ -56,7 +72,9 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            await viewModel.ImportMediaAsync(paths);
+            var gpxPaths = paths.Where(path => Path.GetExtension(path).Equals(".gpx", StringComparison.OrdinalIgnoreCase)).ToArray();
+            var mediaPaths = paths.Except(gpxPaths, StringComparer.OrdinalIgnoreCase).ToArray();
+            await viewModel.ImportRideAsync(mediaPaths, gpxPaths);
         }
         catch (Exception exception)
         {
@@ -92,18 +110,19 @@ public sealed partial class MainWindow : Window
             Project(-79.39910, 43.66755),
             Project(-79.39730, 43.66768)
         };
-        map.Layers.Add(new MemoryLayer("GPX route")
+        _routeLayer = new MemoryLayer("GPX route")
         {
             Features = [new GeometryFeature { Geometry = new LineString(routeCoordinates) }],
             Style = new VectorStyle
             {
                 Line = new Pen(Color.FromString("#14C9C3"), 5)
             }
-        });
+        };
+        map.Layers.Add(_routeLayer);
 
         var projected = SphericalMercator.FromLonLat(-79.40089, 43.66745);
         var centre = new MPoint(projected.x, projected.y);
-        map.Layers.Add(new MemoryLayer("Incident position")
+        _positionLayer = new MemoryLayer("Incident position")
         {
             Features = [new PointFeature(centre)],
             Style = new SymbolStyle
@@ -112,10 +131,38 @@ public sealed partial class MainWindow : Window
                 Outline = new Pen(Color.White, 2),
                 SymbolScale = 1.2
             }
-        });
+        };
+        map.Layers.Add(_positionLayer);
 
         map.Navigator.CenterOnAndZoomTo(centre, map.Navigator.Resolutions[16]);
         mapControl.Map = map;
+        _map = map;
+    }
+
+    private void UpdateMapRoute(IReadOnlyList<TrackPoint> points)
+    {
+        if (_map is null || _routeLayer is null || points.Count < 2)
+        {
+            return;
+        }
+
+        var coordinates = points.Select(point => Project(point.Longitude, point.Latitude)).ToArray();
+        _routeLayer.Features = [new GeometryFeature { Geometry = new LineString(coordinates) }];
+        _routeLayer.DataHasChanged();
+        _map.RefreshGraphics();
+    }
+
+    private void UpdateMapPosition(TelemetrySample sample)
+    {
+        if (_map is null || _positionLayer is null)
+        {
+            return;
+        }
+
+        var projected = SphericalMercator.FromLonLat(sample.Longitude, sample.Latitude);
+        _positionLayer.Features = [new PointFeature(projected.x, projected.y)];
+        _positionLayer.DataHasChanged();
+        _map.RefreshGraphics();
     }
 
     private static Coordinate Project(double longitude, double latitude)

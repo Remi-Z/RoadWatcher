@@ -13,5 +13,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\assets\demo\demo-ride.gpx" Link="Demo\demo-ride.gpx" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
 

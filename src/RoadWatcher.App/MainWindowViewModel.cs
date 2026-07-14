@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using LibVLCSharp.Shared;
 using RoadWatcher.App.Services;
 using RoadWatcher.Core;
+using RoadWatcher.Infrastructure;
 
 namespace RoadWatcher.App;
 
@@ -12,7 +13,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly DispatcherTimer _timer;
     private readonly double[] _rates = [0.5, 1, 1.5, 2];
     private readonly LibVlcMediaEngine _mediaEngine;
+    private readonly GpxTrackService _gpxTrackService = new();
     private bool _updatingFromMedia;
+    private GpxTimelineMapper? _gpxTimelineMapper;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PlayIcon))]
@@ -52,6 +55,21 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private int _importedClipCount;
 
+    [ObservableProperty]
+    private string _speedKmhText = "23.4";
+
+    [ObservableProperty]
+    private string _accelerationText = "−0.8";
+
+    [ObservableProperty]
+    private string _telemetryClockText = "14:32:18";
+
+    [ObservableProperty]
+    private string _locationText = "Bloor St W & Spadina Ave";
+
+    [ObservableProperty]
+    private string _coordinateText = "43.66745, −79.40089";
+
     public MainWindowViewModel()
     {
         _mediaEngine = new LibVlcMediaEngine();
@@ -69,6 +87,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             }
         });
         _timer.Start();
+        _ = LoadDemoGpxAsync();
     }
 
     public string[] Categories { get; } =
@@ -89,6 +108,26 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool ShowDemoFrame => !HasLoadedMedia;
     public MediaPlayer MediaPlayer => _mediaEngine.MediaPlayer;
     public IReadOnlyList<MediaSource> ImportedMedia { get; private set; } = [];
+    public IReadOnlyList<TrackPoint> GpxPoints { get; private set; } = [];
+
+    public event EventHandler<IReadOnlyList<TrackPoint>>? GpxTrackChanged;
+    public event EventHandler<TelemetrySample>? TelemetrySampleChanged;
+
+    public async Task ImportRideAsync(
+        IReadOnlyList<string> mediaPaths,
+        IReadOnlyList<string> gpxPaths,
+        CancellationToken cancellationToken = default)
+    {
+        if (mediaPaths.Count > 0)
+        {
+            await ImportMediaAsync(mediaPaths, cancellationToken);
+        }
+
+        if (gpxPaths.Count > 0)
+        {
+            await ImportGpxAsync(gpxPaths[0], isDemo: false, cancellationToken);
+        }
+    }
 
     public async Task ImportMediaAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default)
     {
@@ -129,7 +168,69 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             _mediaEngine.Seek(TimeSpan.FromSeconds(value));
         }
+
+        UpdateTelemetry(value);
     }
+
+    private async Task LoadDemoGpxAsync()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Demo", "demo-ride.gpx");
+        if (File.Exists(path))
+        {
+            await ImportGpxAsync(path, isDemo: true);
+        }
+    }
+
+    private async Task ImportGpxAsync(string path, bool isDemo, CancellationToken cancellationToken = default)
+    {
+        var points = await _gpxTrackService.ReadAsync(path, cancellationToken);
+        GpxPoints = points;
+        var sourceId = Guid.NewGuid();
+        _gpxTimelineMapper = new GpxTimelineMapper(
+        [
+            new SyncAnchor(sourceId, TimeSpan.Zero, points[0].RecordedAt)
+        ]);
+        GpxTrackChanged?.Invoke(this, points);
+        UpdateTelemetry(CurrentSeconds);
+
+        if (!isDemo)
+        {
+            LoadedMediaName = ImportedMedia.Count > 0
+                ? $"{ImportedMedia[0].DisplayName}  +  {Path.GetFileName(path)}"
+                : Path.GetFileName(path);
+        }
+
+        StatusText = $"GPX aligned • {points.Count} points • offset +00:00.000";
+    }
+
+    private void UpdateTelemetry(double projectSeconds)
+    {
+        if (_gpxTimelineMapper is null || GpxPoints.Count == 0)
+        {
+            return;
+        }
+
+        var gpxTime = _gpxTimelineMapper.MapToGpxTime(TimeSpan.FromSeconds(projectSeconds));
+        var sample = _gpxTrackService.SampleAt(GpxPoints, gpxTime);
+        if (sample is null)
+        {
+            return;
+        }
+
+        SpeedKmhText = (sample.SpeedMetersPerSecond * 3.6).ToString("0.0");
+        AccelerationText = sample.AccelerationMetersPerSecondSquared is { } acceleration
+            ? acceleration.ToString("0.0").Replace('-', '−')
+            : "—";
+        TelemetryClockText = sample.Time.ToLocalTime().ToString("HH:mm:ss");
+        CoordinateText = $"{sample.Latitude:F5}, {sample.Longitude:F5}".Replace('-', '−');
+        LocationText = IsNearBloorSpadina(sample.Latitude, sample.Longitude)
+            ? "Bloor St W & Spadina Ave"
+            : CoordinateText;
+        TelemetrySampleChanged?.Invoke(this, sample);
+    }
+
+    private static bool IsNearBloorSpadina(double latitude, double longitude) =>
+        Math.Abs(latitude - 43.66745) < 0.001 && Math.Abs(longitude - (-79.40089)) < 0.0015;
 
     [RelayCommand]
     private void TogglePlayback()

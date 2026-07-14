@@ -87,21 +87,21 @@
             <Grid ColumnDefinitions="Auto,20,Auto,20,Auto,20,*">
               <StackPanel Orientation="Horizontal" Spacing="7">
                 <materialIcons:MaterialIcon Kind="Speedometer" Width="17" Height="17" />
-                <TextBlock FontSize="16" FontWeight="SemiBold" Text="23.4" />
+                <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding SpeedKmhText}" />
                 <TextBlock VerticalAlignment="Bottom" Margin="-3,0,0,2" FontSize="9" Text="km/h" />
               </StackPanel>
               <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7">
                 <materialIcons:MaterialIcon Kind="AxisArrow" Width="17" Height="17" />
-                <TextBlock FontSize="16" FontWeight="SemiBold" Text="−0.8" />
+                <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding AccelerationText}" />
                 <TextBlock VerticalAlignment="Bottom" Margin="-3,0,0,2" FontSize="9" Text="m/s²" />
               </StackPanel>
               <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="7">
                 <materialIcons:MaterialIcon Kind="ClockOutline" Width="17" Height="17" />
-                <TextBlock FontSize="14" FontWeight="SemiBold" Text="14:32:18" />
+                <TextBlock FontSize="14" FontWeight="SemiBold" Text="{Binding TelemetryClockText}" />
               </StackPanel>
               <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="7">
                 <materialIcons:MaterialIcon Kind="MapMarkerOutline" Width="17" Height="17" />
-                <TextBlock VerticalAlignment="Center" Text="Bloor St W &amp; Spadina Ave" />
+                <TextBlock VerticalAlignment="Center" Text="{Binding LocationText}" />
               </StackPanel>
             </Grid>
           </Border>
@@ -111,21 +111,21 @@
           <Grid ColumnDefinitions="Auto,20,Auto,20,Auto,20,*">
             <StackPanel Orientation="Horizontal" Spacing="7">
               <materialIcons:MaterialIcon Kind="Speedometer" Width="17" Height="17" />
-              <TextBlock FontSize="16" FontWeight="SemiBold" Text="23.4" />
+              <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding SpeedKmhText}" />
               <TextBlock VerticalAlignment="Bottom" Margin="-3,0,0,2" FontSize="9" Text="km/h" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7">
               <materialIcons:MaterialIcon Kind="AxisArrow" Width="17" Height="17" />
-              <TextBlock FontSize="16" FontWeight="SemiBold" Text="−0.8" />
+              <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding AccelerationText}" />
               <TextBlock VerticalAlignment="Bottom" Margin="-3,0,0,2" FontSize="9" Text="m/s²" />
             </StackPanel>
             <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="7">
               <materialIcons:MaterialIcon Kind="ClockOutline" Width="17" Height="17" />
-              <TextBlock FontSize="14" FontWeight="SemiBold" Text="14:32:18" />
+              <TextBlock FontSize="14" FontWeight="SemiBold" Text="{Binding TelemetryClockText}" />
             </StackPanel>
             <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="7">
               <materialIcons:MaterialIcon Kind="MapMarkerOutline" Width="17" Height="17" />
-              <TextBlock VerticalAlignment="Center" Text="Bloor St W &amp; Spadina Ave" />
+              <TextBlock VerticalAlignment="Center" Text="{Binding LocationText}" />
             </StackPanel>
           </Grid>
         </Border>
@@ -216,7 +216,7 @@
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Location (confirmed)" />
             <TextBlock TextWrapping="Wrap" Text="Bloor St W &amp; Spadina Ave, Toronto, ON" />
             <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Classes="muted" FontSize="11" Text="43.66745, −79.40089" />
+              <TextBlock Classes="muted" FontSize="11" Text="{Binding CoordinateText}" />
               <TextBlock Grid.Column="1" Foreground="{StaticResource AccentTeal}" FontSize="11" Text="✓ Verified" />
             </Grid>
 

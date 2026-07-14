@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RoadWatcher demo" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>RoadWatcher Bloor–Spadina demo ride</name>
+    <time>2026-07-12T14:03:31-04:00</time>
+  </metadata>
+  <trk>
+    <name>Bloor–Spadina westbound</name>
+    <trkseg>
+      <trkpt lat="43.66040" lon="-79.40310"><ele>111.0</ele><time>2026-07-12T14:03:31-04:00</time><speed>6.2</speed></trkpt>
+      <trkpt lat="43.66460" lon="-79.40130"><ele>112.0</ele><time>2026-07-12T14:20:00-04:00</time><speed>6.8</speed></trkpt>
+      <trkpt lat="43.66620" lon="-79.40112"><ele>112.4</ele><time>2026-07-12T14:30:00-04:00</time><speed>7.0</speed></trkpt>
+      <trkpt lat="43.66741" lon="-79.40092"><ele>112.8</ele><time>2026-07-12T14:32:16-04:00</time><speed>7.3</speed></trkpt>
+      <trkpt lat="43.66745" lon="-79.40089"><ele>112.8</ele><time>2026-07-12T14:32:19-04:00</time><speed>4.9</speed></trkpt>
+      <trkpt lat="43.66755" lon="-79.39910"><ele>112.5</ele><time>2026-07-12T14:35:00-04:00</time><speed>6.1</speed></trkpt>
+      <trkpt lat="43.66768" lon="-79.39730"><ele>112.1</ele><time>2026-07-12T14:40:00-04:00</time><speed>6.5</speed></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
+
