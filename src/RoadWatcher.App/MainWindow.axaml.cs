@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using BruTile;
 using BruTile.Predefined;
 using BruTile.Web;
@@ -23,6 +25,43 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         DataContext = new MainWindowViewModel();
         InitializeMap();
+        Closed += (_, _) => (DataContext as IDisposable)?.Dispose();
+    }
+
+    private async void OnImportRideClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import action-camera videos",
+            AllowMultiple = true,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Action-camera video")
+                {
+                    Patterns = ["*.mp4", "*.mov", "*.mkv", "*.m4v", "*.avi"]
+                }
+            ]
+        });
+
+        var paths = files
+            .Select(file => file.TryGetLocalPath())
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Cast<string>()
+            .ToArray();
+
+        if (paths.Length == 0 || DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            await viewModel.ImportMediaAsync(paths);
+        }
+        catch (Exception exception)
+        {
+            viewModel.StatusText = $"Import failed: {exception.Message}";
+        }
     }
 
     private void InitializeMap()
