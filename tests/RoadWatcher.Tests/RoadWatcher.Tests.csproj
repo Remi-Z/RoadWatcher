@@ -15,6 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\assets\demo\demo-ride.gpx" Link="Demo\demo-ride.gpx" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\demo\cycling-evidence-frame.png" Link="Demo\cycling-evidence-frame.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
 

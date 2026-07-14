@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        x:Class="RoadWatcher.App.CropDialog"
+        Title="Crop evidence"
+        Width="900"
+        Height="620"
+        MinWidth="700"
+        MinHeight="500"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="54,*,58">
+    <Grid Margin="16,0" ColumnDefinitions="*,Auto">
+      <StackPanel VerticalAlignment="Center" Spacing="2">
+        <TextBlock FontWeight="SemiBold" Text="Select the vehicle or plate" />
+        <TextBlock Classes="muted" FontSize="11" Text="Drag over the evidence frame. The saved crop keeps source-time provenance." />
+      </StackPanel>
+      <Button Grid.Column="1" Classes="icon" Click="OnCancelClicked">
+        <materialIcons:MaterialIcon Kind="Close" Width="19" Height="19" />
+      </Button>
+    </Grid>
+
+    <Border Grid.Row="1" Margin="16,0" Background="#020609" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="5" ClipToBounds="True">
+      <Canvas x:Name="Surface"
+              Background="Transparent"
+              PointerPressed="OnPointerPressed"
+              PointerMoved="OnPointerMoved"
+              PointerReleased="OnPointerReleased">
+        <Image x:Name="SourceImage" Width="{Binding #Surface.Bounds.Width}" Height="{Binding #Surface.Bounds.Height}" Stretch="Uniform" />
+        <Border x:Name="SelectionBorder"
+                IsVisible="False"
+                Background="#38FFAD18"
+                BorderBrush="{StaticResource AccentAmber}"
+                BorderThickness="2"
+                CornerRadius="2" />
+      </Canvas>
+    </Border>
+
+    <Grid Grid.Row="2" Margin="16,8" ColumnDefinitions="*,Auto,Auto">
+      <TextBlock x:Name="StatusText" VerticalAlignment="Center" Classes="muted" Text="No selection yet" />
+      <Button Grid.Column="1" Margin="0,0,8,0" Click="OnCancelClicked" Content="Cancel" />
+      <Button Grid.Column="2" Classes="primary" Click="OnSaveClicked">
+        <StackPanel Orientation="Horizontal" Spacing="7">
+          <materialIcons:MaterialIcon Kind="Crop" Width="18" Height="18" />
+          <TextBlock Text="Save crop" />
+        </StackPanel>
+      </Button>
+    </Grid>
+  </Grid>
+</Window>
+

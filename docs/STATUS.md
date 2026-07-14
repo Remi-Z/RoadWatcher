@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Current milestone
 
-M03 — durable incident editing, capture/crop attachments, and local recognition suggestions.
+M04 — portable evidence export and integrity manifest.
 
 ## Completed
 
@@ -22,17 +22,19 @@ M03 — durable incident editing, capture/crop attachments, and local recognitio
 - M02 GPX parser, derived-speed fallback, telemetry interpolation, and one/two-anchor timeline mapping implemented.
 - Video/GPX share one import flow; playhead updates speed, acceleration, local time, coordinates, intersection label, route layer, and position layer.
 - Deterministic demo GPX and M02 screenshot added; focused test count increased to four.
+- M03 durable incident save, 30-second evidence window, frame capture, crop dialog, evidence provenance, optional Tesseract OCR, and local vehicle-colour suggestions implemented.
+- M03 crop-workflow screenshot and milestone notes saved under `docs/milestones/M03-incident/`; focused test count increased to six.
 
 ## In progress
 
-- No partial code slice. M02 is commit-ready; M03 has not started.
+- No partial code slice. M03 is commit-ready; M04 has not started.
 
 ## Next actions
 
-1. Turn inspector save into a validated `Incident` and persist it through `JsonProjectStore`.
-2. Add frame capture and a built-in-control crop dialog that records source media/time provenance.
-3. Add external Tesseract and colour-estimator adapters that return suggestions without overwriting confirmed fields.
-4. Capture M03 incident/attachment/recognition state under `docs/milestones/M03-incident/`.
+1. Export canonical project JSON, a readable incident summary, copied evidence, and a SHA-256 manifest.
+2. Wire the existing Exports navigation action to the package workflow and expose its result in the workbench status.
+3. Add Windows portable/installer build scripts and record third-party runtime requirements.
+4. Capture the export milestone and complete the handoff notes.
 
 ## Known risks
 

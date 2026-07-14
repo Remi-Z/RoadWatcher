@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\RoadWatcher.Core\RoadWatcher.Core.csproj" />
+    <PackageReference Include="SkiaSharp" />
   </ItemGroup>
 </Project>
-

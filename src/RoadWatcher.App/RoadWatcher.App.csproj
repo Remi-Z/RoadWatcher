@@ -17,9 +17,11 @@
     <PackageReference Include="Mapsui.Avalonia" />
     <PackageReference Include="Mapsui.Nts" />
     <PackageReference Include="Material.Icons.Avalonia" />
+    <PackageReference Include="SkiaSharp" />
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="..\..\assets\demo\cycling-evidence-frame.png" Link="Assets\cycling-evidence-frame.png" />
+    <Content Include="..\..\assets\demo\cycling-evidence-frame.png" Link="Demo\cycling-evidence-frame.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\demo\demo-ride.gpx" Link="Demo\demo-ride.gpx" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

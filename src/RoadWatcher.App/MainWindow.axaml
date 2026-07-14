@@ -134,7 +134,7 @@
 
     <!-- Player controls -->
     <Border Grid.Row="2" Grid.Column="1" Classes="panel">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto" Margin="9,0">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" Margin="9,0">
         <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" ToolTip.Tip="{Binding PlayLabel}">
           <materialIcons:MaterialIcon Kind="{Binding PlayIcon}" Width="23" Height="23" />
         </Button>
@@ -147,10 +147,13 @@
         <TextBlock Grid.Column="3" Margin="8,0,12,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding CurrentTimeText}" />
         <Slider Grid.Column="4" Margin="0,0,14,0" Minimum="0" Maximum="{Binding MaximumSeconds}" Value="{Binding CurrentSeconds, Mode=TwoWay}" />
         <Button Grid.Column="5" Classes="icon" Command="{Binding CyclePlaybackRateCommand}" Content="{Binding PlaybackRateText}" />
-        <Button Grid.Column="6" Classes="icon" ToolTip.Tip="Capture screenshot">
+        <Button Grid.Column="6" Classes="icon" Command="{Binding CaptureFrameCommand}" ToolTip.Tip="Capture screenshot">
           <materialIcons:MaterialIcon Kind="CameraOutline" Width="20" Height="20" />
         </Button>
-        <Button Grid.Column="7" Classes="icon" ToolTip.Tip="Overlay layers">
+        <Button Grid.Column="7" Classes="icon" Click="OnCropFrameClicked" ToolTip.Tip="Crop current frame" AutomationProperties.Name="Crop current frame">
+          <materialIcons:MaterialIcon Kind="Crop" Width="20" Height="20" />
+        </Button>
+        <Button Grid.Column="8" Classes="icon" ToolTip.Tip="Overlay layers">
           <materialIcons:MaterialIcon Kind="LayersOutline" Width="20" Height="20" />
         </Button>
       </Grid>
@@ -207,11 +210,11 @@
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Time window" />
             <Grid ColumnDefinitions="*,28,*">
-              <TextBox Text="14:32:16.823" />
+              <TextBox Text="{Binding IncidentStartText}" />
               <materialIcons:MaterialIcon Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="ArrowRight" Width="17" Height="17" />
-              <TextBox Grid.Column="2" Text="14:32:21.623" />
+              <TextBox Grid.Column="2" Text="{Binding IncidentEndText}" />
             </Grid>
-            <TextBlock Classes="muted" FontSize="11" Text="Duration  00:04.800" />
+            <TextBlock Classes="muted" FontSize="11" Text="{Binding IncidentDurationText}" />
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Location (confirmed)" />
             <TextBlock TextWrapping="Wrap" Text="Bloor St W &amp; Spadina Ave, Toronto, ON" />
@@ -229,9 +232,7 @@
             </Grid>
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Vehicle colour" />
-            <ComboBox SelectedIndex="0">
-              <ComboBoxItem Content="Dark blue" />
-            </ComboBox>
+            <ComboBox ItemsSource="{Binding VehicleColors}" SelectedItem="{Binding VehicleColor}" />
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Confidence" />
             <Grid ColumnDefinitions="62,*,*,*" RowDefinitions="32,32">
@@ -253,10 +254,23 @@
             <TextBox Watermark="Add tags…" />
             <Grid Margin="0,8,0,0" ColumnDefinitions="*,Auto">
               <TextBlock Classes="muted" Text="Attachments" />
-              <Button Grid.Column="1" Classes="icon">
-                <materialIcons:MaterialIcon Kind="Plus" Width="18" Height="18" />
+              <TextBlock Grid.Column="1" Classes="muted" Text="{Binding AttachmentCount}" />
+            </Grid>
+            <Grid ColumnDefinitions="*,*">
+              <Button Margin="0,0,4,0" Command="{Binding CaptureFrameCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <materialIcons:MaterialIcon Kind="CameraOutline" Width="17" Height="17" />
+                  <TextBlock Text="Capture frame" />
+                </StackPanel>
+              </Button>
+              <Button Grid.Column="1" Margin="4,0,0,0" Click="OnCropFrameClicked">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <materialIcons:MaterialIcon Kind="Crop" Width="17" Height="17" />
+                  <TextBlock Text="Crop latest" />
+                </StackPanel>
               </Button>
             </Grid>
+            <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="{Binding RecognitionStatus}" />
           </StackPanel>
         </ScrollViewer>
         <StackPanel Grid.Row="2" Margin="14,8,14,14" Spacing="8">

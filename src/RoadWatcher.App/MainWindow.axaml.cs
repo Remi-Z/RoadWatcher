@@ -82,6 +82,30 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void OnCropFrameClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        var sourcePath = viewModel.LastCapturedFramePath ?? await viewModel.CaptureFrameToProjectAsync();
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            return;
+        }
+
+        var destination = Path.Combine(
+            viewModel.ProjectDirectory,
+            "assets",
+            $"crop-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmssfff}.png");
+        var dialog = new CropDialog(sourcePath, destination);
+        if (await dialog.ShowDialog<bool>(this))
+        {
+            await viewModel.AddCropAndRecognizeAsync(destination);
+        }
+    }
+
     private void InitializeMap()
     {
         var mapControl = this.FindControl<MapControl>("ContextMap");
