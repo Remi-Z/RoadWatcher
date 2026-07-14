@@ -1,0 +1,70 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <SolidColorBrush x:Key="AppBackground">#07161D</SolidColorBrush>
+    <SolidColorBrush x:Key="PanelBackground">#091B23</SolidColorBrush>
+    <SolidColorBrush x:Key="PanelRaised">#0D242D</SolidColorBrush>
+    <SolidColorBrush x:Key="PanelBorder">#24404A</SolidColorBrush>
+    <SolidColorBrush x:Key="TextPrimary">#F3F6F7</SolidColorBrush>
+    <SolidColorBrush x:Key="TextSecondary">#91A2A9</SolidColorBrush>
+    <SolidColorBrush x:Key="AccentTeal">#14C9C3</SolidColorBrush>
+    <SolidColorBrush x:Key="AccentAmber">#FFAD18</SolidColorBrush>
+    <SolidColorBrush x:Key="Danger">#FF6B57</SolidColorBrush>
+  </Styles.Resources>
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{StaticResource AppBackground}" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+    <Setter Property="FontFamily" Value="avares://Avalonia.Fonts.Inter/Assets#Inter" />
+  </Style>
+
+  <Style Selector="Border.panel">
+    <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+  </Style>
+
+  <Style Selector="Button">
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="10,7" />
+  </Style>
+
+  <Style Selector="Button.icon">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="7" />
+  </Style>
+
+  <Style Selector="Button.nav">
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="15,13" />
+  </Style>
+
+  <Style Selector="Button.nav.selected">
+    <Setter Property="Background" Value="#12303A" />
+    <Setter Property="Foreground" Value="{StaticResource AccentTeal}" />
+  </Style>
+
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{StaticResource AccentAmber}" />
+    <Setter Property="Foreground" Value="#1A1200" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBox, ComboBox">
+    <Setter Property="Background" Value="#07161D" />
+    <Setter Property="BorderBrush" Value="#35515B" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+  <Style Selector="CheckBox">
+    <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+  </Style>
+</Styles>
+

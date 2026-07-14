@@ -1,0 +1,339 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:mapsui="clr-namespace:Mapsui.UI.Avalonia;assembly=Mapsui.UI.Avalonia"
+        x:Class="RoadWatcher.App.MainWindow"
+        mc:Ignorable="d"
+        Title="RoadWatcher — Evidence Workbench"
+        Width="1152"
+        Height="820"
+        MinWidth="1000"
+        MinHeight="700"
+        WindowStartupLocation="CenterScreen">
+  <Viewbox Stretch="Uniform">
+  <Grid Width="1440" Height="1024" ColumnDefinitions="128,*,4,300,4,300" RowDefinitions="66,*,52,380">
+    <!-- Navigation -->
+    <Border Grid.RowSpan="4" Grid.Column="0" Background="#081A22" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,1,0">
+      <Grid RowDefinitions="66,*">
+        <TextBlock Margin="18,0" VerticalAlignment="Center" FontSize="16" FontWeight="Bold" Text="RoadWatcher" />
+        <StackPanel Grid.Row="1" Spacing="7" Margin="6,10">
+          <Button Classes="nav selected">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="PlayCircleOutline" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Workbench" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="FolderOutline" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Rides" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="AlertOutline" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Incidents" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="ExportVariant" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Exports" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="CogOutline" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Settings" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Header -->
+    <Border Grid.Column="1" Grid.ColumnSpan="5" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="*,Auto,22,Auto" Margin="14,0,18,0">
+        <StackPanel VerticalAlignment="Center" Spacing="3">
+          <TextBlock FontSize="15" FontWeight="SemiBold" Text="Ride — July 12, 2026  14:15" />
+          <TextBlock Classes="muted" FontSize="12" Text="2026-07-12_1415_BloorSpadina.gpx" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+          <TextBlock Foreground="{StaticResource AccentTeal}" Text="Source verified  ✓" />
+          <TextBlock Classes="muted" FontSize="11" Text="SHA256: 8b7f…c3e9" />
+        </StackPanel>
+        <Border Grid.Column="2" Margin="10,16" Width="1" Background="{StaticResource PanelBorder}" />
+        <StackPanel Grid.Column="3" VerticalAlignment="Center" Spacing="3">
+          <TextBlock Classes="muted" FontSize="11" Text="Reviewed on July 14, 2026" />
+          <TextBlock Classes="muted" FontSize="11" Text="by Reviewer" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Video -->
+    <Border Grid.Row="1" Grid.Column="1" Background="#020609" ClipToBounds="True">
+      <Grid>
+        <Image Source="avares://RoadWatcher.App/Assets/cycling-evidence-frame.png" Stretch="UniformToFill" />
+        <Border Margin="20" Padding="16,10" CornerRadius="7" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Background="#D90A1A20">
+          <Grid ColumnDefinitions="Auto,26,Auto,26,Auto,26,*">
+            <StackPanel Orientation="Horizontal" Spacing="9">
+              <materialIcons:MaterialIcon Kind="Speedometer" Width="21" Height="21" />
+              <TextBlock FontSize="20" FontWeight="SemiBold" Text="23.4" />
+              <TextBlock VerticalAlignment="Bottom" Margin="-4,0,0,2" FontSize="11" Text="km/h" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="9">
+              <materialIcons:MaterialIcon Kind="AxisArrow" Width="21" Height="21" />
+              <TextBlock FontSize="20" FontWeight="SemiBold" Text="−0.8" />
+              <TextBlock VerticalAlignment="Bottom" Margin="-4,0,0,2" FontSize="11" Text="m/s²" />
+            </StackPanel>
+            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="9">
+              <materialIcons:MaterialIcon Kind="ClockOutline" Width="21" Height="21" />
+              <TextBlock FontSize="17" FontWeight="SemiBold" Text="14:32:18" />
+            </StackPanel>
+            <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="9">
+              <materialIcons:MaterialIcon Kind="MapMarkerOutline" Width="21" Height="21" />
+              <TextBlock VerticalAlignment="Center" Text="Bloor St W &amp; Spadina Ave" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <!-- Player controls -->
+    <Border Grid.Row="2" Grid.Column="1" Classes="panel">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto" Margin="9,0">
+        <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" ToolTip.Tip="{Binding PlayLabel}">
+          <materialIcons:MaterialIcon Kind="{Binding PlayIcon}" Width="23" Height="23" />
+        </Button>
+        <Button Grid.Column="1" Classes="icon" Command="{Binding SeekBackCommand}" ToolTip.Tip="Back 10 seconds">
+          <materialIcons:MaterialIcon Kind="Replay" Width="20" Height="20" />
+        </Button>
+        <Button Grid.Column="2" Classes="icon" Command="{Binding SeekForwardCommand}" ToolTip.Tip="Forward 10 seconds">
+          <materialIcons:MaterialIcon Kind="FastForward10" Width="20" Height="20" />
+        </Button>
+        <TextBlock Grid.Column="3" Margin="8,0,12,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="12" Text="{Binding CurrentTimeText}" />
+        <Slider Grid.Column="4" Margin="0,0,14,0" Minimum="0" Maximum="4515" Value="{Binding CurrentSeconds, Mode=TwoWay}" />
+        <Button Grid.Column="5" Classes="icon" Command="{Binding CyclePlaybackRateCommand}" Content="{Binding PlaybackRateText}" />
+        <Button Grid.Column="6" Classes="icon" ToolTip.Tip="Capture screenshot">
+          <materialIcons:MaterialIcon Kind="CameraOutline" Width="20" Height="20" />
+        </Button>
+        <Button Grid.Column="7" Classes="icon" ToolTip.Tip="Overlay layers">
+          <materialIcons:MaterialIcon Kind="LayersOutline" Width="20" Height="20" />
+        </Button>
+      </Grid>
+    </Border>
+
+    <!-- Context dock -->
+    <GridSplitter Grid.Row="1" Grid.RowSpan="3" Grid.Column="2" Width="4" Background="#18343D" ResizeDirection="Columns" />
+    <Border Grid.Row="1" Grid.RowSpan="2" Grid.Column="3" Classes="panel">
+      <Grid RowDefinitions="50,*,Auto">
+        <Grid Margin="15,0" ColumnDefinitions="*,Auto">
+          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Context" />
+          <materialIcons:MaterialIcon Grid.Column="1" VerticalAlignment="Center" Kind="ChevronDoubleLeft" Width="21" Height="21" />
+        </Grid>
+        <Border Grid.Row="1" Margin="10,0" CornerRadius="6" ClipToBounds="True" Background="#0B222B">
+          <mapsui:MapControl x:Name="ContextMap" />
+        </Border>
+        <StackPanel Grid.Row="2" Margin="16,12,16,16" Spacing="10">
+          <TextBlock FontWeight="SemiBold" Text="Overlay Layers" />
+          <CheckBox IsChecked="True">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <materialIcons:MaterialIcon Kind="Bike" Width="18" Height="18" />
+              <TextBlock Text="Telemetry" />
+            </StackPanel>
+          </CheckBox>
+          <CheckBox>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <materialIcons:MaterialIcon Kind="CubeOutline" Width="18" Height="18" />
+              <TextBlock Text="Objects" />
+            </StackPanel>
+          </CheckBox>
+          <CheckBox>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <materialIcons:MaterialIcon Kind="RoadVariant" Width="18" Height="18" />
+              <TextBlock Text="Lanes" />
+            </StackPanel>
+          </CheckBox>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Inspector -->
+    <GridSplitter Grid.Row="1" Grid.RowSpan="3" Grid.Column="4" Width="4" Background="#18343D" ResizeDirection="Columns" />
+    <Border Grid.Row="1" Grid.RowSpan="3" Grid.Column="5" Classes="panel">
+      <Grid RowDefinitions="50,*,Auto">
+        <Grid Margin="14,0" ColumnDefinitions="Auto,*,Auto">
+          <materialIcons:MaterialIcon VerticalAlignment="Center" Kind="ArrowLeft" Width="20" Height="20" />
+          <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="Incident inspector" />
+          <materialIcons:MaterialIcon Grid.Column="2" VerticalAlignment="Center" Kind="PinOutline" Width="20" Height="20" />
+        </Grid>
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="14,0,14,14" Spacing="8">
+            <TextBlock Classes="muted" Text="Category" />
+            <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}" />
+
+            <TextBlock Margin="0,8,0,0" Classes="muted" Text="Time window" />
+            <Grid ColumnDefinitions="*,28,*">
+              <TextBox Text="14:32:16.823" />
+              <materialIcons:MaterialIcon Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="ArrowRight" Width="17" Height="17" />
+              <TextBox Grid.Column="2" Text="14:32:21.623" />
+            </Grid>
+            <TextBlock Classes="muted" FontSize="11" Text="Duration  00:04.800" />
+
+            <TextBlock Margin="0,8,0,0" Classes="muted" Text="Location (confirmed)" />
+            <TextBlock TextWrapping="Wrap" Text="Bloor St W &amp; Spadina Ave, Toronto, ON" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="muted" FontSize="11" Text="43.66745, −79.40089" />
+              <TextBlock Grid.Column="1" Foreground="{StaticResource AccentTeal}" FontSize="11" Text="✓ Verified" />
+            </Grid>
+
+            <TextBlock Margin="0,8,0,0" Classes="muted" Text="Vehicle plate" />
+            <Grid ColumnDefinitions="*,66">
+              <TextBox Text="{Binding PlateNumber}" />
+              <ComboBox Grid.Column="1" SelectedIndex="0">
+                <ComboBoxItem Content="ON" />
+              </ComboBox>
+            </Grid>
+
+            <TextBlock Margin="0,8,0,0" Classes="muted" Text="Vehicle colour" />
+            <ComboBox SelectedIndex="0">
+              <ComboBoxItem Content="Dark blue" />
+            </ComboBox>
+
+            <TextBlock Margin="0,8,0,0" Classes="muted" Text="Confidence" />
+            <Grid ColumnDefinitions="62,*,*,*" RowDefinitions="32,32">
+              <TextBlock VerticalAlignment="Center" Text="Plate" />
+              <ToggleButton Grid.Column="1" Content="Low" />
+              <ToggleButton Grid.Column="2" Content="Medium" />
+              <ToggleButton Grid.Column="3" IsChecked="True" Content="High" />
+              <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Event" />
+              <ToggleButton Grid.Row="1" Grid.Column="1" Content="Low" />
+              <ToggleButton Grid.Row="1" Grid.Column="2" Content="Medium" />
+              <ToggleButton Grid.Row="1" Grid.Column="3" IsChecked="True" Content="High" />
+            </Grid>
+
+            <TextBlock Margin="0,8,0,0" Classes="muted" Text="Notes" />
+            <TextBox MinHeight="88" MaxLength="500" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding Notes}" />
+            <TextBlock HorizontalAlignment="Right" Classes="muted" FontSize="10" Text="94 / 500" />
+
+            <TextBlock Classes="muted" Text="Tags" />
+            <TextBox Watermark="Add tags…" />
+            <Grid Margin="0,8,0,0" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="muted" Text="Attachments" />
+              <Button Grid.Column="1" Classes="icon">
+                <materialIcons:MaterialIcon Kind="Plus" Width="18" Height="18" />
+              </Button>
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Margin="14,8,14,14" Spacing="8">
+          <Button Classes="primary" Command="{Binding MarkIncidentCommand}" HorizontalContentAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <materialIcons:MaterialIcon Kind="FlagOutline" Width="19" Height="19" />
+              <TextBlock Text="Mark incident" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding SaveIncidentCommand}" HorizontalContentAlignment="Center" Content="Save incident" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Timeline -->
+    <Border Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Classes="panel">
+      <Grid RowDefinitions="52,28,42,42,42,42,36,*">
+        <Grid Margin="14,0" ColumnDefinitions="*,Auto">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="26">
+            <TextBlock FontWeight="SemiBold" Text="Timeline" />
+            <TextBlock Text="Fit  ▾" />
+          </StackPanel>
+          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" Text="Jump to incident    ‹    3 of 7    ›" />
+        </Grid>
+        <Grid Grid.Row="1" ColumnDefinitions="92,*">
+          <Border BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,1,0" />
+          <Grid Grid.Column="1" ColumnDefinitions="*,*,*,*,*" Margin="12,0">
+            <TextBlock HorizontalAlignment="Left" Classes="muted" FontSize="10" Text="00:24:00" />
+            <TextBlock Grid.Column="1" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="00:26:00" />
+            <TextBlock Grid.Column="2" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="00:28:00" />
+            <TextBlock Grid.Column="3" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="00:30:00" />
+            <TextBlock Grid.Column="4" HorizontalAlignment="Right" Classes="muted" FontSize="10" Text="00:34:00" />
+          </Grid>
+        </Grid>
+
+        <Border Grid.Row="2" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="92,*">
+            <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="Video (front)" />
+            <Grid Grid.Column="1" ColumnDefinitions="3*,70,4*" Margin="6,4">
+              <Border CornerRadius="2" Background="#19323B">
+                <Image Source="avares://RoadWatcher.App/Assets/cycling-evidence-frame.png" Stretch="UniformToFill" />
+              </Border>
+              <Border Grid.Column="1" Margin="5,0" BorderBrush="#65767B" BorderThickness="1" CornerRadius="2">
+                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Gap&#x0a;00:44" />
+              </Border>
+              <Border Grid.Column="2" CornerRadius="2" Background="#19323B">
+                <Image Source="avares://RoadWatcher.App/Assets/cycling-evidence-frame.png" Stretch="UniformToFill" />
+              </Border>
+            </Grid>
+          </Grid>
+        </Border>
+
+        <Border Grid.Row="3" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="92,*">
+            <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="Video (rear)" />
+            <Grid Grid.Column="1" Margin="6,5" ColumnDefinitions="5*,70,3*">
+              <Border Background="#152B34" />
+              <Border Grid.Column="1" Margin="5,0" BorderBrush="#65767B" BorderThickness="1" />
+              <Border Grid.Column="2" Background="#152B34" />
+            </Grid>
+          </Grid>
+        </Border>
+
+        <Border Grid.Row="4" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="92,*">
+            <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="GPX (route)" />
+            <Grid Grid.Column="1" Margin="8,8">
+              <Border Height="2" VerticalAlignment="Center" Background="{StaticResource AccentTeal}" />
+              <Border HorizontalAlignment="Center" Width="68" Background="{StaticResource AppBackground}" />
+            </Grid>
+          </Grid>
+        </Border>
+
+        <Border Grid.Row="5" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="92,*">
+            <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="Incidents" />
+            <Grid Grid.Column="1" Margin="8,0" ColumnDefinitions="*,*,*,*,*,*,*">
+              <materialIcons:MaterialIcon Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
+              <materialIcons:MaterialIcon Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
+              <materialIcons:MaterialIcon Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
+              <materialIcons:MaterialIcon Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="{StaticResource AccentAmber}" Width="17" Height="17" />
+              <materialIcons:MaterialIcon Grid.Column="4" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
+              <materialIcons:MaterialIcon Grid.Column="5" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
+              <materialIcons:MaterialIcon Grid.Column="6" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
+            </Grid>
+          </Grid>
+        </Border>
+
+        <Border Grid.Row="6" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="92,*">
+            <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Selected incident" />
+            <Grid Grid.Column="1" Margin="8,5">
+              <Border Width="210" HorizontalAlignment="Center" Background="#4B3B0D" BorderBrush="{StaticResource AccentAmber}" BorderThickness="1" CornerRadius="2" />
+              <Border Width="2" HorizontalAlignment="Center" Background="{StaticResource AccentAmber}" />
+            </Grid>
+          </Grid>
+        </Border>
+
+        <Grid Grid.Row="7" Margin="14,8" ColumnDefinitions="*,Auto">
+          <StackPanel Orientation="Horizontal" Spacing="18">
+            <TextBlock Foreground="{StaticResource AccentTeal}" FontSize="10" Text="━━  GPX coverage" />
+            <TextBlock Classes="muted" FontSize="10" Text="◇  Incident" />
+            <TextBlock Foreground="{StaticResource AccentAmber}" FontSize="10" Text="▰  Selected incident" />
+          </StackPanel>
+          <TextBlock Grid.Column="1" Classes="muted" FontSize="10" Text="{Binding StatusText}" />
+        </Grid>
+      </Grid>
+    </Border>
+  </Grid>
+  </Viewbox>
+</Window>

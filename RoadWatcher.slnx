@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RoadWatcher.App/RoadWatcher.App.csproj" />
+    <Project Path="src/RoadWatcher.Core/RoadWatcher.Core.csproj" />
+    <Project Path="src/RoadWatcher.Infrastructure/RoadWatcher.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj" />
+  </Folder>
+</Solution>
+
