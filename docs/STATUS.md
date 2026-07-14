@@ -31,7 +31,17 @@ V1 foundation implementation complete through M05.
 
 ## In progress
 
-- None. All planned foundation milestones are implemented and commit-ready.
+- None. All planned foundation milestones are implemented and committed on `feat/v1-foundation`.
+
+## Milestone commits
+
+- `bf0e2c6` — product and architecture foundation
+- `4dcdb5b` — evidence workbench foundation
+- `af67c56` — multi-file import and LibVLC playback
+- `eb8f774` — GPX telemetry and timeline alignment
+- `61a56f9` — incident persistence, crop, and recognition suggestions
+- `77286ce` — portable evidence export and integrity manifest
+- `7a1b670` — Windows portable and installer packaging
 
 ## Next actions
 
