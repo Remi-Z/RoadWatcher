@@ -44,3 +44,4 @@ flowchart LR
 
 The selected evidence workbench is a four-region desktop shell: navigation, dominant player, resizable Context dock (map plus overlay layers), and incident inspector. A multi-track virtual timeline spans the review area below. Avalonia `Grid`, `GridSplitter`, `ListBox`, `DataGrid`, `Flyout`, and `StorageProvider` are preferred before custom controls.
 
+The native video surface is the approved LibVLCSharp Avalonia `VideoView`. `EmbeddedVideoView` is a lifecycle-only adapter that reapplies the native child-window handle when an initially hidden surface is created; it does not replace or customize VLC rendering. Telemetry is composed above the native surface with standard Avalonia controls so LibVLCSharp does not create its optional floating content window.

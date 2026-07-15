@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Current milestone
 
-V1 foundation implementation complete through M05.
+M06 — embedded VLC window ownership complete.
 
 ## Completed
 
@@ -28,10 +28,12 @@ V1 foundation implementation complete through M05.
 - The existing Exports navigation action now runs the package workflow; M04 screenshot/comparison and notes are saved under `docs/milestones/M04-export/`; focused test count increased to seven.
 - M05 guarded Windows packaging script, portable ZIP, Inno Setup configuration, release checklist, and published-app screenshot added.
 - The self-contained `win-x64` app launches successfully with the bundled x64 VLC runtime; the verified portable ZIP is 126.1 MiB.
+- M06 keeps active VLC playback inside the workbench by reattaching the approved VideoView to its late-created native child handle and moving telemetry out of `VideoView.Content`.
+- Synthetic H.264 playback, a 1440 × 1024 logical milestone capture, and Win32 window enumeration confirm one RoadWatcher-owned top-level window with no VLC/overlay popup.
 
 ## In progress
 
-- None. All planned foundation milestones are implemented and committed on `feat/v1-foundation`.
+- None. The M06 embedded-playback fix is verified and ready to commit on `feat/v1-foundation`.
 
 ## Milestone commits
 
@@ -55,7 +57,7 @@ V1 foundation implementation complete through M05.
 - Mapsui 5.1 is pinned because it explicitly supports Avalonia 11.3 and aligns its HarfBuzz/Skia dependencies with the selected UI baseline.
 - VLC, FFmpeg, Tesseract, map tiles, and reverse geocoding carry separate licences/usage policies; the release checklist requires a distribution review.
 - No representative 4K60 HEVC test corpus is committed; performance acceptance needs local user footage or a redistributable fixture.
-- The M01 media adapter and packaged native runtime start successfully, but representative playback has not been exercised in this workspace because no source video was provided.
+- The media adapter, native host, and packaged runtime play a deterministic H.264 fixture inside the workbench. Representative 4K60 HEVC playback remains untested because no source footage was provided.
 - Inno Setup configuration is present but its optional compiler was not part of the verified local toolchain.
 
 ## Blockers

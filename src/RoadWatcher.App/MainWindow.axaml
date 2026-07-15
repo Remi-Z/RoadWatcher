@@ -2,9 +2,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:RoadWatcher.App.Controls"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:mapsui="clr-namespace:Mapsui.UI.Avalonia;assembly=Mapsui.UI.Avalonia"
-        xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
         x:Class="RoadWatcher.App.MainWindow"
         mc:Ignorable="d"
         Title="RoadWatcher — Evidence Workbench"
@@ -81,33 +81,8 @@
 
     <!-- Video -->
     <Border Grid.Row="1" Grid.Column="1" Background="#020609" ClipToBounds="True">
-      <Grid>
-        <vlc:VideoView IsVisible="{Binding HasLoadedMedia}" MediaPlayer="{Binding MediaPlayer}">
-          <Border Margin="16" Padding="13,8" CornerRadius="6" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Background="#D90A1A20">
-            <Grid ColumnDefinitions="Auto,20,Auto,20,Auto,20,*">
-              <StackPanel Orientation="Horizontal" Spacing="7">
-                <materialIcons:MaterialIcon Kind="Speedometer" Width="17" Height="17" />
-                <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding SpeedKmhText}" />
-                <TextBlock VerticalAlignment="Bottom" Margin="-3,0,0,2" FontSize="9" Text="km/h" />
-              </StackPanel>
-              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7">
-                <materialIcons:MaterialIcon Kind="AxisArrow" Width="17" Height="17" />
-                <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding AccelerationText}" />
-                <TextBlock VerticalAlignment="Bottom" Margin="-3,0,0,2" FontSize="9" Text="m/s²" />
-              </StackPanel>
-              <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="7">
-                <materialIcons:MaterialIcon Kind="ClockOutline" Width="17" Height="17" />
-                <TextBlock FontSize="14" FontWeight="SemiBold" Text="{Binding TelemetryClockText}" />
-              </StackPanel>
-              <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="7">
-                <materialIcons:MaterialIcon Kind="MapMarkerOutline" Width="17" Height="17" />
-                <TextBlock VerticalAlignment="Center" Text="{Binding LocationText}" />
-              </StackPanel>
-            </Grid>
-          </Border>
-        </vlc:VideoView>
-        <Image IsVisible="{Binding ShowDemoFrame}" Source="avares://RoadWatcher.App/Assets/cycling-evidence-frame.png" Stretch="UniformToFill" />
-        <Border IsVisible="{Binding ShowDemoFrame}" Margin="16" Padding="13,8" CornerRadius="6" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Background="#D90A1A20">
+      <Grid RowDefinitions="42,*">
+        <Border Padding="13,8" Background="#D90A1A20" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1">
           <Grid ColumnDefinitions="Auto,20,Auto,20,Auto,20,*">
             <StackPanel Orientation="Horizontal" Spacing="7">
               <materialIcons:MaterialIcon Kind="Speedometer" Width="17" Height="17" />
@@ -129,6 +104,14 @@
             </StackPanel>
           </Grid>
         </Border>
+        <controls:EmbeddedVideoView x:Name="VideoSurface"
+                                    Grid.Row="1"
+                                    IsVisible="{Binding HasLoadedMedia}"
+                                    MediaPlayer="{Binding MediaPlayer}" />
+        <Image Grid.Row="1"
+               IsVisible="{Binding ShowDemoFrame}"
+               Source="avares://RoadWatcher.App/Assets/cycling-evidence-frame.png"
+               Stretch="UniformToFill" />
       </Grid>
     </Border>
 
