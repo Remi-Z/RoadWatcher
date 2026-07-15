@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Current milestone
 
-M07 — V1 acceptance closure: complete evidence workflow and acceptance hardening.
+M07 — V1 acceptance closure: implementation complete and ready for V2 work; representative 4K60 and signed-installer release validation remain external gates.
 
 ## Completed
 
@@ -31,7 +31,7 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 - M06 keeps active VLC playback inside the workbench by reattaching the approved VideoView to its late-created native child handle and moving telemetry out of `VideoView.Content`.
 - Synthetic H.264 playback, a 1440 × 1024 logical milestone capture, and Win32 window enumeration confirm one RoadWatcher-owned top-level window with no VLC/overlay popup.
 
-## In progress
+## M07 closure record
 
 - Evidence-backed V1 gap audit completed against `docs/PRODUCT.md` (historical gaps below are being closed in the subsequent entries):
   - project creation/open/close/reopen and source relinking are not exposed by the application;
@@ -78,6 +78,9 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 - Release UI acceptance generated three proxies (526,067 bytes total), showed `timeline-clip-1.mp4 • cached proxy`, captured a 55,504-byte PNG directly from source, and reopened the cached proxy with `ROADWATCHER_FFMPEG` pointing to a missing executable. All proxies probed as H.264/yuv420p 640 × 360; `proxy-playback.png` records the state and all 32 tests pass.
 - Playback-rate UI acceptance cycled 1.5×, 2.0×, and 0.5×. At 2×, project time advanced from 3.5 to 5.5 seconds in 1.1 seconds inside the real source gap; at 0.5×, clip-2 playback advanced from 8.5 to 9.151 seconds during the measured interval and paused values remained stable.
 - Final post-provenance UI export produced manifest schema 2 with 23 payloads: 14 H.264/yuv420p clips, seven GPX excerpts, project JSON, and HTML. All hashes matched, no warning/setup fallback appeared, and `OpenStreetMap Nominatim` provenance was present in both JSON and HTML.
+- Final self-contained packaging produced `artifacts/RoadWatcher-win-x64.zip` at 132,251,141 bytes (126.12 MiB), SHA-256 `e751b78fffee2e6be4dbab83ce8c7a245d598161fb9417c48dcf3468c0dfb316`. Its 673-file publish tree contains only the intended `libvlc/win-x64` native runtime and no FFmpeg or foreign-architecture payloads.
+- The published executable opened the acceptance project, exposed the Proxies action, restored cached-proxy playback, advanced the real timeline, and remained open. All unblocked V1 implementation and deterministic acceptance work is complete; V2 implementation can begin without changing these source/evidence boundaries.
+- Final handoff verification ran the required commands verbatim: Release build passed with zero warnings/errors and Release tests passed 32/32. The first sandboxed test restore failed with NU1301/socket-denied access to NuGet; the approved outside-sandbox retry restored successfully and passed without a source change.
 
 ## Milestone commits
 
@@ -89,13 +92,23 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 - `77286ce` — portable evidence export and integrity manifest
 - `7a1b670` — Windows portable and installer packaging
 - `3988448` — embedded VLC playback and in-window telemetry composition
+- `a381c27` — project lifecycle and source relinking
+- `40f76da` — real multi-file timeline playback
+- `c358101` — persisted GPX synchronization controls
+- `f364c48` — derived clip/GPX evidence export
+- `ca2f755` — opt-in cached location suggestions
+- `84fdcc9` — project-local source-copy imports
+- `fd481f3` — complete incident editor
+- `96eaba2` — location-provider provenance
+- `8d1116a` — long-ride timeline lookup optimization
+- `ec2fccc` — bounded hover previews
+- `ea49c85` — bounded proxy playback and source-direct capture
 
 ## Next actions
 
-1. Run the complete two-video/one-GPX acceptance journey from a fresh project and capture the completed M07 milestone evidence.
-2. Audit remaining UI fields, long-ride bounds, packaging output, and V1 scope for any unresolved implementation gap.
-3. Run the representative-video performance matrix with user-provided 4K60 HEVC footage; do not claim 4K60 acceptance without it.
-4. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.
+1. Supply the local paths described in `docs/PERFORMANCE_ACCEPTANCE.md`, then run and record the representative 4K60 HEVC matrix. Do not claim that performance gate before real footage is exercised.
+2. Install Inno Setup 6 and provide a publisher code-signing certificate, then compile/sign `RoadWatcherSetup.exe` and run Windows 10/11 clean-VM acceptance.
+3. Begin V2 only through the existing `IIncidentAnalyzer` suggestion seam; never overwrite confirmed V1 evidence.
 
 ## Known risks
 
@@ -103,8 +116,11 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 - VLC, FFmpeg, Tesseract, map tiles, and reverse geocoding carry separate licences/usage policies; the release checklist requires a distribution review.
 - No representative 4K60 HEVC test corpus is committed; performance acceptance needs local user footage or a redistributable fixture.
 - The media adapter, native host, and packaged runtime play a deterministic H.264 fixture inside the workbench. Representative 4K60 HEVC playback remains untested because no source footage was provided.
-- Inno Setup configuration is present but its optional compiler was not part of the verified local toolchain.
+- Inno Setup configuration is present, but `ISCC.exe` is not installed and no current-user code-signing certificate is available.
 
 ## Blockers
 
-None.
+No V1 implementation blocker remains. Two external release-validation gates are open:
+
+1. **Representative footage:** the workspace probe found only H.264 sources (1672 × 940/30 and 640 × 360/30); no 4K60 HEVC source was available. Follow `docs/PERFORMANCE_ACCEPTANCE.md` and provide two original clip paths plus matching GPX.
+2. **Signed installer:** `Get-Command ISCC.exe` returned no compiler, `Cert:\CurrentUser\My` contained zero code-signing certificates, the published executable reports `NotSigned`, and no setup executable was produced. Install Inno Setup 6, provision the publisher certificate, run `scripts\build-windows.ps1`, sign the executable/installer, and test the signed installer on clean Windows 10/11 VMs.

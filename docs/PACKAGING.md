@@ -18,6 +18,8 @@ artifacts/
   RoadWatcher-win-x64.zip   # portable archive
 ```
 
+Record the byte length and SHA-256 of each release candidate in `docs/STATUS.md` after the archive is built. The publish audit must find only the intended `libvlc/win-x64` native runtime and no bundled FFmpeg or foreign-architecture payloads.
+
 The script resolves every output to `artifacts/` and refuses to recursively clean a path outside that directory.
 
 ## Build the installer
@@ -52,3 +54,5 @@ Before public distribution, review and reproduce the licence notices for every p
 4. Import representative camera video and GPX; verify playback, seek, crop, save, and export.
 5. Verify each review clip reports H.264 video/yuv420p and inspect its incident boundaries.
 6. Recalculate every payload hash in an exported evidence `manifest.json` before submitting a package.
+
+Representative 4K60 HEVC validation follows `PERFORMANCE_ACCEPTANCE.md`; deterministic H.264 fixtures are not a substitute. A public release also requires Inno Setup 6, a publisher code-signing certificate, and clean-VM verification of the signed executable and installer.

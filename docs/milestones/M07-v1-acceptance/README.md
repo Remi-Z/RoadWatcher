@@ -58,8 +58,8 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 
 ## Build and test results
 
-- `dotnet build RoadWatcher.slnx --configuration Release --no-restore` — passed, 0 warnings, 0 errors.
-- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 32/32 tests.
+- `dotnet build RoadWatcher.slnx --configuration Release` — passed, 0 warnings, 0 errors.
+- `dotnet test RoadWatcher.slnx --configuration Release` — passed, 32/32 tests after the required approved retry outside sandbox network restrictions. The initial sandboxed restore failed with NU1301/socket-denied NuGet access; no source change was needed.
 
 ## Screenshot state
 
@@ -74,7 +74,8 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 ## Known limitations
 
 - Representative 4K60 HEVC footage has not been supplied, so performance acceptance remains unverified.
+- `ISCC.exe` and a publisher code-signing certificate are not available, so the final verified target is the unsigned portable ZIP rather than a signed installer.
 
 ## Exact next action
 
-Run the complete V1 acceptance journey from a fresh project, close/reopen it, validate the exported manifest, and perform the remaining UI/performance/packaging audits.
+Supply two representative 4K60 HEVC clip paths plus matching GPX and run `docs/PERFORMANCE_ACCEPTANCE.md`; separately provision Inno Setup 6 and the publisher certificate for signed-installer/clean-VM acceptance. V2 can proceed through `IIncidentAnalyzer` while these external release gates are tracked.
