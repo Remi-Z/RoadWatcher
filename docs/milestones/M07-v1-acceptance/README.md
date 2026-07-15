@@ -19,6 +19,9 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - Replaced the hard-coded demo intersection with an opt-in Nominatim adapter and editable intersection/address fields plus explicit reviewer confirmation.
 - Reverse lookups use a custom User-Agent, a process-wide one-request-per-second gate, a rounded-coordinate project cache, visible OpenStreetMap attribution, and environment-configurable endpoint/user-agent overrides.
 - Added an explicit `Copy sources` import option. Verified copies are atomically stored under `sources/media` or `sources/gpx`, hashed during the copy, collision-safe, deduplicated by SHA-256, and persisted as project-relative paths.
+- Replaced the remaining illustrative incident/ruler UI with project-duration ruler labels, real persisted incident markers, a source-time seek on selection, and the actual selected evidence window.
+- Bound editable project start/end, category, province, colour, plate/event confidence, notes, tags, location confirmation, vehicle confirmation, and attachment state. Selected records update in place while preserving their source provenance and creation time.
+- OCR/colour output remains unconfirmed until explicitly checked and cannot overwrite an already confirmed vehicle observation.
 
 ## Tested interactions
 
@@ -39,11 +42,14 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - Automated tests verify request URI/User-Agent construction, rounded-coordinate memory cache, cache reuse by a new resolver instance without HTTP, and coordinate validation.
 - Exercised the Windows native picker from the Release UI with `Copy sources` checked. The selected 300,337-byte clip persisted as `sources/media/timeline-clip-1.mp4` with `isProjectCopy: true`; its recorded SHA-256 matched the copied file.
 - Re-imported the same clip and observed verified duplicate reuse rather than a second physical file. Automated tests also cover differing same-name collision suffixes and GPX/media separation.
+- Selected a persisted marker after reopen, edited category, project window, location/address, plate, province, colour, both confidence values, notes, tags, and confirmation flags, then updated the record in place.
+- Reopened again and selected the new `Unsafe pass • 00:00:01.250` marker. The editor restored the 1.250–9.500-second window and tags; JSON retained QC, Red, Medium/High confidence, both confirmations, the original incident ID/source provenance, and the edited text.
+- Parser tests reject wall-clock/out-of-range/empty windows and verify deterministic tag trimming/deduplication.
 
 ## Build and test results
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore` — passed, 0 warnings, 0 errors.
-- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 22/22 tests.
+- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 27/27 tests.
 
 ## Screenshot state
 
@@ -52,6 +58,7 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - `gpx-synchronization.png`: 520 × 442 physical flyout inside the 1152 × 820 logical workbench, persisted +2.500-second offset, editable playhead timestamp, and two-anchor drift status of -1.500 seconds. The editor is a flyout so the map remains visible in the Context dock while it is closed or in use.
 - `location-resolution.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, cached suggestion returned with the network endpoint offline, manually edited intersection, full address, OpenStreetMap provider attribution, and checked confirmation state. Captured with the DPI-aware `PrintWindow` fallback after the ordinary Windows helper observed a different virtual desktop.
 - `source-copy.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, native-picker import completed with `Copy sources` checked, three persisted timeline sources visible, and the verified-copy success status. Captured with the same DPI-aware `PrintWindow` fallback.
+- `incident-editor.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, reopened persisted Unsafe-pass marker selected, real 1.250–9.500-second project window, edited location/vehicle fields, Medium/High confidence, real ruler labels, selected-window bar, and no fabricated rear track. Captured with the DPI-aware `PrintWindow` fallback.
 
 ## Known limitations
 

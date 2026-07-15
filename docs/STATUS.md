@@ -66,6 +66,9 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 - Release UI acceptance returned one real address, then returned the same value from cache in 301 ms with the endpoint deliberately offline. The edited intersection, full address, and confirmation flag survived save. `location-resolution.png` records the 1152 × 820 logical state, and all 20 tests pass.
 - The import header now exposes optional project-local copying while preserving reference import as the default. Media/GPX copies are streamed to temporary files, hashed during copy, atomically promoted into separate source folders, deduplicated by content, and collision-safe.
 - Release native-picker acceptance copied the deterministic 300,337-byte clip to `sources/media/timeline-clip-1.mp4`; the persisted relative path, `isProjectCopy`, and SHA-256 all verified. `source-copy.png` records the checked option and success status; all 22 tests pass.
+- The incident row and ruler no longer use demo data: labels derive from project duration, persisted incidents render as selectable timeline markers, and the selected evidence window reflects its actual project range.
+- Every V1 inspector field is now bound and persisted. Selecting a reopened incident restores it, seeks to its preserved source time, and changes Save to an in-place update; editable windows are validated as project time and tags are normalized without silent loss.
+- OCR/colour suggestions remain explicitly unconfirmed and never replace already confirmed vehicle evidence. Release UI acceptance edited and reopened category/window/location/plate/province/colour/Medium–High confidence/notes/tags/confirmations while retaining incident ID and source provenance. `incident-editor.png` records the state; all 27 tests pass.
 
 ## Milestone commits
 

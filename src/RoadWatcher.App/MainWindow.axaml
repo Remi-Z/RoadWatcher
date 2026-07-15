@@ -240,13 +240,15 @@
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Margin="14,0,14,14" Spacing="8">
             <TextBlock Classes="muted" Text="Category" />
-            <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}" />
+            <ComboBox ItemsSource="{Binding Categories}"
+                      SelectedItem="{Binding SelectedCategory}"
+                      AutomationProperties.Name="Incident category" />
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Time window" />
             <Grid ColumnDefinitions="*,28,*">
-              <TextBox Text="{Binding IncidentStartText}" />
+              <TextBox Text="{Binding IncidentStartText}" AutomationProperties.Name="Incident project start" />
               <materialIcons:MaterialIcon Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="ArrowRight" Width="17" Height="17" />
-              <TextBox Grid.Column="2" Text="{Binding IncidentEndText}" />
+              <TextBox Grid.Column="2" Text="{Binding IncidentEndText}" AutomationProperties.Name="Incident project end" />
             </Grid>
             <TextBlock Classes="muted" FontSize="11" Text="{Binding IncidentDurationText}" />
 
@@ -276,33 +278,49 @@
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Vehicle plate" />
             <Grid ColumnDefinitions="*,66">
-              <TextBox Text="{Binding PlateNumber}" />
-              <ComboBox Grid.Column="1" SelectedIndex="0">
-                <ComboBoxItem Content="ON" />
-              </ComboBox>
+              <TextBox Text="{Binding PlateNumber}" AutomationProperties.Name="Vehicle plate" />
+              <ComboBox Grid.Column="1"
+                        ItemsSource="{Binding Provinces}"
+                        SelectedItem="{Binding SelectedProvince}"
+                        AutomationProperties.Name="Vehicle province" />
             </Grid>
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Vehicle colour" />
-            <ComboBox ItemsSource="{Binding VehicleColors}" SelectedItem="{Binding VehicleColor}" />
+            <ComboBox ItemsSource="{Binding VehicleColors}"
+                      SelectedItem="{Binding VehicleColor}"
+                      AutomationProperties.Name="Vehicle colour" />
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Confidence" />
-            <Grid ColumnDefinitions="62,*,*,*" RowDefinitions="32,32">
+            <Grid ColumnDefinitions="62,*" RowDefinitions="32,32">
               <TextBlock VerticalAlignment="Center" Text="Plate" />
-              <ToggleButton Grid.Column="1" Content="Low" />
-              <ToggleButton Grid.Column="2" Content="Medium" />
-              <ToggleButton Grid.Column="3" IsChecked="True" Content="High" />
+              <ComboBox Grid.Column="1"
+                        ItemsSource="{Binding ConfidenceLevels}"
+                        SelectedItem="{Binding PlateConfidence}"
+                        AutomationProperties.Name="Plate confidence" />
               <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Event" />
-              <ToggleButton Grid.Row="1" Grid.Column="1" Content="Low" />
-              <ToggleButton Grid.Row="1" Grid.Column="2" Content="Medium" />
-              <ToggleButton Grid.Row="1" Grid.Column="3" IsChecked="True" Content="High" />
+              <ComboBox Grid.Row="1"
+                        Grid.Column="1"
+                        ItemsSource="{Binding ConfidenceLevels}"
+                        SelectedItem="{Binding EventConfidence}"
+                        AutomationProperties.Name="Event confidence" />
             </Grid>
+            <CheckBox IsChecked="{Binding AreVehicleValuesConfirmed}"
+                      Content="Vehicle values confirmed"
+                      AutomationProperties.Name="Confirm vehicle values" />
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Notes" />
-            <TextBox MinHeight="88" MaxLength="500" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding Notes}" />
-            <TextBlock HorizontalAlignment="Right" Classes="muted" FontSize="10" Text="94 / 500" />
+            <TextBox MinHeight="88"
+                     MaxLength="500"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     Text="{Binding Notes}"
+                     AutomationProperties.Name="Incident notes" />
+            <TextBlock HorizontalAlignment="Right" Classes="muted" FontSize="10" Text="{Binding NotesCharacterCount}" />
 
             <TextBlock Classes="muted" Text="Tags" />
-            <TextBox Watermark="Add tags…" />
+            <TextBox Watermark="Comma-separated tags…"
+                     Text="{Binding TagsText}"
+                     AutomationProperties.Name="Incident tags" />
             <Grid Margin="0,8,0,0" ColumnDefinitions="*,Auto">
               <TextBlock Classes="muted" Text="Attachments" />
               <TextBlock Grid.Column="1" Classes="muted" Text="{Binding AttachmentCount}" />
@@ -333,7 +351,10 @@
               <TextBlock Text="Mark incident" />
             </StackPanel>
           </Button>
-          <Button Command="{Binding SaveIncidentCommand}" HorizontalContentAlignment="Center" Content="Save incident" />
+          <Button Command="{Binding SaveIncidentCommand}"
+                  HorizontalContentAlignment="Center"
+                  Content="{Binding SaveIncidentButtonText}"
+                  AutomationProperties.Name="Save or update incident" />
         </StackPanel>
       </Grid>
     </Border>
@@ -351,11 +372,11 @@
         <Grid Grid.Row="1" ColumnDefinitions="92,*">
           <Border BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,1,0" />
           <Grid Grid.Column="1" ColumnDefinitions="*,*,*,*,*" Margin="12,0">
-            <TextBlock HorizontalAlignment="Left" Classes="muted" FontSize="10" Text="00:24:00" />
-            <TextBlock Grid.Column="1" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="00:26:00" />
-            <TextBlock Grid.Column="2" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="00:28:00" />
-            <TextBlock Grid.Column="3" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="00:30:00" />
-            <TextBlock Grid.Column="4" HorizontalAlignment="Right" Classes="muted" FontSize="10" Text="00:34:00" />
+            <TextBlock HorizontalAlignment="Left" Classes="muted" FontSize="10" Text="{Binding TimelineRulerLabels[0]}" />
+            <TextBlock Grid.Column="1" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding TimelineRulerLabels[1]}" />
+            <TextBlock Grid.Column="2" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding TimelineRulerLabels[2]}" />
+            <TextBlock Grid.Column="3" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding TimelineRulerLabels[3]}" />
+            <TextBlock Grid.Column="4" HorizontalAlignment="Right" Classes="muted" FontSize="10" Text="{Binding TimelineRulerLabels[4]}" />
           </Grid>
         </Grid>
 
@@ -393,11 +414,7 @@
         <Border Grid.Row="3" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
           <Grid ColumnDefinitions="92,*">
             <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="Video (rear)" />
-            <Grid Grid.Column="1" Margin="6,5" ColumnDefinitions="5*,70,3*">
-              <Border Background="#152B34" />
-              <Border Grid.Column="1" Margin="5,0" BorderBrush="#65767B" BorderThickness="1" />
-              <Border Grid.Column="2" Background="#152B34" />
-            </Grid>
+            <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="No rear track imported" />
           </Grid>
         </Border>
 
@@ -414,25 +431,51 @@
         <Border Grid.Row="5" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
           <Grid ColumnDefinitions="92,*">
             <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="Incidents" />
-            <Grid Grid.Column="1" Margin="8,0" ColumnDefinitions="*,*,*,*,*,*,*">
-              <materialIcons:MaterialIcon Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
-              <materialIcons:MaterialIcon Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
-              <materialIcons:MaterialIcon Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
-              <materialIcons:MaterialIcon Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="{StaticResource AccentAmber}" Width="17" Height="17" />
-              <materialIcons:MaterialIcon Grid.Column="4" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
-              <materialIcons:MaterialIcon Grid.Column="5" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
-              <materialIcons:MaterialIcon Grid.Column="6" HorizontalAlignment="Center" VerticalAlignment="Center" Kind="Rhombus" Foreground="#809096" Width="14" Height="14" />
-            </Grid>
+            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+              <ItemsControl Width="620" ItemsSource="{Binding IncidentMarkers}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <Canvas Height="33" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.Styles>
+                  <Style Selector="ItemsControl &gt; ContentPresenter">
+                    <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                  </Style>
+                </ItemsControl.Styles>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button Width="22"
+                            Height="28"
+                            Padding="2"
+                            Background="Transparent"
+                            Command="{Binding DataContext.SelectIncidentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding Id}"
+                            AutomationProperties.Name="{Binding ToolTip}"
+                            ToolTip.Tip="{Binding ToolTip}">
+                      <materialIcons:MaterialIcon Kind="Rhombus" Foreground="{Binding Colour}" Width="15" Height="15" />
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
           </Grid>
         </Border>
 
         <Border Grid.Row="6" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
           <Grid ColumnDefinitions="92,*">
             <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Selected incident" />
-            <Grid Grid.Column="1" Margin="8,5">
-              <Border Width="210" HorizontalAlignment="Center" Background="#4B3B0D" BorderBrush="{StaticResource AccentAmber}" BorderThickness="1" CornerRadius="2" />
-              <Border Width="2" HorizontalAlignment="Center" Background="{StaticResource AccentAmber}" />
-            </Grid>
+            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+              <Canvas Width="620" Height="24">
+                <Border Canvas.Left="{Binding SelectedIncidentLeft}"
+                        Width="{Binding SelectedIncidentWidth}"
+                        IsVisible="{Binding HasSelectedIncident}"
+                        Background="#4B3B0D"
+                        BorderBrush="{StaticResource AccentAmber}"
+                        BorderThickness="1"
+                        CornerRadius="2" />
+              </Canvas>
+            </ScrollViewer>
           </Grid>
         </Border>
 

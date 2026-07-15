@@ -35,6 +35,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private GpxTimelineMapper? _gpxTimelineMapper;
     private TelemetrySample? _currentTelemetrySample;
     private TelemetrySample? _incidentLocationSample;
+    private Guid? _editingIncidentId;
     private double _incidentStartSeconds;
     private double _incidentEndSeconds;
 
@@ -58,6 +59,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private string _statusText = "Create or open a project to begin";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NotesCharacterCount))]
     private string _notes = "Driver entered and travelled in the marked bike lane while preparing to turn right. No signal observed.";
 
     [ObservableProperty]
@@ -93,6 +95,21 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _vehicleColor = "Dark blue";
+
+    [ObservableProperty]
+    private string _selectedProvince = "ON";
+
+    [ObservableProperty]
+    private Confidence _plateConfidence = Confidence.High;
+
+    [ObservableProperty]
+    private Confidence _eventConfidence = Confidence.High;
+
+    [ObservableProperty]
+    private string _tagsText = string.Empty;
+
+    [ObservableProperty]
+    private bool _areVehicleValuesConfirmed;
 
     [ObservableProperty]
     private string _incidentStartText = "00:00:00.000";
@@ -159,6 +176,21 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _copySourcesIntoProject;
 
+    [ObservableProperty]
+    private string _saveIncidentButtonText = "Save incident";
+
+    [ObservableProperty]
+    private bool _hasSelectedIncident;
+
+    [ObservableProperty]
+    private double _selectedIncidentLeft;
+
+    [ObservableProperty]
+    private double _selectedIncidentWidth;
+
+    [ObservableProperty]
+    private string[] _timelineRulerLabels = ["00:00:00", "00:00:00", "00:00:00", "00:00:00", "00:00:00"];
+
     public MainWindowViewModel()
     {
         _projectLifecycle = new ProjectLifecycleService(_projectStore);
@@ -219,6 +251,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public string PlayIcon => IsPlaying ? "Pause" : "Play";
     public string PlayLabel => IsPlaying ? "Pause" : "Play";
     public string PlaybackRateText => $"{PlaybackRate:0.0}×";
+    public string NotesCharacterCount => $"{Notes.Length} / 500";
     public string CurrentTimeText => TimeSpan.FromSeconds(CurrentSeconds).ToString(@"hh\:mm\:ss\.fff");
     public bool ShowDemoFrame => !HasLoadedMedia;
     public MediaPlayer MediaPlayer => _mediaEngine.MediaPlayer;
@@ -227,7 +260,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public IReadOnlyList<TrackPoint> GpxPoints { get; private set; } = [];
     public ObservableCollection<MissingProjectSource> MissingSources { get; } = [];
     public ObservableCollection<TimelineBlockViewModel> TimelineBlocks { get; } = [];
+    public ObservableCollection<IncidentMarkerViewModel> IncidentMarkers { get; } = [];
     public bool HasMissingSources => MissingSourceCount > 0;
+    public string[] Provinces { get; } = ["ON", "QC", "BC", "AB", "MB", "SK", "NB", "NS", "PE", "NL", "NT", "NU", "YT", "Other"];
+    public Confidence[] ConfidenceLevels { get; } = Enum.GetValues<Confidence>();
 
     public event EventHandler<IReadOnlyList<TrackPoint>>? GpxTrackChanged;
     public event EventHandler<TelemetrySample>? TelemetrySampleChanged;
@@ -289,11 +325,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _loadedMediaSourceId = null;
         _currentTelemetrySample = null;
         _incidentLocationSample = null;
+        _editingIncidentId = null;
         Intersection = string.Empty;
         Address = string.Empty;
         IsLocationConfirmed = false;
         LocationResolutionStatus = "Optional online lookup • © OpenStreetMap contributors";
         _pendingAttachments.Clear();
+        IncidentMarkers.Clear();
+        HasSelectedIncident = false;
+        SaveIncidentButtonText = "Save incident";
         MissingSources.Clear();
         MissingSourceCount = 0;
         HasLoadedMedia = false;
@@ -347,9 +387,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             Path.Combine(ProjectDirectory, "cache", "geocoding.json"));
         ProjectTitle = project.Title;
         IncidentCount = project.Incidents.Count;
-        AttachmentCount = project.Incidents.Sum(incident => incident.Attachments.Count);
+        AttachmentCount = 0;
         _pendingAttachments.Clear();
         _incidentLocationSample = null;
+        _editingIncidentId = null;
+        HasSelectedIncident = false;
+        SaveIncidentButtonText = "Save incident";
         Intersection = string.Empty;
         Address = string.Empty;
         IsLocationConfirmed = false;
@@ -904,6 +947,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _mediaEngine.Pause();
         _incidentStartSeconds = Math.Max(0, CurrentSeconds - 15);
         _incidentEndSeconds = Math.Min(MaximumSeconds, CurrentSeconds + 15);
+        _editingIncidentId = null;
+        HasSelectedIncident = false;
+        SaveIncidentButtonText = "Save incident";
+        _pendingAttachments.Clear();
+        AttachmentCount = 0;
         _incidentLocationSample = _currentTelemetrySample;
         Intersection = string.Empty;
         Address = string.Empty;
@@ -911,11 +959,64 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         LocationResolutionStatus = _incidentLocationSample is null
             ? "No synchronized GPX position is available for this incident."
             : "Location is unconfirmed • edit manually or request one online suggestion";
-        var centreTime = _currentTelemetrySample?.Time ?? new DateTimeOffset(DateTime.Today) + TimeSpan.FromSeconds(CurrentSeconds);
-        IncidentStartText = (centreTime - TimeSpan.FromSeconds(CurrentSeconds - _incidentStartSeconds)).ToString("HH:mm:ss.fff");
-        IncidentEndText = (centreTime + TimeSpan.FromSeconds(_incidentEndSeconds - CurrentSeconds)).ToString("HH:mm:ss.fff");
+        IncidentStartText = TimeSpan.FromSeconds(_incidentStartSeconds).ToString(@"hh\:mm\:ss\.fff");
+        IncidentEndText = TimeSpan.FromSeconds(_incidentEndSeconds).ToString(@"hh\:mm\:ss\.fff");
         IncidentDurationText = $"Duration  {TimeSpan.FromSeconds(_incidentEndSeconds - _incidentStartSeconds):mm\\:ss\\.fff}";
         StatusText = $"Incident window marked ±15 seconds around {CurrentTimeText}";
+        RebuildIncidentDisplay();
+    }
+
+    [RelayCommand]
+    private void SelectIncident(Guid incidentId)
+    {
+        var incident = _project.Incidents.FirstOrDefault(item => item.Id == incidentId);
+        if (incident is null)
+        {
+            return;
+        }
+
+        _editingIncidentId = incident.Id;
+        HasSelectedIncident = true;
+        SaveIncidentButtonText = "Update incident";
+        _incidentStartSeconds = incident.ProjectStart.TotalSeconds;
+        _incidentEndSeconds = incident.ProjectEnd.TotalSeconds;
+        IncidentStartText = incident.ProjectStart.ToString(@"hh\:mm\:ss\.fff");
+        IncidentEndText = incident.ProjectEnd.ToString(@"hh\:mm\:ss\.fff");
+        IncidentDurationText = $"Duration  {incident.ProjectEnd - incident.ProjectStart:mm\\:ss\\.fff}";
+        SelectedCategory = FormatIncidentType(incident.Type);
+        Notes = incident.Notes;
+        TagsText = string.Join(", ", incident.Tags);
+        Intersection = incident.Location?.Intersection ?? string.Empty;
+        Address = incident.Location?.Address ?? string.Empty;
+        IsLocationConfirmed = incident.Location?.UserConfirmed ?? false;
+        _incidentLocationSample = incident.Location is { } location
+            ? new TelemetrySample(DateTimeOffset.MinValue, location.Latitude, location.Longitude, 0, null)
+            : null;
+        PlateNumber = incident.Vehicle?.PlateNumber ?? string.Empty;
+        SelectedProvince = incident.Vehicle?.Province ?? "ON";
+        VehicleColor = incident.Vehicle?.Colour ?? "Other";
+        PlateConfidence = incident.Vehicle?.PlateConfidence ?? Confidence.Low;
+        EventConfidence = incident.Vehicle?.EventConfidence ?? Confidence.Low;
+        AreVehicleValuesConfirmed = incident.Vehicle?.UserConfirmed ?? false;
+        _pendingAttachments.Clear();
+        _pendingAttachments.AddRange(incident.Attachments);
+        AttachmentCount = _pendingAttachments.Count;
+
+        var segment = _project.Timeline.Segments.FirstOrDefault(candidate =>
+            candidate.MediaSourceId == incident.MediaSourceId &&
+            incident.SourceTime >= candidate.SourceStart &&
+            incident.SourceTime < candidate.SourceStart + candidate.Duration);
+        if (segment is not null)
+        {
+            CurrentSeconds = (segment.ProjectStart + incident.SourceTime - segment.SourceStart).TotalSeconds;
+        }
+
+        LocationResolutionStatus = "Loaded saved incident • all fields remain editable";
+        RecognitionStatus = AreVehicleValuesConfirmed
+            ? "Saved vehicle values are confirmed"
+            : "Saved vehicle values remain unconfirmed";
+        StatusText = $"Editing incident {incident.Id.ToString("N")[..8]}";
+        RebuildIncidentDisplay();
     }
 
     [RelayCommand]
@@ -970,15 +1071,34 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (!IncidentInputParser.TryParseWindow(
+                IncidentStartText,
+                IncidentEndText,
+                _virtualTimeline.Duration,
+                out var incidentStart,
+                out var incidentEnd,
+                out var windowError))
+        {
+            StatusText = $"Incident window invalid: {windowError}";
+            return;
+        }
+
+        _incidentStartSeconds = incidentStart.TotalSeconds;
+        _incidentEndSeconds = incidentEnd.TotalSeconds;
+        IncidentDurationText = $"Duration  {incidentEnd - incidentStart:mm\\:ss\\.fff}";
         var sourceId = timelinePosition.MediaSourceId;
         var sample = _incidentLocationSample ?? _currentTelemetrySample;
+        var existing = _editingIncidentId is { } editingId
+            ? _project.Incidents.FirstOrDefault(item => item.Id == editingId)
+            : null;
         var incident = new Incident
         {
+            Id = existing?.Id ?? Guid.NewGuid(),
             Type = MapIncidentType(SelectedCategory),
-            ProjectStart = TimeSpan.FromSeconds(_incidentStartSeconds),
-            ProjectEnd = TimeSpan.FromSeconds(_incidentEndSeconds),
-            MediaSourceId = sourceId,
-            SourceTime = timelinePosition.SourceTime,
+            ProjectStart = incidentStart,
+            ProjectEnd = incidentEnd,
+            MediaSourceId = existing?.MediaSourceId ?? sourceId,
+            SourceTime = existing?.SourceTime ?? timelinePosition.SourceTime,
             Location = sample is null
                 ? null
                 : new IncidentLocation(
@@ -989,22 +1109,34 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                     IsLocationConfirmed),
             Vehicle = new VehicleObservation(
                 PlateNumber,
-                "ON",
+                SelectedProvince,
                 VehicleColor,
                 null,
                 null,
-                Confidence.High,
-                Confidence.High,
-                UserConfirmed: true),
+                PlateConfidence,
+                EventConfidence,
+                AreVehicleValuesConfirmed),
             Notes = Notes.Trim(),
-            Attachments = [.. _pendingAttachments]
+            Tags = IncidentInputParser.ParseTags(TagsText).ToList(),
+            Attachments = [.. _pendingAttachments],
+            CreatedAt = existing?.CreatedAt ?? DateTimeOffset.UtcNow
         };
-        _project.Incidents.Add(incident);
+        if (existing is null)
+        {
+            _project.Incidents.Add(incident);
+        }
+        else
+        {
+            _project.Incidents[_project.Incidents.IndexOf(existing)] = incident;
+        }
         await _projectStore.SaveAsync(_project, ProjectDirectory);
+        _editingIncidentId = incident.Id;
+        HasSelectedIncident = true;
+        SaveIncidentButtonText = "Update incident";
         IncidentCount = _project.Incidents.Count;
-        StatusText = IsLocationConfirmed
-            ? $"Incident saved • {IncidentCount} record(s) • location confirmed"
-            : $"Incident saved • {IncidentCount} record(s) • location remains unconfirmed";
+        RebuildIncidentDisplay();
+        var action = existing is null ? "saved" : "updated";
+        StatusText = $"Incident {action} • {IncidentCount} record(s) • location {(IsLocationConfirmed ? "confirmed" : "unconfirmed")} • vehicle {(AreVehicleValuesConfirmed ? "confirmed" : "unconfirmed")}";
     }
 
     [RelayCommand]
@@ -1127,19 +1259,27 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         await Task.WhenAll(plateTask, colourTask);
         var plate = await plateTask;
         var colour = await colourTask;
-        if (plate is not null)
+        var vehicleWasConfirmed = AreVehicleValuesConfirmed;
+        if (!vehicleWasConfirmed && plate is not null)
         {
             PlateNumber = plate.Value;
         }
 
-        if (colour is not null)
+        if (!vehicleWasConfirmed && colour is not null)
         {
             VehicleColor = colour.Value;
         }
 
-        RecognitionStatus = plate is null
-            ? $"Crop saved • colour suggested: {VehicleColor} • Tesseract unavailable/no match"
-            : $"Suggestions: {PlateNumber} / {VehicleColor} • confirm before save";
+        if (!vehicleWasConfirmed)
+        {
+            AreVehicleValuesConfirmed = false;
+        }
+
+        RecognitionStatus = vehicleWasConfirmed
+            ? "Crop saved • suggestions did not overwrite confirmed vehicle values"
+            : plate is null
+                ? $"Crop saved • colour suggested: {VehicleColor} • Tesseract unavailable/no match"
+                : $"Suggestions: {PlateNumber} / {VehicleColor} • confirm before save";
         StatusText = RecognitionStatus;
     }
 
@@ -1180,6 +1320,36 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         TimelineSummaryText = segments.Length == 0
             ? "No project timeline"
             : $"{segments.Length} clip(s) • {gapCount} gap(s) • {FormatTimelineTime(_virtualTimeline.Duration)}";
+        TimelineRulerLabels = Enumerable.Range(0, 5)
+            .Select(index => FormatTimelineTime(TimeSpan.FromTicks(_virtualTimeline.Duration.Ticks * index / 4)))
+            .ToArray();
+        RebuildIncidentDisplay();
+    }
+
+    private void RebuildIncidentDisplay()
+    {
+        const double trackWidth = 620;
+        IncidentMarkers.Clear();
+        var durationTicks = Math.Max(1, _virtualTimeline.Duration.Ticks);
+        foreach (var incident in _project.Incidents.OrderBy(item => item.ProjectStart))
+        {
+            var centreTicks = incident.ProjectStart.Ticks + (incident.ProjectEnd - incident.ProjectStart).Ticks / 2;
+            IncidentMarkers.Add(new IncidentMarkerViewModel(
+                incident.Id,
+                Math.Clamp(centreTicks / (double)durationTicks * trackWidth, 0, trackWidth - 14),
+                incident.Id == _editingIncidentId ? "#FFAD18" : "#809096",
+                $"{FormatIncidentType(incident.Type)} • {incident.ProjectStart:hh\\:mm\\:ss\\.fff}"));
+        }
+
+        var selected = _editingIncidentId is { } selectedId
+            ? _project.Incidents.FirstOrDefault(item => item.Id == selectedId)
+            : null;
+        HasSelectedIncident = selected is not null;
+        if (selected is not null)
+        {
+            SelectedIncidentLeft = Math.Clamp(selected.ProjectStart.Ticks / (double)durationTicks * trackWidth, 0, trackWidth);
+            SelectedIncidentWidth = Math.Max(4, (selected.ProjectEnd - selected.ProjectStart).Ticks / (double)durationTicks * trackWidth);
+        }
     }
 
     private static string FormatTimelineTime(TimeSpan value) =>
@@ -1194,6 +1364,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         "Stop-sign violation" => IncidentType.StopSignViolation,
         "Dooring risk" => IncidentType.DooringRisk,
         _ => IncidentType.Other
+    };
+
+    private static string FormatIncidentType(IncidentType type) => type switch
+    {
+        IncidentType.BikeLaneObstruction => "Bike-lane obstruction",
+        IncidentType.UnsafePass => "Unsafe pass",
+        IncidentType.FailureToYield => "Failure to yield",
+        IncidentType.SignalViolation => "Signal / blinker violation",
+        IncidentType.StopSignViolation => "Stop-sign violation",
+        IncidentType.DooringRisk => "Dooring risk",
+        _ => "Other"
     };
 
     private static string? NullIfWhiteSpace(string value) =>
@@ -1212,3 +1393,9 @@ public sealed record TimelineBlockViewModel(
     double Width,
     string Background,
     string BorderBrush);
+
+public sealed record IncidentMarkerViewModel(
+    Guid Id,
+    double Left,
+    string Colour,
+    string ToolTip);
