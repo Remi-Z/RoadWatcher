@@ -33,7 +33,7 @@ M06 — embedded VLC window ownership complete.
 
 ## In progress
 
-- None. The M06 embedded-playback fix is verified and ready to commit on `feat/v1-foundation`.
+- None. The M06 embedded-playback fix is verified and committed on `feat/v1-foundation`.
 
 ## Milestone commits
 
@@ -44,6 +44,7 @@ M06 — embedded VLC window ownership complete.
 - `61a56f9` — incident persistence, crop, and recognition suggestions
 - `77286ce` — portable evidence export and integrity manifest
 - `7a1b670` — Windows portable and installer packaging
+- `3988448` — embedded VLC playback and in-window telemetry composition
 
 ## Next actions
 
