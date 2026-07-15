@@ -17,11 +17,26 @@ public sealed class VirtualTimeline(IEnumerable<TimelineSegment> segments) : IVi
             return null;
         }
 
-        var segment = _segments.FirstOrDefault(candidate =>
-            projectTime >= candidate.ProjectStart &&
-            projectTime < candidate.ProjectStart + candidate.Duration);
+        var lower = 0;
+        var upper = _segments.Length - 1;
+        var candidateIndex = -1;
+        while (lower <= upper)
+        {
+            var middle = lower + (upper - lower) / 2;
+            if (_segments[middle].ProjectStart <= projectTime)
+            {
+                candidateIndex = middle;
+                lower = middle + 1;
+            }
+            else
+            {
+                upper = middle - 1;
+            }
+        }
 
-        return segment is null
+        var segment = candidateIndex >= 0 ? _segments[candidateIndex] : null;
+
+        return segment is null || projectTime >= segment.ProjectStart + segment.Duration
             ? null
             : new TimelinePosition(
                 segment.MediaSourceId,
@@ -30,4 +45,3 @@ public sealed class VirtualTimeline(IEnumerable<TimelineSegment> segments) : IVi
                 segment.Track);
     }
 }
-

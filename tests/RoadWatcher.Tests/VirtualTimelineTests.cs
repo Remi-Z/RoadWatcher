@@ -43,4 +43,26 @@ public sealed class VirtualTimelineTests
         Assert.Equal(TimeSpan.FromSeconds(4), timeline.Resolve(TimeSpan.FromSeconds(15))?.SourceTime);
         Assert.Equal(TimeSpan.FromSeconds(24), timeline.Duration);
     }
+
+    [Fact]
+    public void Four_hour_timeline_resolves_across_two_hundred_forty_clips()
+    {
+        var ids = Enumerable.Range(0, 240).Select(_ => Guid.NewGuid()).ToArray();
+        var segments = ids
+            .Select((id, index) => new TimelineSegment(
+                id,
+                TimeSpan.FromMinutes(index),
+                TimeSpan.Zero,
+                TimeSpan.FromMinutes(1)))
+            .ToArray();
+        var timeline = new VirtualTimeline(segments);
+
+        Assert.Equal(TimeSpan.FromHours(4), timeline.Duration);
+        Assert.Equal(ids[0], timeline.Resolve(TimeSpan.Zero)?.MediaSourceId);
+        Assert.Equal(ids[127], timeline.Resolve(TimeSpan.FromMinutes(127.5))?.MediaSourceId);
+        var final = timeline.Resolve(TimeSpan.FromHours(4) - TimeSpan.FromMilliseconds(1));
+        Assert.Equal(ids[^1], final?.MediaSourceId);
+        Assert.Equal(TimeSpan.FromMinutes(1) - TimeSpan.FromMilliseconds(1), final?.SourceTime);
+        Assert.Null(timeline.Resolve(TimeSpan.FromHours(4)));
+    }
 }

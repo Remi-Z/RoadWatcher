@@ -70,6 +70,7 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 - Every V1 inspector field is now bound and persisted. Selecting a reopened incident restores it, seeks to its preserved source time, and changes Save to an in-place update; editable windows are validated as project time and tags are normalized without silent loss.
 - OCR/colour suggestions remain explicitly unconfirmed and never replace already confirmed vehicle evidence. Release UI acceptance edited and reopened category/window/location/plate/province/colour/Medium–High confidence/notes/tags/confirmations while retaining incident ID and source provenance. `incident-editor.png` records the state; all 27 tests pass.
 - Location records now retain optional provider provenance in schema version 1, the HTML summary exposes it, and failed lookups can retain the attempted provider beside authoritative coordinates. The disposable rounded-coordinate cache evicts older entries beyond 2,000; ADR 0003 records the decision and all 28 tests pass.
+- Long-ride playhead resolution is now logarithmic: both the persisted clip timeline and sorted GPX samples use binary search. Tests cover a 240-clip/four-hour timeline and 14,401-point/four-hour GPX track through their final sample; all 30 tests pass.
 
 ## Milestone commits
 

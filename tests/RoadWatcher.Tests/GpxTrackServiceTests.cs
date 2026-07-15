@@ -60,4 +60,26 @@ public sealed class GpxTrackServiceTests
 
         Assert.Throws<InvalidOperationException>(() => mapper.MapToGpxTime(TimeSpan.FromSeconds(4)));
     }
+
+    [Fact]
+    public void Four_hour_one_hertz_track_interpolates_near_the_end()
+    {
+        var start = DateTimeOffset.Parse("2026-07-12T08:00:00-04:00");
+        var points = Enumerable.Range(0, 14_401)
+            .Select(second => new TrackPoint(
+                start.AddSeconds(second),
+                43 + second * 0.000001,
+                -79 - second * 0.000001,
+                SpeedMetersPerSecond: 5 + second * 0.0001))
+            .ToArray();
+
+        var sample = new GpxTrackService().SampleAt(
+            points,
+            start.AddHours(4).AddMilliseconds(-500));
+
+        Assert.NotNull(sample);
+        Assert.Equal(start.AddHours(4).AddMilliseconds(-500), sample.Time);
+        Assert.InRange(sample.Latitude, 43.014399, 43.014401);
+        Assert.InRange(sample.SpeedMetersPerSecond, 6.4398, 6.4401);
+    }
 }

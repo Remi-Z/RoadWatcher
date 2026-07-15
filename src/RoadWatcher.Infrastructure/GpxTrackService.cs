@@ -61,13 +61,22 @@ public sealed class GpxTrackService : IGpxTrackService
             return ToSample(points, points.Count - 1, points.Count - 1, time);
         }
 
-        var upperIndex = 1;
-        while (upperIndex < points.Count && points[upperIndex].RecordedAt < time)
+        var lower = 1;
+        var upper = points.Count - 1;
+        while (lower < upper)
         {
-            upperIndex++;
+            var middle = lower + (upper - lower) / 2;
+            if (points[middle].RecordedAt < time)
+            {
+                lower = middle + 1;
+            }
+            else
+            {
+                upper = middle;
+            }
         }
 
-        return ToSample(points, upperIndex - 1, upperIndex, time);
+        return ToSample(points, lower - 1, lower, time);
     }
 
     private static TrackPoint? ParsePoint(XElement element)
@@ -142,4 +151,3 @@ public sealed class GpxTrackService : IGpxTrackService
 
     private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180;
 }
-
