@@ -106,6 +106,28 @@ public sealed record DerivedReviewClip(
     TimeSpan SourceStart,
     TimeSpan SourceEnd);
 
+public interface IMediaThumbnailGenerator
+{
+    Task<ExternalToolAvailability> GetAvailabilityAsync(CancellationToken cancellationToken = default);
+    Task<DerivedMediaThumbnail> GenerateAsync(
+        MediaThumbnailRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record MediaThumbnailRequest(
+    string SourcePath,
+    string DestinationPath,
+    Guid SourceMediaId,
+    TimeSpan SourceTime,
+    int MaximumWidth = 480);
+
+public sealed record DerivedMediaThumbnail(
+    string Path,
+    string Tool,
+    string Version,
+    Guid SourceMediaId,
+    TimeSpan SourceTime);
+
 public interface IProjectStore
 {
     Task<ProjectDocument> OpenAsync(string projectDirectory, CancellationToken cancellationToken = default);

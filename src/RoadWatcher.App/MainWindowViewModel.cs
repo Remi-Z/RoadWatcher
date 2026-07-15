@@ -21,6 +21,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly JsonProjectStore _projectStore = new();
     private readonly ProjectLifecycleService _projectLifecycle;
     private readonly ProjectSourceCopyService _sourceCopyService = new();
+    private readonly IMediaThumbnailGenerator _thumbnailGenerator = new FfmpegMediaThumbnailGenerator();
+    private readonly MediaThumbnailCache _thumbnailCache = new();
     private readonly TesseractPlateRecognizer _plateRecognizer = new();
     private readonly DominantVehicleColorEstimator _colourEstimator = new();
     private ProjectDocument _project = new();
@@ -36,6 +38,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private TelemetrySample? _currentTelemetrySample;
     private TelemetrySample? _incidentLocationSample;
     private string? _incidentLocationProvider;
+    private ExternalToolAvailability? _thumbnailAvailability;
     private Guid? _editingIncidentId;
     private double _incidentStartSeconds;
     private double _incidentEndSeconds;
@@ -489,6 +492,71 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         StatusText = copyToProject
             ? $"Imported {importedCount} source(s) • verified copies stored inside the project"
             : $"Imported {importedCount} source(s) by reference • originals remain in place";
+    }
+
+    public async Task EnsureTimelineThumbnailAsync(
+        TimelineBlockViewModel block,
+        CancellationToken cancellationToken = default)
+    {
+        if (ProjectDirectory is null || block.MediaSourceId is not { } mediaSourceId || block.IsThumbnailLoading)
+        {
+            return;
+        }
+
+        var source = _project.Media.FirstOrDefault(item => item.Id == mediaSourceId);
+        if (source is null)
+        {
+            block.ThumbnailStatus = "Source metadata unavailable";
+            return;
+        }
+
+        var destination = _thumbnailCache.GetPath(ProjectDirectory, mediaSourceId, block.SourceTime);
+        if (File.Exists(destination))
+        {
+            File.SetLastAccessTimeUtc(destination, DateTime.UtcNow);
+            block.ThumbnailPath = destination;
+            block.ThumbnailStatus = $"Cached preview • source {FormatTimelineTime(block.SourceTime)}";
+            return;
+        }
+
+        block.IsThumbnailLoading = true;
+        block.ThumbnailStatus = "Generating preview…";
+        try
+        {
+            _thumbnailAvailability ??= await _thumbnailGenerator.GetAvailabilityAsync(cancellationToken);
+            if (!_thumbnailAvailability.IsAvailable)
+            {
+                block.ThumbnailStatus = "Preview unavailable • install FFmpeg or set ROADWATCHER_FFMPEG";
+                return;
+            }
+
+            var sourcePath = ProjectLifecycleService.ResolveStoredPath(ProjectDirectory, source.Path);
+            if (!File.Exists(sourcePath))
+            {
+                block.ThumbnailStatus = "Preview unavailable • source needs relinking";
+                return;
+            }
+
+            await _thumbnailGenerator.GenerateAsync(
+                new MediaThumbnailRequest(sourcePath, destination, mediaSourceId, block.SourceTime),
+                cancellationToken);
+            File.SetLastAccessTimeUtc(destination, DateTime.UtcNow);
+            block.ThumbnailPath = destination;
+            block.ThumbnailStatus = $"FFmpeg {_thumbnailAvailability.Version} • source {FormatTimelineTime(block.SourceTime)}";
+            _thumbnailCache.EnforceLimits(ProjectDirectory);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            if (File.Exists(destination))
+            {
+                File.Delete(destination);
+            }
+            block.ThumbnailStatus = $"Preview unavailable • {exception.Message}";
+        }
+        finally
+        {
+            block.IsThumbnailLoading = false;
+        }
     }
 
     public async Task ImportMediaAsync(
@@ -1311,7 +1379,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                     FormatTimelineTime(gap),
                     Math.Max(60, gap.TotalSeconds / durationSeconds * 620),
                     "#111F25",
-                    "#65767B"));
+                    "#65767B",
+                    null,
+                    TimeSpan.Zero));
             }
 
             var source = _project.Media.FirstOrDefault(candidate => candidate.Id == segment.MediaSourceId);
@@ -1321,7 +1391,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 FormatTimelineTime(segment.Duration),
                 Math.Max(90, segment.Duration.TotalSeconds / durationSeconds * 620),
                 source is null || isMissing ? "#322126" : "#19323B",
-                source is null || isMissing ? "#B45A69" : "#14C9C3"));
+                source is null || isMissing ? "#B45A69" : "#14C9C3",
+                segment.MediaSourceId,
+                segment.SourceStart + TimeSpan.FromTicks(segment.Duration.Ticks / 2)));
             cursor = segment.ProjectStart + segment.Duration;
         }
 
@@ -1395,12 +1467,37 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 }
 
-public sealed record TimelineBlockViewModel(
-    string Label,
-    string Detail,
-    double Width,
-    string Background,
-    string BorderBrush);
+public partial class TimelineBlockViewModel(
+    string label,
+    string detail,
+    double width,
+    string background,
+    string borderBrush,
+    Guid? mediaSourceId,
+    TimeSpan sourceTime) : ObservableObject
+{
+    public string Label { get; } = label;
+    public string Detail { get; } = detail;
+    public double Width { get; } = width;
+    public string Background { get; } = background;
+    public string BorderBrush { get; } = borderBrush;
+    public Guid? MediaSourceId { get; } = mediaSourceId;
+    public TimeSpan SourceTime { get; } = sourceTime;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasThumbnail))]
+    private string? _thumbnailPath;
+
+    [ObservableProperty]
+    private string _thumbnailStatus = mediaSourceId is null
+        ? "Source gap • no preview"
+        : "Hover to generate a cached source preview";
+
+    [ObservableProperty]
+    private bool _isThumbnailLoading;
+
+    public bool HasThumbnail => !string.IsNullOrWhiteSpace(ThumbnailPath);
+}
 
 public sealed record IncidentMarkerViewModel(
     Guid Id,

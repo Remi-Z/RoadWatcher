@@ -24,6 +24,7 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - OCR/colour output remains unconfirmed until explicitly checked and cannot overwrite an already confirmed vehicle observation.
 - Persisted optional location-provider provenance in backward-compatible schema-version-1 incident records and bounded the disposable geocode cache to the 2,000 most recent rounded coordinates; ADR 0003 records the evidence-integrity decision.
 - Replaced linear clip and GPX playhead scans with binary searches so seek/update cost grows logarithmically across long rides.
+- Added lazy source-correct FFmpeg thumbnails to real clip blocks. Cached JPEGs are keyed by media/source time, remain usable offline, and are bounded to 500 files/512 MiB per project.
 
 ## Tested interactions
 
@@ -49,11 +50,12 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - Parser tests reject wall-clock/out-of-range/empty windows and verify deterministic tag trimming/deduplication.
 - Persistence/export now retain the Nominatim provider alongside coordinates, while a 2,001-entry fixture verifies deterministic cache eviction to 2,000 entries.
 - A 240-clip timeline resolves the beginning, middle, final millisecond, and exact end of a four-hour ride; a 14,401-point one-hertz GPX fixture interpolates the final half-second correctly.
+- Hovered the copied clip block in the Release workbench and inspected its generated 480 × 270 colour-bar JPEG at source 1.5 seconds. The 14,385-byte file hash was `4f7146b81995b4b2c4ac91a0105d72208c26db21befa438e50d51aff7fc8b33b`; an automated bounded-cache fixture retains only the newest files within both configured limits.
 
 ## Build and test results
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore` — passed, 0 warnings, 0 errors.
-- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 30/30 tests.
+- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 31/31 tests.
 
 ## Screenshot state
 

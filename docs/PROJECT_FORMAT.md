@@ -42,3 +42,5 @@ The import header defaults to reference mode. With `Copy sources` checked, RoadW
 Every incident retains its project window plus source media ID and source time. New evidence attachments also write optional `projectTime` alongside source media ID and source time. Readers must continue accepting schema-version-1 attachments that predate `projectTime`.
 
 Incident locations may include optional `provider` metadata. Its absence remains valid for schema-version-1 projects created before online suggestions were implemented. Coordinates are authoritative and remain present whether a provider returns a suggestion or the reviewer enters text manually.
+
+Timeline hover previews are disposable JPEG derivatives under `cache/thumbnails`. Their names combine the source media ID and source timestamp, so they can be regenerated without changing evidence records. V1 retains at most 500 previews and 512 MiB per project, evicting least-recently-used files first.

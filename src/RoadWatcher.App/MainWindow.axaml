@@ -398,7 +398,19 @@
                             Background="{Binding Background}"
                             BorderBrush="{Binding BorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="2">
+                            CornerRadius="2"
+                            PointerEntered="OnTimelineBlockPointerEntered">
+                      <ToolTip.Tip>
+                        <StackPanel Width="240" Spacing="6">
+                          <Image MaxWidth="240"
+                                 MaxHeight="150"
+                                 Stretch="Uniform"
+                                 Source="{Binding ThumbnailPath}"
+                                 IsVisible="{Binding HasThumbnail}" />
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Label}" />
+                          <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="{Binding ThumbnailStatus}" />
+                        </StackPanel>
+                      </ToolTip.Tip>
                       <Grid ColumnDefinitions="*,Auto">
                         <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding Label}" />
                         <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding Detail}" />

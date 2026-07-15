@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -219,6 +220,15 @@ public sealed partial class MainWindow : Window
         if (await dialog.ShowDialog<bool>(this))
         {
             await viewModel.AddCropAndRecognizeAsync(destination);
+        }
+    }
+
+    private async void OnTimelineBlockPointerEntered(object? sender, PointerEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: TimelineBlockViewModel block } &&
+            DataContext is MainWindowViewModel viewModel)
+        {
+            await viewModel.EnsureTimelineThumbnailAsync(block);
         }
     }
 
