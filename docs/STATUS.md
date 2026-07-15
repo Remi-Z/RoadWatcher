@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Current milestone
 
-M06 — embedded VLC window ownership complete.
+M07 — V1 acceptance closure: project lifecycle and real virtual timeline integration.
 
 ## Completed
 
@@ -33,7 +33,16 @@ M06 — embedded VLC window ownership complete.
 
 ## In progress
 
-- None. The M06 embedded-playback fix is verified and committed on `feat/v1-foundation`.
+- Evidence-backed V1 gap audit completed against `docs/PRODUCT.md`:
+  - project creation/open/close/reopen and source relinking are not exposed by the application;
+  - imported media is persisted only when an incident is saved, and reopening does not restore media, GPX, incidents, attachments, or synchronization state into the workbench;
+  - multiple selected clips are probed, but playback, seeking, capture, and incident provenance remain bound to the first clip rather than `IVirtualTimeline`;
+  - the timeline shown in the UI is illustrative and does not reflect imported segments or real gaps;
+  - GPX mapping uses an in-memory one-anchor mapper, with no editable controls or persisted anchors;
+  - export covers JSON, HTML, and existing image assets, but not H.264 review clips or incident-window GPX excerpts;
+  - no `ILocationResolver` adapter is composed; the demo intersection is hard-coded.
+- M07 first slices are scoped as project create/open/save/close/relink, followed by multi-clip segment construction and project-time playback across clip boundaries and gaps.
+- Release baseline re-established on 2026-07-14: Release build succeeds with zero warnings and all 7 tests pass. The first sandboxed restore was blocked by NuGet network policy; the approved retry succeeded without source changes.
 
 ## Milestone commits
 
@@ -48,10 +57,13 @@ M06 — embedded VLC window ownership complete.
 
 ## Next actions
 
-1. Run the representative-video acceptance matrix with user-provided 4K60 HEVC and multi-file/gap footage.
-2. Select the first police jurisdiction and document its current submission format before building a submission adapter.
-3. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.
-4. For V2, implement `IIncidentAnalyzer` behind the existing analysis-run/suggestion boundary; do not couple CV output directly to confirmed incident fields.
+1. Implement and test project create/open/save/close/reopen plus missing-source detection and relinking.
+2. Wire imported and reopened media to `IVirtualTimeline`, including real gap resolution, clip-boundary playback, seek, capture, and incident provenance.
+3. Add editable and persisted one/two-anchor GPX synchronization controls.
+4. Add derived H.264 review clips and GPX excerpts with complete provenance and manifest coverage, then compose an opt-in cached/throttled location resolver.
+5. Run the complete two-video/one-GPX acceptance journey and capture the M07 UI milestone evidence.
+6. Run the representative-video performance matrix with user-provided 4K60 HEVC footage; do not claim 4K60 acceptance without it.
+7. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.
 
 ## Known risks
 
