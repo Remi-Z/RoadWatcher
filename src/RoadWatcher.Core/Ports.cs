@@ -128,6 +128,27 @@ public sealed record DerivedMediaThumbnail(
     Guid SourceMediaId,
     TimeSpan SourceTime);
 
+public interface IMediaProxyGenerator
+{
+    Task<ExternalToolAvailability> GetAvailabilityAsync(CancellationToken cancellationToken = default);
+    Task<DerivedMediaProxy> GenerateAsync(
+        MediaProxyRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record MediaProxyRequest(
+    string SourcePath,
+    string DestinationPath,
+    Guid SourceMediaId,
+    int MaximumWidth = 1920);
+
+public sealed record DerivedMediaProxy(
+    string Path,
+    string Tool,
+    string Version,
+    Guid SourceMediaId,
+    string Command);
+
 public interface IProjectStore
 {
     Task<ProjectDocument> OpenAsync(string projectDirectory, CancellationToken cancellationToken = default);

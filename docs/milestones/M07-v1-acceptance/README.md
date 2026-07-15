@@ -25,6 +25,7 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - Persisted optional location-provider provenance in backward-compatible schema-version-1 incident records and bounded the disposable geocode cache to the 2,000 most recent rounded coordinates; ADR 0003 records the evidence-integrity decision.
 - Replaced linear clip and GPX playhead scans with binary searches so seek/update cost grows logarithmically across long rides.
 - Added lazy source-correct FFmpeg thumbnails to real clip blocks. Cached JPEGs are keyed by media/source time, remain usable offline, and are bounded to 500 files/512 MiB per project.
+- Added an explicit `Proxies` action and automatic cached-proxy playback. Atomic FFmpeg H.264/yuv420p derivatives are source-fingerprint keyed and bounded to 240 files/20 GiB; evidence capture reloads the original source before taking a frame, then restores proxy review. ADR 0004 records the boundary.
 
 ## Tested interactions
 
@@ -51,11 +52,14 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - Persistence/export now retain the Nominatim provider alongside coordinates, while a 2,001-entry fixture verifies deterministic cache eviction to 2,000 entries.
 - A 240-clip timeline resolves the beginning, middle, final millisecond, and exact end of a four-hour ride; a 14,401-point one-hertz GPX fixture interpolates the final half-second correctly.
 - Hovered the copied clip block in the Release workbench and inspected its generated 480 × 270 colour-bar JPEG at source 1.5 seconds. The 14,385-byte file hash was `4f7146b81995b4b2c4ac91a0105d72208c26db21befa438e50d51aff7fc8b33b`; an automated bounded-cache fixture retains only the newest files within both configured limits.
+- Cycled the Release playback control through 1.5×, 2.0×, and 0.5×. At 2×, project time moved from 3.5 to 5.5 seconds in 1.1 seconds inside the five-second source gap. At 0.5×, clip-2 time moved from 8.5 to 9.151 seconds during the sampled interval; both pause checks then remained stable.
+- Prepared all three deterministic media entries through the Release UI. The proxies totalled 526,067 bytes and each probed as H.264/yuv420p 640 × 360. The workbench switched to `cached proxy`, while Capture produced a new 55,504-byte PNG with the source-direct status. Relaunch with an invalid FFmpeg path still loaded the cache.
+- Re-exported after provider-provenance changes: manifest schema 2 listed 23 payloads (14 review clips, seven GPX excerpts, JSON, and HTML), every SHA-256 matched, all clips probed as H.264/yuv420p, no warning/setup payload existed, and Nominatim provider text appeared in JSON and HTML.
 
 ## Build and test results
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore` — passed, 0 warnings, 0 errors.
-- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 31/31 tests.
+- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 32/32 tests.
 
 ## Screenshot state
 
@@ -65,6 +69,7 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - `location-resolution.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, cached suggestion returned with the network endpoint offline, manually edited intersection, full address, OpenStreetMap provider attribution, and checked confirmation state. Captured with the DPI-aware `PrintWindow` fallback after the ordinary Windows helper observed a different virtual desktop.
 - `source-copy.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, native-picker import completed with `Copy sources` checked, three persisted timeline sources visible, and the verified-copy success status. Captured with the same DPI-aware `PrintWindow` fallback.
 - `incident-editor.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, reopened persisted Unsafe-pass marker selected, real 1.250–9.500-second project window, edited location/vehicle fields, Medium/High confidence, real ruler labels, selected-window bar, and no fabricated rear track. Captured with the DPI-aware `PrintWindow` fallback.
+- `proxy-playback.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, three-source/one-gap project reopened with `timeline-clip-1.mp4 • cached proxy` in the header and the explicit Proxies action visible. All three cache files and source-direct capture had already passed the interaction checks above.
 
 ## Known limitations
 

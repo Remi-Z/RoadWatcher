@@ -23,6 +23,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly ProjectSourceCopyService _sourceCopyService = new();
     private readonly IMediaThumbnailGenerator _thumbnailGenerator = new FfmpegMediaThumbnailGenerator();
     private readonly MediaThumbnailCache _thumbnailCache = new();
+    private readonly IMediaProxyGenerator _proxyGenerator = new FfmpegMediaProxyGenerator();
+    private readonly MediaProxyCache _proxyCache = new();
+    private readonly Dictionary<Guid, string> _availableProxyPaths = [];
     private readonly TesseractPlateRecognizer _plateRecognizer = new();
     private readonly DominantVehicleColorEstimator _colourEstimator = new();
     private ProjectDocument _project = new();
@@ -39,9 +42,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private TelemetrySample? _incidentLocationSample;
     private string? _incidentLocationProvider;
     private ExternalToolAvailability? _thumbnailAvailability;
+    private ExternalToolAvailability? _proxyAvailability;
     private Guid? _editingIncidentId;
     private double _incidentStartSeconds;
     private double _incidentEndSeconds;
+    private bool _loadedMediaUsesProxy;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PlayIcon))]
@@ -327,6 +332,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _virtualTimeline = new VirtualTimeline([]);
         _activeSegment = null;
         _loadedMediaSourceId = null;
+        _loadedMediaUsesProxy = false;
+        _availableProxyPaths.Clear();
         _currentTelemetrySample = null;
         _incidentLocationSample = null;
         _incidentLocationProvider = null;
@@ -418,6 +425,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 Path = ProjectLifecycleService.ResolveStoredPath(projectDirectory, source.Path)
             })
             .ToArray();
+        RefreshAvailableProxyPaths();
         ImportedClipCount = ImportedMedia.Count;
         if (project.Timeline.Segments.Count == 0 && project.Media.Count > 0)
         {
@@ -426,6 +434,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _virtualTimeline = new VirtualTimeline(project.Timeline.Segments);
         _activeSegment = null;
         _loadedMediaSourceId = null;
+        _loadedMediaUsesProxy = false;
         MaximumSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
         RebuildTimelineDisplay();
         HasLoadedMedia = false;
@@ -559,6 +568,82 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand]
+    private async Task PrepareProxiesAsync()
+    {
+        if (ProjectDirectory is null || ImportedMedia.Count == 0)
+        {
+            StatusText = "Open a project with available media before preparing proxies.";
+            return;
+        }
+
+        _proxyAvailability ??= await _proxyGenerator.GetAvailabilityAsync();
+        if (!_proxyAvailability.IsAvailable)
+        {
+            StatusText = "Proxy preparation unavailable • install FFmpeg or set ROADWATCHER_FFMPEG";
+            return;
+        }
+
+        var generated = 0;
+        var reused = 0;
+        var failed = 0;
+        for (var index = 0; index < ImportedMedia.Count; index++)
+        {
+            var source = ImportedMedia[index];
+            StatusText = $"Preparing proxy {index + 1}/{ImportedMedia.Count} • {source.DisplayName}";
+            try
+            {
+                var destination = _proxyCache.GetPath(ProjectDirectory, source.Id, source.Path);
+                if (File.Exists(destination) && new FileInfo(destination).Length > 0)
+                {
+                    reused++;
+                }
+                else
+                {
+                    await _proxyGenerator.GenerateAsync(
+                        new MediaProxyRequest(source.Path, destination, source.Id));
+                    generated++;
+                }
+                File.SetLastAccessTimeUtc(destination, DateTime.UtcNow);
+                _availableProxyPaths[source.Id] = destination;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failed++;
+                StatusText = $"Proxy failed for {source.DisplayName} • {exception.Message}";
+            }
+        }
+
+        _proxyCache.EnforceLimits(ProjectDirectory);
+        RefreshAvailableProxyPaths();
+        _loadedMediaSourceId = null;
+        _loadedMediaUsesProxy = false;
+        await SeekProjectTimeAsync(TimeSpan.FromSeconds(CurrentSeconds), resumePlayback: IsPlaying);
+
+        var ready = _availableProxyPaths.Count;
+        StatusText = failed == 0
+            ? $"{ready} cached proxy/proxies ready • {generated} generated, {reused} reused • source-direct capture preserved"
+            : $"{ready} cached proxy/proxies ready • {failed} failed • source playback remains available";
+    }
+
+    private void RefreshAvailableProxyPaths()
+    {
+        _availableProxyPaths.Clear();
+        if (ProjectDirectory is null)
+        {
+            return;
+        }
+
+        foreach (var source in ImportedMedia.Where(source => File.Exists(source.Path)))
+        {
+            var proxyPath = _proxyCache.GetPath(ProjectDirectory, source.Id, source.Path);
+            if (File.Exists(proxyPath) && new FileInfo(proxyPath).Length > 0)
+            {
+                _availableProxyPaths[source.Id] = proxyPath;
+            }
+        }
+    }
+
     public async Task ImportMediaAsync(
         IReadOnlyList<string> paths,
         bool copyToProject = false,
@@ -601,6 +686,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             })
             .Where(source => File.Exists(source.Path))
             .ToArray();
+        RefreshAvailableProxyPaths();
         ImportedClipCount = ImportedMedia.Count;
         _project.Timeline.Segments.Clear();
         _project.Timeline.Segments.AddRange(TimelineSegmentPlanner.Build(_project.Media));
@@ -672,11 +758,21 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            if (_loadedMediaSourceId != source.Id)
+            var usesProxy = _availableProxyPaths.TryGetValue(source.Id, out var proxyPath) &&
+                File.Exists(proxyPath);
+            var playbackSource = usesProxy
+                ? source with { Path = proxyPath! }
+                : source;
+            if (_loadedMediaSourceId != source.Id || _loadedMediaUsesProxy != usesProxy)
             {
-                await _mediaEngine.LoadAsync(source, cancellationToken);
+                await _mediaEngine.LoadAsync(playbackSource, cancellationToken);
                 _loadedMediaSourceId = source.Id;
+                _loadedMediaUsesProxy = usesProxy;
                 _mediaEngine.SetPlaybackRate(PlaybackRate);
+            }
+            if (usesProxy)
+            {
+                File.SetLastAccessTimeUtc(proxyPath!, DateTime.UtcNow);
             }
 
             if (seekVersion != Volatile.Read(ref _timelineSeekVersion))
@@ -686,12 +782,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
             _activeSegment = segment;
             _mediaEngine.Seek(position.SourceTime);
-            LoadedMediaName = source.DisplayName;
+            LoadedMediaName = usesProxy
+                ? $"{source.DisplayName} • cached proxy"
+                : source.DisplayName;
             if (resumePlayback && IsPlaying)
             {
                 _mediaEngine.Play();
             }
-            StatusText = $"{source.DisplayName} • project {FormatTimelineTime(projectTime)} • source {FormatTimelineTime(position.SourceTime)}";
+            StatusText = $"{source.DisplayName} • project {FormatTimelineTime(projectTime)} • source {FormatTimelineTime(position.SourceTime)}" +
+                (usesProxy ? " • proxy playback" : string.Empty);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1269,24 +1368,61 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         Directory.CreateDirectory(assetsDirectory);
         var destination = Path.Combine(assetsDirectory, $"frame-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmssfff}.png");
         var sourceId = timelinePosition.MediaSourceId;
-
-        EvidenceAsset capturedFrame;
-        try
+        var source = ImportedMedia.FirstOrDefault(candidate => candidate.Id == sourceId);
+        if (source is null)
         {
-            capturedFrame = await _mediaEngine.CaptureFrameAsync(destination);
-        }
-        catch (Exception exception)
-        {
-            StatusText = $"Frame capture failed: {exception.Message}";
+            StatusText = "The source frame is unavailable; relink the media before capture.";
             return null;
         }
 
-        var capturedProjectTime = _activeSegment.ProjectStart +
-            (capturedFrame.SourceTime - _activeSegment.SourceStart);
+        var requestedProjectTime = TimeSpan.FromSeconds(CurrentSeconds);
+        var restoreProxyPlayback = _loadedMediaUsesProxy;
+        var resumePlayback = IsPlaying;
+        EvidenceAsset? capturedFrame = null;
+        TimeSpan? capturedProjectTime = null;
+        string? captureError = null;
+        try
+        {
+            if (restoreProxyPlayback)
+            {
+                _mediaEngine.Pause();
+                await _mediaEngine.LoadAsync(source);
+                _loadedMediaSourceId = source.Id;
+                _loadedMediaUsesProxy = false;
+                _mediaEngine.SetPlaybackRate(PlaybackRate);
+                _mediaEngine.Seek(timelinePosition.SourceTime);
+            }
+
+            capturedFrame = await _mediaEngine.CaptureFrameAsync(destination);
+            capturedProjectTime = _activeSegment.ProjectStart +
+                (capturedFrame.SourceTime - _activeSegment.SourceStart);
+        }
+        catch (Exception exception)
+        {
+            captureError = exception.Message;
+        }
+        finally
+        {
+            if (restoreProxyPlayback)
+            {
+                _loadedMediaSourceId = null;
+                _loadedMediaUsesProxy = false;
+                await SeekProjectTimeAsync(
+                    capturedProjectTime ?? requestedProjectTime,
+                    resumePlayback: resumePlayback);
+            }
+        }
+
+        if (capturedFrame is null || capturedProjectTime is null)
+        {
+            StatusText = $"Frame capture failed: {captureError ?? "unknown capture error"}";
+            return null;
+        }
+
         if (!IsPlaying)
         {
             _updatingFromMedia = true;
-            CurrentSeconds = capturedProjectTime.TotalSeconds;
+            CurrentSeconds = capturedProjectTime.Value.TotalSeconds;
             _updatingFromMedia = false;
         }
         var asset = new EvidenceAsset(
@@ -1298,11 +1434,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             capturedFrame.Sha256,
             IsDerived: true,
             capturedFrame.Derivation ?? "Frame capture",
-            ProjectTime: capturedProjectTime);
+            ProjectTime: capturedProjectTime.Value);
         _pendingAttachments.Add(asset);
         LastCapturedFramePath = destination;
         AttachmentCount = _pendingAttachments.Count;
-        StatusText = $"Frame captured at project {FormatTimelineTime(capturedProjectTime)} • ready to crop";
+        StatusText = $"Frame captured directly from source at project {FormatTimelineTime(capturedProjectTime.Value)} • ready to crop";
         return destination;
     }
 

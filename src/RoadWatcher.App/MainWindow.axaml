@@ -56,6 +56,15 @@
               <TextBlock VerticalAlignment="Center" Text="Exports" />
             </StackPanel>
           </Button>
+          <Button Classes="nav"
+                  Command="{Binding PrepareProxiesCommand}"
+                  ToolTip.Tip="Generate bounded FFmpeg review proxies"
+                  AutomationProperties.Name="Prepare cached media proxies">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="MovieOutline" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Proxies" />
+            </StackPanel>
+          </Button>
           <Button Classes="nav">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <materialIcons:MaterialIcon Kind="CogOutline" Width="20" Height="20" />
