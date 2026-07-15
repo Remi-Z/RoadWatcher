@@ -3,8 +3,10 @@ namespace RoadWatcher.Core;
 public interface IMediaEngine
 {
     event EventHandler<TimeSpan>? PositionChanged;
+    event EventHandler? EndReached;
     bool IsPlaying { get; }
     double PlaybackRate { get; }
+    Task<MediaProbe> ProbeAsync(string path, CancellationToken cancellationToken = default);
     Task LoadAsync(MediaSource source, CancellationToken cancellationToken = default);
     void Play();
     void Pause();
@@ -12,6 +14,8 @@ public interface IMediaEngine
     void SetPlaybackRate(double rate);
     Task<EvidenceAsset> CaptureFrameAsync(string destinationPath, CancellationToken cancellationToken = default);
 }
+
+public sealed record MediaProbe(TimeSpan Duration, DateTimeOffset? RecordedAt);
 
 public interface IVirtualTimeline
 {

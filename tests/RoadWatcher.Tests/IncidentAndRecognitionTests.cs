@@ -25,7 +25,16 @@ public sealed class IncidentAndRecognitionTests
                 Notes = "Vehicle occupied the marked lane.",
                 Attachments =
                 [
-                    new EvidenceAsset(Guid.NewGuid(), "assets/frame.png", "frame", sourceId, TimeSpan.FromSeconds(25), null, true, "Frame capture")
+                    new EvidenceAsset(
+                        Guid.NewGuid(),
+                        "assets/frame.png",
+                        "frame",
+                        sourceId,
+                        TimeSpan.FromSeconds(25),
+                        null,
+                        true,
+                        "Frame capture",
+                        TimeSpan.FromSeconds(30))
                 ]
             });
             var store = new JsonProjectStore();
@@ -36,7 +45,9 @@ public sealed class IncidentAndRecognitionTests
             var incident = Assert.Single(reopened.Incidents);
             Assert.Equal(sourceId, incident.MediaSourceId);
             Assert.Equal(TimeSpan.FromSeconds(25), incident.SourceTime);
-            Assert.Equal("assets/frame.png", Assert.Single(incident.Attachments).RelativePath);
+            var attachment = Assert.Single(incident.Attachments);
+            Assert.Equal("assets/frame.png", attachment.RelativePath);
+            Assert.Equal(TimeSpan.FromSeconds(30), attachment.ProjectTime);
         }
         finally
         {

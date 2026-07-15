@@ -111,7 +111,8 @@ public sealed record EvidenceAsset(
     TimeSpan SourceTime,
     string? Sha256,
     bool IsDerived,
-    string? Derivation);
+    string? Derivation,
+    TimeSpan? ProjectTime = null);
 
 public sealed record AnalysisRun(
     Guid Id,

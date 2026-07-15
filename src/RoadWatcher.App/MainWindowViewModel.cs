@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Security.Cryptography;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -21,7 +22,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly DominantVehicleColorEstimator _colourEstimator = new();
     private ProjectDocument _project = new();
     private readonly List<EvidenceAsset> _pendingAttachments = [];
-    private readonly Guid _demoMediaId = Guid.Parse("9b22df22-76b1-4fd9-9ff8-6196e10f0b8d");
+    private readonly SemaphoreSlim _mediaTransitionLock = new(1, 1);
+    private IVirtualTimeline _virtualTimeline = new VirtualTimeline([]);
+    private TimelineSegment? _activeSegment;
+    private Guid? _loadedMediaSourceId;
+    private int _timelineSeekVersion;
     private bool _updatingFromMedia;
     private GpxTimelineMapper? _gpxTimelineMapper;
     private TelemetrySample? _currentTelemetrySample;
@@ -119,21 +124,35 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(HasMissingSources))]
     private int _missingSourceCount;
 
+    [ObservableProperty]
+    private string _timelineSummaryText = "No project timeline";
+
     public MainWindowViewModel()
     {
         _projectLifecycle = new ProjectLifecycleService(_projectStore);
         _mediaEngine = new LibVlcMediaEngine();
         _mediaEngine.PositionChanged += (_, position) => Dispatcher.UIThread.Post(() =>
         {
+            if (_activeSegment is null || !IsPlaying)
+            {
+                return;
+            }
+
             _updatingFromMedia = true;
-            CurrentSeconds = position.TotalSeconds;
+            CurrentSeconds = (_activeSegment.ProjectStart + (position - _activeSegment.SourceStart)).TotalSeconds;
             _updatingFromMedia = false;
         });
+        _mediaEngine.EndReached += (_, _) => Dispatcher.UIThread.Post(() => _ = AdvanceAfterSegmentAsync());
         _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Normal, (_, _) =>
         {
-            if (IsPlaying && !HasLoadedMedia)
+            if (IsPlaying && _activeSegment is null && _virtualTimeline.Duration > TimeSpan.Zero)
             {
                 CurrentSeconds = Math.Min(MaximumSeconds, CurrentSeconds + (0.1 * PlaybackRate));
+                if (CurrentSeconds >= MaximumSeconds)
+                {
+                    IsPlaying = false;
+                    StatusText = "Reached the end of the project timeline";
+                }
             }
         });
         _timer.Start();
@@ -175,6 +194,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public IReadOnlyList<MediaSource> ImportedMedia { get; private set; } = [];
     public IReadOnlyList<TrackPoint> GpxPoints { get; private set; } = [];
     public ObservableCollection<MissingProjectSource> MissingSources { get; } = [];
+    public ObservableCollection<TimelineBlockViewModel> TimelineBlocks { get; } = [];
     public bool HasMissingSources => MissingSourceCount > 0;
 
     public event EventHandler<IReadOnlyList<TrackPoint>>? GpxTrackChanged;
@@ -218,6 +238,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void CloseProject()
     {
+        Interlocked.Increment(ref _timelineSeekVersion);
         _mediaEngine.Pause();
         IsPlaying = false;
         _project = new ProjectDocument();
@@ -226,6 +247,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         ImportedMedia = [];
         GpxPoints = [];
         _gpxTimelineMapper = null;
+        _virtualTimeline = new VirtualTimeline([]);
+        _activeSegment = null;
+        _loadedMediaSourceId = null;
         _currentTelemetrySample = null;
         _pendingAttachments.Clear();
         MissingSources.Clear();
@@ -240,6 +264,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         LastCapturedFramePath = null;
         LastExportPath = "No package exported yet";
         StatusText = "Project closed • source files were not modified";
+        RebuildTimelineDisplay();
     }
 
     public async Task RelinkSourceAsync(
@@ -271,6 +296,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         IReadOnlyList<MissingProjectSource> missingSources,
         CancellationToken cancellationToken)
     {
+        Interlocked.Increment(ref _timelineSeekVersion);
         _mediaEngine.Pause();
         IsPlaying = false;
         _project = project;
@@ -295,15 +321,21 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             })
             .ToArray();
         ImportedClipCount = ImportedMedia.Count;
+        if (project.Timeline.Segments.Count == 0 && project.Media.Count > 0)
+        {
+            project.Timeline.Segments.AddRange(TimelineSegmentPlanner.Build(project.Media));
+        }
+        _virtualTimeline = new VirtualTimeline(project.Timeline.Segments);
+        _activeSegment = null;
+        _loadedMediaSourceId = null;
+        MaximumSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
+        RebuildTimelineDisplay();
         HasLoadedMedia = false;
         if (ImportedMedia.Count > 0)
         {
-            var source = ImportedMedia[0];
-            await _mediaEngine.LoadAsync(source, cancellationToken);
             HasLoadedMedia = true;
-            LoadedMediaName = source.DisplayName;
             CurrentSeconds = 0;
-            MaximumSeconds = Math.Max(1, source.Duration.TotalSeconds);
+            await SeekProjectTimeAsync(TimeSpan.Zero, resumePlayback: false, cancellationToken);
         }
         else
         {
@@ -311,7 +343,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 ? "Project sources missing • relink required"
                 : "No ride sources loaded";
             CurrentSeconds = 0;
-            MaximumSeconds = 1;
+            MaximumSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
         }
 
         var gpx = project.GpxSources.FirstOrDefault();
@@ -363,14 +395,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         foreach (var path in paths)
         {
             var file = new FileInfo(path);
-            var duration = await _mediaEngine.ProbeDurationAsync(path, cancellationToken);
+            var probe = await _mediaEngine.ProbeAsync(path, cancellationToken);
             sources.Add(new MediaSource(
                 Guid.NewGuid(),
                 file.Name,
                 file.FullName,
                 file.Length,
-                file.LastWriteTimeUtc,
-                duration));
+                probe.RecordedAt ?? file.LastWriteTimeUtc,
+                probe.Duration));
         }
 
         foreach (var source in sources.Where(source => _project.Media.All(existing => existing.Path != source.Path)))
@@ -381,16 +413,19 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             .Where(source => File.Exists(source.Path))
             .ToArray();
         ImportedClipCount = ImportedMedia.Count;
+        _project.Timeline.Segments.Clear();
+        _project.Timeline.Segments.AddRange(TimelineSegmentPlanner.Build(_project.Media));
+        _virtualTimeline = new VirtualTimeline(_project.Timeline.Segments);
+        MaximumSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
+        RebuildTimelineDisplay();
         if (sources.Count == 0)
         {
             return;
         }
 
-        await _mediaEngine.LoadAsync(sources[0], cancellationToken);
         HasLoadedMedia = true;
-        LoadedMediaName = sources[0].DisplayName;
         CurrentSeconds = 0;
-        MaximumSeconds = Math.Max(1, sources[0].Duration.TotalSeconds);
+        await SeekProjectTimeAsync(TimeSpan.Zero, resumePlayback: false, cancellationToken);
         StatusText = sources.Count == 1
             ? $"Imported {sources[0].DisplayName} • ready to review"
             : $"Imported {sources.Count} source clips • playing {sources[0].DisplayName}";
@@ -398,21 +433,111 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     partial void OnCurrentSecondsChanged(double value)
     {
-        if (HasLoadedMedia && !_updatingFromMedia && Math.Abs((_mediaEngine.MediaPlayer.Time / 1000d) - value) > 0.35)
+        if (HasLoadedMedia && !_updatingFromMedia)
         {
-            _mediaEngine.Seek(TimeSpan.FromSeconds(value));
+            _ = SeekProjectTimeAsync(TimeSpan.FromSeconds(value), IsPlaying);
         }
 
         UpdateTelemetry(value);
     }
 
-    private async Task LoadDemoGpxAsync()
+    private async Task SeekProjectTimeAsync(
+        TimeSpan projectTime,
+        bool resumePlayback,
+        CancellationToken cancellationToken = default)
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "Demo", "demo-ride.gpx");
-        if (File.Exists(path))
+        var seekVersion = Interlocked.Increment(ref _timelineSeekVersion);
+        await _mediaTransitionLock.WaitAsync(cancellationToken);
+        try
         {
-            await ImportGpxAsync(path, isDemo: true);
+            if (seekVersion != Volatile.Read(ref _timelineSeekVersion))
+            {
+                return;
+            }
+
+            var position = _virtualTimeline.Resolve(projectTime);
+            if (position is null)
+            {
+                _mediaEngine.Pause();
+                _activeSegment = null;
+                if (projectTime < _virtualTimeline.Duration)
+                {
+                    StatusText = IsPlaying
+                        ? $"Crossing source gap at {FormatTimelineTime(projectTime)}"
+                        : $"Source gap at {FormatTimelineTime(projectTime)}";
+                }
+                return;
+            }
+
+            var segment = _project.Timeline.Segments.First(candidate =>
+                candidate.MediaSourceId == position.MediaSourceId &&
+                projectTime >= candidate.ProjectStart &&
+                projectTime < candidate.ProjectStart + candidate.Duration);
+            var source = ImportedMedia.FirstOrDefault(candidate => candidate.Id == position.MediaSourceId);
+            if (source is null)
+            {
+                _mediaEngine.Pause();
+                _activeSegment = null;
+                StatusText = "The source for this timeline position is missing • relink it to continue";
+                return;
+            }
+
+            if (_loadedMediaSourceId != source.Id)
+            {
+                await _mediaEngine.LoadAsync(source, cancellationToken);
+                _loadedMediaSourceId = source.Id;
+                _mediaEngine.SetPlaybackRate(PlaybackRate);
+            }
+
+            if (seekVersion != Volatile.Read(ref _timelineSeekVersion))
+            {
+                return;
+            }
+
+            _activeSegment = segment;
+            _mediaEngine.Seek(position.SourceTime);
+            LoadedMediaName = source.DisplayName;
+            if (resumePlayback && IsPlaying)
+            {
+                _mediaEngine.Play();
+            }
+            StatusText = $"{source.DisplayName} • project {FormatTimelineTime(projectTime)} • source {FormatTimelineTime(position.SourceTime)}";
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            IsPlaying = false;
+            _activeSegment = null;
+            StatusText = $"Timeline playback failed: {exception.Message}";
+        }
+        finally
+        {
+            _mediaTransitionLock.Release();
+        }
+    }
+
+    private async Task AdvanceAfterSegmentAsync()
+    {
+        if (_activeSegment is not { } completed)
+        {
+            return;
+        }
+
+        var nextProjectTime = completed.ProjectStart + completed.Duration;
+        _activeSegment = null;
+        _updatingFromMedia = true;
+        CurrentSeconds = Math.Min(MaximumSeconds, nextProjectTime.TotalSeconds);
+        _updatingFromMedia = false;
+        if (nextProjectTime >= _virtualTimeline.Duration)
+        {
+            IsPlaying = false;
+            StatusText = "Reached the end of the project timeline";
+            return;
+        }
+
+        await SeekProjectTimeAsync(nextProjectTime, resumePlayback: IsPlaying);
     }
 
     private async Task ImportGpxAsync(string path, bool isDemo, CancellationToken cancellationToken = default)
@@ -480,21 +605,28 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         Math.Abs(latitude - 43.66745) < 0.001 && Math.Abs(longitude - (-79.40089)) < 0.0015;
 
     [RelayCommand]
-    private void TogglePlayback()
+    private async Task TogglePlaybackAsync()
     {
-        IsPlaying = !IsPlaying;
-        if (HasLoadedMedia)
+        if (!HasLoadedMedia || _virtualTimeline.Duration == TimeSpan.Zero)
         {
-            if (IsPlaying)
-            {
-                _mediaEngine.Play();
-            }
-            else
-            {
-                _mediaEngine.Pause();
-            }
+            StatusText = "Import or relink at least one video before playback.";
+            return;
         }
-        StatusText = IsPlaying ? $"Playing at {PlaybackRateText}" : "Paused at selected evidence frame";
+
+        if (IsPlaying)
+        {
+            IsPlaying = false;
+            _mediaEngine.Pause();
+            StatusText = $"Paused at project {CurrentTimeText}";
+            return;
+        }
+
+        IsPlaying = true;
+        await SeekProjectTimeAsync(TimeSpan.FromSeconds(CurrentSeconds), resumePlayback: true);
+        if (_virtualTimeline.Resolve(TimeSpan.FromSeconds(CurrentSeconds)) is null)
+        {
+            StatusText = $"Crossing source gap at {CurrentTimeText} • {PlaybackRateText}";
+        }
     }
 
     [RelayCommand]
@@ -502,7 +634,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         var currentIndex = Array.IndexOf(_rates, PlaybackRate);
         PlaybackRate = _rates[(currentIndex + 1) % _rates.Length];
-        if (HasLoadedMedia)
+        if (_loadedMediaSourceId is not null)
         {
             _mediaEngine.SetPlaybackRate(PlaybackRate);
         }
@@ -518,7 +650,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void MarkIncident()
     {
+        if (_virtualTimeline.Resolve(TimeSpan.FromSeconds(CurrentSeconds)) is null)
+        {
+            StatusText = "An incident must be marked on a source frame, not inside a timeline gap.";
+            return;
+        }
+
         IsPlaying = false;
+        _mediaEngine.Pause();
         _incidentStartSeconds = Math.Max(0, CurrentSeconds - 15);
         _incidentEndSeconds = Math.Min(MaximumSeconds, CurrentSeconds + 15);
         var centreTime = _currentTelemetrySample?.Time ?? new DateTimeOffset(DateTime.Today) + TimeSpan.FromSeconds(CurrentSeconds);
@@ -537,7 +676,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var sourceId = ImportedMedia.FirstOrDefault()?.Id ?? _demoMediaId;
+        var timelinePosition = _virtualTimeline.Resolve(TimeSpan.FromSeconds(CurrentSeconds));
+        if (timelinePosition is null)
+        {
+            StatusText = "Seek to an available source frame before saving an incident.";
+            return;
+        }
+
+        var sourceId = timelinePosition.MediaSourceId;
         var sample = _currentTelemetrySample;
         var incident = new Incident
         {
@@ -545,7 +691,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             ProjectStart = TimeSpan.FromSeconds(_incidentStartSeconds),
             ProjectEnd = TimeSpan.FromSeconds(_incidentEndSeconds),
             MediaSourceId = sourceId,
-            SourceTime = TimeSpan.FromSeconds(CurrentSeconds),
+            SourceTime = timelinePosition.SourceTime,
             Location = sample is null
                 ? null
                 : new IncidentLocation(
@@ -609,40 +755,57 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             return null;
         }
 
+        var timelinePosition = _virtualTimeline.Resolve(TimeSpan.FromSeconds(CurrentSeconds));
+        if (timelinePosition is null)
+        {
+            StatusText = "Seek to an available source frame before capturing evidence.";
+            return null;
+        }
+        await SeekProjectTimeAsync(TimeSpan.FromSeconds(CurrentSeconds), resumePlayback: IsPlaying);
+        if (_activeSegment?.MediaSourceId != timelinePosition.MediaSourceId)
+        {
+            StatusText = "The source frame is unavailable; relink the media before capture.";
+            return null;
+        }
+
         var assetsDirectory = Path.Combine(ProjectDirectory, "assets");
         Directory.CreateDirectory(assetsDirectory);
         var destination = Path.Combine(assetsDirectory, $"frame-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmssfff}.png");
-        var sourceId = ImportedMedia.FirstOrDefault()?.Id ?? _demoMediaId;
+        var sourceId = timelinePosition.MediaSourceId;
 
-        if (HasLoadedMedia)
+        EvidenceAsset capturedFrame;
+        try
         {
-            await _mediaEngine.CaptureFrameAsync(destination);
+            capturedFrame = await _mediaEngine.CaptureFrameAsync(destination);
         }
-        else
+        catch (Exception exception)
         {
-            var demoPath = Path.Combine(AppContext.BaseDirectory, "Demo", "cycling-evidence-frame.png");
-            if (!File.Exists(demoPath))
-            {
-                StatusText = "Demo frame is unavailable; import a video before capture.";
-                return null;
-            }
-
-            File.Copy(demoPath, destination, overwrite: false);
+            StatusText = $"Frame capture failed: {exception.Message}";
+            return null;
         }
 
+        var capturedProjectTime = _activeSegment.ProjectStart +
+            (capturedFrame.SourceTime - _activeSegment.SourceStart);
+        if (!IsPlaying)
+        {
+            _updatingFromMedia = true;
+            CurrentSeconds = capturedProjectTime.TotalSeconds;
+            _updatingFromMedia = false;
+        }
         var asset = new EvidenceAsset(
             Guid.NewGuid(),
             Path.GetRelativePath(ProjectDirectory, destination),
             "frame",
             sourceId,
-            TimeSpan.FromSeconds(CurrentSeconds),
-            null,
+            capturedFrame.SourceTime,
+            capturedFrame.Sha256,
             IsDerived: true,
-            "Frame capture");
+            capturedFrame.Derivation ?? "Frame capture",
+            ProjectTime: capturedProjectTime);
         _pendingAttachments.Add(asset);
         LastCapturedFramePath = destination;
         AttachmentCount = _pendingAttachments.Count;
-        StatusText = $"Frame captured at {CurrentTimeText} • ready to crop";
+        StatusText = $"Frame captured at project {FormatTimelineTime(capturedProjectTime)} • ready to crop";
         return destination;
     }
 
@@ -653,16 +816,21 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             throw new InvalidOperationException("Create or open a project before adding evidence.");
         }
 
-        var sourceId = ImportedMedia.FirstOrDefault()?.Id ?? _demoMediaId;
+        var timelinePosition = _virtualTimeline.Resolve(TimeSpan.FromSeconds(CurrentSeconds))
+            ?? throw new InvalidOperationException("A crop must be attached to an available source frame.");
+        var sourceId = timelinePosition.MediaSourceId;
+        await using var cropStream = File.OpenRead(cropPath);
+        var cropSha256 = Convert.ToHexStringLower(await SHA256.HashDataAsync(cropStream));
         _pendingAttachments.Add(new EvidenceAsset(
             Guid.NewGuid(),
             Path.GetRelativePath(ProjectDirectory, cropPath),
             "crop",
             sourceId,
-            TimeSpan.FromSeconds(CurrentSeconds),
-            null,
+            timelinePosition.SourceTime,
+            cropSha256,
             IsDerived: true,
-            "Manual frame crop"));
+            "Manual frame crop",
+            ProjectTime: TimeSpan.FromSeconds(CurrentSeconds)));
         AttachmentCount = _pendingAttachments.Count;
 
         var plateTask = _plateRecognizer.RecognizeAsync(cropPath);
@@ -686,6 +854,48 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         StatusText = RecognitionStatus;
     }
 
+    private void RebuildTimelineDisplay()
+    {
+        TimelineBlocks.Clear();
+        var segments = _project.Timeline.Segments
+            .OrderBy(segment => segment.ProjectStart)
+            .ToArray();
+        var cursor = TimeSpan.Zero;
+        var gapCount = 0;
+        var durationSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
+        foreach (var segment in segments)
+        {
+            if (segment.ProjectStart > cursor)
+            {
+                var gap = segment.ProjectStart - cursor;
+                gapCount++;
+                TimelineBlocks.Add(new TimelineBlockViewModel(
+                    "Gap",
+                    FormatTimelineTime(gap),
+                    Math.Max(60, gap.TotalSeconds / durationSeconds * 620),
+                    "#111F25",
+                    "#65767B"));
+            }
+
+            var source = _project.Media.FirstOrDefault(candidate => candidate.Id == segment.MediaSourceId);
+            var isMissing = MissingSources.Any(missing => missing.SourceId == segment.MediaSourceId);
+            TimelineBlocks.Add(new TimelineBlockViewModel(
+                source is null ? "Unknown source" : isMissing ? $"Missing: {source.DisplayName}" : source.DisplayName,
+                FormatTimelineTime(segment.Duration),
+                Math.Max(90, segment.Duration.TotalSeconds / durationSeconds * 620),
+                source is null || isMissing ? "#322126" : "#19323B",
+                source is null || isMissing ? "#B45A69" : "#14C9C3"));
+            cursor = segment.ProjectStart + segment.Duration;
+        }
+
+        TimelineSummaryText = segments.Length == 0
+            ? "No project timeline"
+            : $"{segments.Length} clip(s) • {gapCount} gap(s) • {FormatTimelineTime(_virtualTimeline.Duration)}";
+    }
+
+    private static string FormatTimelineTime(TimeSpan value) =>
+        value.ToString(value.TotalHours >= 1 ? @"hh\:mm\:ss\.fff" : @"mm\:ss\.fff");
+
     private static IncidentType MapIncidentType(string category) => category switch
     {
         "Bike-lane obstruction" => IncidentType.BikeLaneObstruction,
@@ -703,3 +913,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _mediaEngine.Dispose();
     }
 }
+
+public sealed record TimelineBlockViewModel(
+    string Label,
+    string Detail,
+    double Width,
+    string Background,
+    string BorderBrush);

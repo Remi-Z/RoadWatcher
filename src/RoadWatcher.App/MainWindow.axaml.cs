@@ -25,7 +25,11 @@ public sealed partial class MainWindow : Window
     private Map? _map;
     private MemoryLayer? _routeLayer;
     private MemoryLayer? _positionLayer;
-    public MainWindow()
+    public MainWindow() : this(null)
+    {
+    }
+
+    public MainWindow(string? startupProjectDirectory)
     {
         InitializeComponent();
         var viewModel = new MainWindowViewModel();
@@ -34,6 +38,24 @@ public sealed partial class MainWindow : Window
         DataContext = viewModel;
         InitializeMap();
         Closed += (_, _) => (DataContext as IDisposable)?.Dispose();
+        if (!string.IsNullOrWhiteSpace(startupProjectDirectory))
+        {
+            _ = OpenStartupProjectAsync(viewModel, startupProjectDirectory);
+        }
+    }
+
+    private static async Task OpenStartupProjectAsync(
+        MainWindowViewModel viewModel,
+        string projectDirectory)
+    {
+        try
+        {
+            await viewModel.OpenProjectAsync(projectDirectory);
+        }
+        catch (Exception exception)
+        {
+            viewModel.StatusText = $"Project open failed: {exception.Message}";
+        }
     }
 
     private async void OnCreateProjectClicked(object? sender, RoutedEventArgs eventArgs)

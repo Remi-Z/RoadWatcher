@@ -131,7 +131,7 @@
     <!-- Player controls -->
     <Border Grid.Row="2" Grid.Column="1" Classes="panel">
       <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" Margin="9,0">
-        <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" ToolTip.Tip="{Binding PlayLabel}">
+        <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" ToolTip.Tip="{Binding PlayLabel}" AutomationProperties.Name="{Binding PlayLabel}">
           <materialIcons:MaterialIcon Kind="{Binding PlayIcon}" Width="23" Height="23" />
         </Button>
         <Button Grid.Column="1" Classes="icon" Command="{Binding SeekBackCommand}" ToolTip.Tip="Back 10 seconds">
@@ -141,9 +141,9 @@
           <materialIcons:MaterialIcon Kind="FastForward10" Width="20" Height="20" />
         </Button>
         <TextBlock Grid.Column="3" Margin="8,0,12,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding CurrentTimeText}" />
-        <Slider Grid.Column="4" Margin="0,0,14,0" Minimum="0" Maximum="{Binding MaximumSeconds}" Value="{Binding CurrentSeconds, Mode=TwoWay}" />
-        <Button Grid.Column="5" Classes="icon" Command="{Binding CyclePlaybackRateCommand}" Content="{Binding PlaybackRateText}" />
-        <Button Grid.Column="6" Classes="icon" Command="{Binding CaptureFrameCommand}" ToolTip.Tip="Capture screenshot">
+        <Slider Grid.Column="4" Margin="0,0,14,0" Minimum="0" Maximum="{Binding MaximumSeconds}" Value="{Binding CurrentSeconds, Mode=TwoWay}" AutomationProperties.Name="Project timeline position" />
+        <Button Grid.Column="5" Classes="icon" Command="{Binding CyclePlaybackRateCommand}" Content="{Binding PlaybackRateText}" AutomationProperties.Name="Cycle playback speed" />
+        <Button Grid.Column="6" Classes="icon" Command="{Binding CaptureFrameCommand}" ToolTip.Tip="Capture screenshot" AutomationProperties.Name="Capture current frame">
           <materialIcons:MaterialIcon Kind="CameraOutline" Width="20" Height="20" />
         </Button>
         <Button Grid.Column="7" Classes="icon" Click="OnCropFrameClicked" ToolTip.Tip="Crop current frame" AutomationProperties.Name="Crop current frame">
@@ -272,7 +272,7 @@
           </StackPanel>
         </ScrollViewer>
         <StackPanel Grid.Row="2" Margin="14,8,14,14" Spacing="8">
-          <Button Classes="primary" Command="{Binding MarkIncidentCommand}" HorizontalContentAlignment="Center">
+          <Button Classes="primary" Command="{Binding MarkIncidentCommand}" HorizontalContentAlignment="Center" AutomationProperties.Name="Mark incident">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <materialIcons:MaterialIcon Kind="FlagOutline" Width="19" Height="19" />
               <TextBlock Text="Mark incident" />
@@ -291,7 +291,7 @@
             <TextBlock FontWeight="SemiBold" Text="Timeline" />
             <TextBlock Text="Fit  ▾" />
           </StackPanel>
-          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" Text="Jump to incident    ‹    3 of 7    ›" />
+          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" Text="{Binding TimelineSummaryText}" />
         </Grid>
         <Grid Grid.Row="1" ColumnDefinitions="92,*">
           <Border BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,1,0" />
@@ -307,17 +307,31 @@
         <Border Grid.Row="2" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
           <Grid ColumnDefinitions="92,*">
             <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="Video (front)" />
-            <Grid Grid.Column="1" ColumnDefinitions="3*,70,4*" Margin="6,4">
-              <Border CornerRadius="2" Background="#19323B">
-                <Image Source="avares://RoadWatcher.App/Assets/cycling-evidence-frame.png" Stretch="UniformToFill" />
-              </Border>
-              <Border Grid.Column="1" Margin="5,0" BorderBrush="#65767B" BorderThickness="1" CornerRadius="2">
-                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Gap&#x0a;00:44" />
-              </Border>
-              <Border Grid.Column="2" CornerRadius="2" Background="#19323B">
-                <Image Source="avares://RoadWatcher.App/Assets/cycling-evidence-frame.png" Stretch="UniformToFill" />
-              </Border>
-            </Grid>
+            <ScrollViewer Grid.Column="1" Margin="6,4" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding TimelineBlocks}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="5" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Width="{Binding Width}"
+                            MinWidth="60"
+                            Padding="8,2"
+                            Background="{Binding Background}"
+                            BorderBrush="{Binding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="2">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding Label}" />
+                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding Detail}" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
           </Grid>
         </Border>
 

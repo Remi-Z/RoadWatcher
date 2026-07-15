@@ -12,7 +12,9 @@ public sealed partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow();
+            var projectDirectory = desktop.Args?
+                .FirstOrDefault(argument => argument.EndsWith(".roadwatcher", StringComparison.OrdinalIgnoreCase));
+            desktop.MainWindow = new MainWindow(projectDirectory);
         }
 
         base.OnFrameworkInitializationCompleted();

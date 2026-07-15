@@ -10,6 +10,9 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - Added New, Open, Save, and Close workbench actions plus a contextual Relink missing action.
 - Imports now save immediately to the current project. Reopen restores media references, serialized GPX points and anchors, incident counts, and attachment counts.
 - Relinking keeps the original source identity. A recorded SHA-256 is authoritative; otherwise, a recorded non-zero file size must match.
+- Added persisted segment planning from embedded/fallback recorded time, real project-time gaps, clip-aware LibVLC switching, gap traversal, and source-correct frame/incident provenance.
+- Replaced the illustrative front-video row with actual clip/gap blocks composed from standard Avalonia controls.
+- Added optional attachment `projectTime` without changing `schemaVersion`, documented in ADR 0002.
 
 ## Tested interactions
 
@@ -17,23 +20,26 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - Detected a moved source, rejected a wrong-size replacement, accepted the matching moved file, saved it, and reopened with no missing sources.
 - Verified that a non-`.roadwatcher` folder is rejected as a project.
 - Launched the clean Release app and verified that the lifecycle controls render and the window remains open after capture.
+- Opened a deterministic project containing two three-second H.264 clips, a five-second gap, and one GPX source from the executable command line.
+- Invoked Play through Windows UI Automation: observed project 3.8 seconds inside the gap, then clip 2 at project 8.4/source 0.4 seconds while telemetry continued to follow project time.
+- Sought while paused to project 9 seconds, initialized the new VLC video output, captured a frame, marked and saved an incident, and verified clip-2 source ID, incident source time 1 second, attachment project/source times 9/1 seconds, and the attachment SHA-256 against the file after JSON save.
 
 ## Build and test results
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore` — passed, 0 warnings, 0 errors.
-- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 10/10 tests.
+- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 11/11 tests.
 
 ## Screenshot state
 
 - `project-lifecycle.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, clean Release build, no project open, zero missing sources, lifecycle controls visible. Captured with the Windows `PrintWindow` fallback because ordinary desktop-region capture observed a different Windows virtual desktop.
+- `virtual-timeline.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, deterministic two-clip/one-GPX project playing at project 4.3 seconds inside the five-second source gap. Both clip blocks, the real gap block, last available source frame, synchronized telemetry, and gap status are visible.
 
 ## Known limitations
 
 - The source-copy option is not yet exposed; relinking currently targets referenced external or already project-local files.
 - The picker-based UI journey remains a manual acceptance item; automated coverage exercises the underlying lifecycle and recovery adapter.
-- Real multi-clip playback is not implemented at this checkpoint.
 - Representative 4K60 HEVC footage has not been supplied, so performance acceptance remains unverified.
 
 ## Exact next action
 
-Connect imported and reopened media to `IVirtualTimeline`, preserving real gaps and source provenance while seeking, playing, capturing, and marking incidents across clip boundaries.
+Add editable one/two-anchor GPX synchronization controls, persist the user’s anchors, and verify drift-corrected telemetry/map behavior across both clips and the gap.
