@@ -67,3 +67,22 @@ public interface IEvidenceExporter
 
 public sealed record ExportResult(string PackageDirectory, string ManifestPath, IReadOnlyList<string> Files);
 
+public interface IProjectStore
+{
+    Task<ProjectDocument> OpenAsync(string projectDirectory, CancellationToken cancellationToken = default);
+    Task SaveAsync(ProjectDocument project, string projectDirectory, CancellationToken cancellationToken = default);
+}
+
+public interface IProjectLifecycle
+{
+    Task<ProjectDocument> CreateAsync(string projectDirectory, string title, CancellationToken cancellationToken = default);
+    Task<ProjectOpenResult> OpenAsync(string projectDirectory, CancellationToken cancellationToken = default);
+    Task SaveAsync(ProjectDocument project, string projectDirectory, CancellationToken cancellationToken = default);
+    IReadOnlyList<MissingProjectSource> FindMissingSources(ProjectDocument project, string projectDirectory);
+    Task<ProjectDocument> RelinkAsync(
+        ProjectDocument project,
+        string projectDirectory,
+        MissingProjectSource missingSource,
+        string replacementPath,
+        CancellationToken cancellationToken = default);
+}

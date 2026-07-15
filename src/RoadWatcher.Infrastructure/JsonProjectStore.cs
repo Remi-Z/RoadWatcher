@@ -3,7 +3,7 @@ using RoadWatcher.Core;
 
 namespace RoadWatcher.Infrastructure;
 
-public sealed class JsonProjectStore
+public sealed class JsonProjectStore : IProjectStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -41,4 +41,3 @@ public sealed class JsonProjectStore
         }
     }
 }
-

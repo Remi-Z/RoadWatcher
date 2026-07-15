@@ -26,16 +26,28 @@
               <TextBlock VerticalAlignment="Center" Text="Workbench" />
             </StackPanel>
           </Button>
-          <Button Classes="nav">
+          <Button Classes="nav" Click="OnCreateProjectClicked" ToolTip.Tip="Create a .roadwatcher project">
             <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="FolderOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Rides" />
+              <materialIcons:MaterialIcon Kind="FolderPlusOutline" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="New" />
             </StackPanel>
           </Button>
-          <Button Classes="nav">
+          <Button Classes="nav" Click="OnOpenProjectClicked" ToolTip.Tip="Open a .roadwatcher project">
             <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="AlertOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Incidents" />
+              <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Open" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav" Command="{Binding SaveProjectCommand}" ToolTip.Tip="Save the current project">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="ContentSaveOutline" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Save" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav" Command="{Binding CloseProjectCommand}" ToolTip.Tip="Close the current project">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="FolderRemoveOutline" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Close" />
             </StackPanel>
           </Button>
           <Button Classes="nav" Command="{Binding ExportEvidenceCommand}" ToolTip.Tip="Export saved incidents" AutomationProperties.Name="Export evidence package">
@@ -56,9 +68,9 @@
 
     <!-- Header -->
     <Border Grid.Column="1" Grid.ColumnSpan="5" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="*,Auto,16,Auto,22,Auto" Margin="14,0,18,0">
+      <Grid ColumnDefinitions="*,Auto,8,Auto,16,Auto" Margin="14,0,18,0">
         <StackPanel VerticalAlignment="Center" Spacing="3">
-          <TextBlock FontSize="12" FontWeight="SemiBold" Text="Ride — July 12, 2026  14:15" />
+          <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding ProjectTitle}" />
           <TextBlock Classes="muted" FontSize="10" Text="{Binding LoadedMediaName}" />
         </StackPanel>
         <Button Grid.Column="1" VerticalAlignment="Center" Click="OnImportRideClicked">
@@ -67,14 +79,15 @@
             <TextBlock Text="Import ride" />
           </StackPanel>
         </Button>
-        <StackPanel Grid.Column="3" VerticalAlignment="Center" Spacing="3">
-          <TextBlock Foreground="{StaticResource AccentTeal}" Text="Source verified  ✓" />
-          <TextBlock Classes="muted" FontSize="11" Text="SHA256: 8b7f…c3e9" />
-        </StackPanel>
-        <Border Grid.Column="4" Margin="10,16" Width="1" Background="{StaticResource PanelBorder}" />
+        <Button Grid.Column="3" VerticalAlignment="Center" Click="OnRelinkSourceClicked" IsVisible="{Binding HasMissingSources}">
+          <StackPanel Orientation="Horizontal" Spacing="7">
+            <materialIcons:MaterialIcon Kind="LinkVariant" Width="18" Height="18" />
+            <TextBlock Text="Relink missing" />
+          </StackPanel>
+        </Button>
         <StackPanel Grid.Column="5" VerticalAlignment="Center" Spacing="3">
-          <TextBlock Classes="muted" FontSize="11" Text="Reviewed on July 14, 2026" />
-          <TextBlock Classes="muted" FontSize="11" Text="by Reviewer" />
+          <TextBlock Foreground="{StaticResource AccentTeal}" Text="Project lifecycle active" />
+          <TextBlock Classes="muted" FontSize="10" Text="{Binding MissingSourceCount, StringFormat={}{0} missing source(s)}" />
         </StackPanel>
       </Grid>
     </Border>

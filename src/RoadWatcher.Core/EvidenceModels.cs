@@ -27,7 +27,10 @@ public sealed record GpxSource(
     Guid Id,
     string DisplayName,
     string Path,
-    IReadOnlyList<TrackPoint> Points);
+    IReadOnlyList<TrackPoint> Points,
+    long? FileSize = null,
+    string? Sha256 = null,
+    bool IsProjectCopy = false);
 
 public sealed record TrackPoint(
     DateTimeOffset RecordedAt,
@@ -125,3 +128,18 @@ public sealed record AnalysisSuggestion(
     double Confidence,
     string? Region);
 
+public enum ProjectSourceKind
+{
+    Media,
+    Gpx
+}
+
+public sealed record MissingProjectSource(
+    Guid SourceId,
+    ProjectSourceKind Kind,
+    string DisplayName,
+    string StoredPath);
+
+public sealed record ProjectOpenResult(
+    ProjectDocument Project,
+    IReadOnlyList<MissingProjectSource> MissingSources);

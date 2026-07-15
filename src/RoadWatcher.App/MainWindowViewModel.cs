@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,16 +16,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly LibVlcMediaEngine _mediaEngine;
     private readonly GpxTrackService _gpxTrackService = new();
     private readonly JsonProjectStore _projectStore = new();
+    private readonly ProjectLifecycleService _projectLifecycle;
     private readonly TesseractPlateRecognizer _plateRecognizer = new();
     private readonly DominantVehicleColorEstimator _colourEstimator = new();
-    private readonly ProjectDocument _project = new() { Title = "Ride — July 12, 2026 14:15" };
+    private ProjectDocument _project = new();
     private readonly List<EvidenceAsset> _pendingAttachments = [];
     private readonly Guid _demoMediaId = Guid.Parse("9b22df22-76b1-4fd9-9ff8-6196e10f0b8d");
     private bool _updatingFromMedia;
     private GpxTimelineMapper? _gpxTimelineMapper;
     private TelemetrySample? _currentTelemetrySample;
-    private double _incidentStartSeconds = 1725.823;
-    private double _incidentEndSeconds = 1730.623;
+    private double _incidentStartSeconds;
+    private double _incidentEndSeconds;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PlayIcon))]
@@ -33,17 +35,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CurrentTimeText))]
-    private double _currentSeconds = 1727.523;
+    private double _currentSeconds;
 
     [ObservableProperty]
-    private double _maximumSeconds = 4515;
+    private double _maximumSeconds = 1;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PlaybackRateText))]
     private double _playbackRate = 1;
 
     [ObservableProperty]
-    private string _statusText = "Source verified • Demo evidence loaded";
+    private string _statusText = "Create or open a project to begin";
 
     [ObservableProperty]
     private string _notes = "Driver entered and travelled in the marked bike lane while preparing to turn right. No signal observed.";
@@ -59,37 +61,37 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _hasLoadedMedia;
 
     [ObservableProperty]
-    private string _loadedMediaName = "2026-07-12_1415_BloorSpadina.gpx";
+    private string _loadedMediaName = "No ride sources loaded";
 
     [ObservableProperty]
     private int _importedClipCount;
 
     [ObservableProperty]
-    private string _speedKmhText = "23.4";
+    private string _speedKmhText = "0.0";
 
     [ObservableProperty]
-    private string _accelerationText = "−0.8";
+    private string _accelerationText = "—";
 
     [ObservableProperty]
-    private string _telemetryClockText = "14:32:18";
+    private string _telemetryClockText = "—";
 
     [ObservableProperty]
-    private string _locationText = "Bloor St W & Spadina Ave";
+    private string _locationText = "No GPX aligned";
 
     [ObservableProperty]
-    private string _coordinateText = "43.66745, −79.40089";
+    private string _coordinateText = "—";
 
     [ObservableProperty]
     private string _vehicleColor = "Dark blue";
 
     [ObservableProperty]
-    private string _incidentStartText = "14:32:16.823";
+    private string _incidentStartText = "00:00:00.000";
 
     [ObservableProperty]
-    private string _incidentEndText = "14:32:21.623";
+    private string _incidentEndText = "00:00:00.000";
 
     [ObservableProperty]
-    private string _incidentDurationText = "Duration  00:04.800";
+    private string _incidentDurationText = "Duration  00:00.000";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCapturedFrame))]
@@ -107,8 +109,19 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _lastExportPath = "No package exported yet";
 
+    [ObservableProperty]
+    private string _projectTitle = "No project open";
+
+    [ObservableProperty]
+    private string? _projectDirectory;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMissingSources))]
+    private int _missingSourceCount;
+
     public MainWindowViewModel()
     {
+        _projectLifecycle = new ProjectLifecycleService(_projectStore);
         _mediaEngine = new LibVlcMediaEngine();
         _mediaEngine.PositionChanged += (_, position) => Dispatcher.UIThread.Post(() =>
         {
@@ -124,19 +137,6 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             }
         });
         _timer.Start();
-        var demoPath = Path.Combine(AppContext.BaseDirectory, "Demo", "cycling-evidence-frame.png");
-        if (File.Exists(demoPath))
-        {
-            var file = new FileInfo(demoPath);
-            _project.Media.Add(new MediaSource(
-                _demoMediaId,
-                "Demo evidence frame",
-                file.FullName,
-                file.Length,
-                new DateTimeOffset(file.LastWriteTimeUtc),
-                TimeSpan.FromMinutes(75)));
-        }
-        _ = LoadDemoGpxAsync();
     }
 
     public string[] Categories { get; } =
@@ -172,21 +172,178 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool ShowDemoFrame => !HasLoadedMedia;
     public MediaPlayer MediaPlayer => _mediaEngine.MediaPlayer;
     public bool HasCapturedFrame => !string.IsNullOrWhiteSpace(LastCapturedFramePath);
-    public string ProjectDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RoadWatcher",
-        "Demo.roadwatcher");
     public IReadOnlyList<MediaSource> ImportedMedia { get; private set; } = [];
     public IReadOnlyList<TrackPoint> GpxPoints { get; private set; } = [];
+    public ObservableCollection<MissingProjectSource> MissingSources { get; } = [];
+    public bool HasMissingSources => MissingSourceCount > 0;
 
     public event EventHandler<IReadOnlyList<TrackPoint>>? GpxTrackChanged;
     public event EventHandler<TelemetrySample>? TelemetrySampleChanged;
+
+    public async Task CreateProjectAsync(
+        string projectDirectory,
+        string title,
+        CancellationToken cancellationToken = default)
+    {
+        var project = await _projectLifecycle.CreateAsync(projectDirectory, title, cancellationToken);
+        await ActivateProjectAsync(project, projectDirectory, [], cancellationToken);
+        StatusText = $"Created {project.Title} • project saved";
+    }
+
+    public async Task OpenProjectAsync(
+        string projectDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        var opened = await _projectLifecycle.OpenAsync(projectDirectory, cancellationToken);
+        await ActivateProjectAsync(opened.Project, projectDirectory, opened.MissingSources, cancellationToken);
+        StatusText = opened.MissingSources.Count == 0
+            ? $"Opened {opened.Project.Title} • all sources available"
+            : $"Opened {opened.Project.Title} • {opened.MissingSources.Count} source(s) need relinking";
+    }
+
+    [RelayCommand]
+    private async Task SaveProjectAsync()
+    {
+        if (ProjectDirectory is null)
+        {
+            StatusText = "Create or open a project before saving.";
+            return;
+        }
+
+        _project = _project with { Title = ProjectTitle.Trim() };
+        await _projectLifecycle.SaveAsync(_project, ProjectDirectory);
+        StatusText = $"Saved {ProjectTitle} • {IncidentCount} incident(s)";
+    }
+
+    [RelayCommand]
+    private void CloseProject()
+    {
+        _mediaEngine.Pause();
+        IsPlaying = false;
+        _project = new ProjectDocument();
+        ProjectDirectory = null;
+        ProjectTitle = "No project open";
+        ImportedMedia = [];
+        GpxPoints = [];
+        _gpxTimelineMapper = null;
+        _currentTelemetrySample = null;
+        _pendingAttachments.Clear();
+        MissingSources.Clear();
+        MissingSourceCount = 0;
+        HasLoadedMedia = false;
+        ImportedClipCount = 0;
+        IncidentCount = 0;
+        AttachmentCount = 0;
+        CurrentSeconds = 0;
+        MaximumSeconds = 1;
+        LoadedMediaName = "No ride sources loaded";
+        LastCapturedFramePath = null;
+        LastExportPath = "No package exported yet";
+        StatusText = "Project closed • source files were not modified";
+    }
+
+    public async Task RelinkSourceAsync(
+        MissingProjectSource missingSource,
+        string replacementPath,
+        CancellationToken cancellationToken = default)
+    {
+        if (ProjectDirectory is null)
+        {
+            throw new InvalidOperationException("No project is open.");
+        }
+
+        _project = await _projectLifecycle.RelinkAsync(
+            _project,
+            ProjectDirectory,
+            missingSource,
+            replacementPath,
+            cancellationToken);
+        var remaining = _projectLifecycle.FindMissingSources(_project, ProjectDirectory);
+        await ActivateProjectAsync(_project, ProjectDirectory, remaining, cancellationToken);
+        StatusText = remaining.Count == 0
+            ? $"Relinked {missingSource.DisplayName} • all sources available"
+            : $"Relinked {missingSource.DisplayName} • {remaining.Count} source(s) still missing";
+    }
+
+    private async Task ActivateProjectAsync(
+        ProjectDocument project,
+        string projectDirectory,
+        IReadOnlyList<MissingProjectSource> missingSources,
+        CancellationToken cancellationToken)
+    {
+        _mediaEngine.Pause();
+        IsPlaying = false;
+        _project = project;
+        ProjectDirectory = Path.GetFullPath(projectDirectory);
+        ProjectTitle = project.Title;
+        IncidentCount = project.Incidents.Count;
+        AttachmentCount = project.Incidents.Sum(incident => incident.Attachments.Count);
+        _pendingAttachments.Clear();
+
+        MissingSources.Clear();
+        foreach (var missing in missingSources)
+        {
+            MissingSources.Add(missing);
+        }
+        MissingSourceCount = MissingSources.Count;
+
+        ImportedMedia = project.Media
+            .Where(source => File.Exists(ProjectLifecycleService.ResolveStoredPath(projectDirectory, source.Path)))
+            .Select(source => source with
+            {
+                Path = ProjectLifecycleService.ResolveStoredPath(projectDirectory, source.Path)
+            })
+            .ToArray();
+        ImportedClipCount = ImportedMedia.Count;
+        HasLoadedMedia = false;
+        if (ImportedMedia.Count > 0)
+        {
+            var source = ImportedMedia[0];
+            await _mediaEngine.LoadAsync(source, cancellationToken);
+            HasLoadedMedia = true;
+            LoadedMediaName = source.DisplayName;
+            CurrentSeconds = 0;
+            MaximumSeconds = Math.Max(1, source.Duration.TotalSeconds);
+        }
+        else
+        {
+            LoadedMediaName = missingSources.Count > 0
+                ? "Project sources missing • relink required"
+                : "No ride sources loaded";
+            CurrentSeconds = 0;
+            MaximumSeconds = 1;
+        }
+
+        var gpx = project.GpxSources.FirstOrDefault();
+        if (gpx is not null && gpx.Points.Count > 0)
+        {
+            GpxPoints = gpx.Points;
+            var anchors = project.Timeline.SyncAnchors
+                .Where(anchor => anchor.GpxSourceId == gpx.Id)
+                .ToArray();
+            _gpxTimelineMapper = new GpxTimelineMapper(anchors.Length > 0
+                ? anchors
+                : [new SyncAnchor(gpx.Id, TimeSpan.Zero, gpx.Points[0].RecordedAt)]);
+            GpxTrackChanged?.Invoke(this, GpxPoints);
+            UpdateTelemetry(CurrentSeconds);
+        }
+        else
+        {
+            GpxPoints = [];
+            _gpxTimelineMapper = null;
+        }
+    }
 
     public async Task ImportRideAsync(
         IReadOnlyList<string> mediaPaths,
         IReadOnlyList<string> gpxPaths,
         CancellationToken cancellationToken = default)
     {
+        if (ProjectDirectory is null)
+        {
+            throw new InvalidOperationException("Create or open a project before importing ride sources.");
+        }
+
         if (mediaPaths.Count > 0)
         {
             await ImportMediaAsync(mediaPaths, cancellationToken);
@@ -196,6 +353,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             await ImportGpxAsync(gpxPaths[0], isDemo: false, cancellationToken);
         }
+
+        await _projectLifecycle.SaveAsync(_project, ProjectDirectory, cancellationToken);
     }
 
     public async Task ImportMediaAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default)
@@ -214,12 +373,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 duration));
         }
 
-        ImportedMedia = sources;
         foreach (var source in sources.Where(source => _project.Media.All(existing => existing.Path != source.Path)))
         {
             _project.Media.Add(source);
         }
-        ImportedClipCount = sources.Count;
+        ImportedMedia = _project.Media
+            .Where(source => File.Exists(source.Path))
+            .ToArray();
+        ImportedClipCount = ImportedMedia.Count;
         if (sources.Count == 0)
         {
             return;
@@ -258,16 +419,24 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         var points = await _gpxTrackService.ReadAsync(path, cancellationToken);
         GpxPoints = points;
-        var sourceId = Guid.NewGuid();
-        _gpxTimelineMapper = new GpxTimelineMapper(
-        [
-            new SyncAnchor(sourceId, TimeSpan.Zero, points[0].RecordedAt)
-        ]);
+        var existingSource = _project.GpxSources.FirstOrDefault(source =>
+            source.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+        var sourceId = existingSource?.Id ?? Guid.NewGuid();
+        var anchor = new SyncAnchor(sourceId, TimeSpan.Zero, points[0].RecordedAt);
+        _gpxTimelineMapper = new GpxTimelineMapper([anchor]);
         GpxTrackChanged?.Invoke(this, points);
-        if (_project.GpxSources.All(source => !source.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+        if (existingSource is null)
         {
-            _project.GpxSources.Add(new GpxSource(sourceId, Path.GetFileName(path), path, points));
+            var file = new FileInfo(path);
+            _project.GpxSources.Add(new GpxSource(
+                sourceId,
+                file.Name,
+                file.FullName,
+                points,
+                file.Length));
         }
+        _project.Timeline.SyncAnchors.RemoveAll(existing => existing.GpxSourceId == sourceId);
+        _project.Timeline.SyncAnchors.Add(anchor);
         UpdateTelemetry(CurrentSeconds);
 
         if (!isDemo)
@@ -362,6 +531,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task SaveIncidentAsync()
     {
+        if (ProjectDirectory is null)
+        {
+            StatusText = "Create or open a project before saving an incident.";
+            return;
+        }
+
         var sourceId = ImportedMedia.FirstOrDefault()?.Id ?? _demoMediaId;
         var sample = _currentTelemetrySample;
         var incident = new Incident
@@ -400,6 +575,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ExportEvidenceAsync()
     {
+        if (ProjectDirectory is null)
+        {
+            StatusText = "Create or open a project before exporting evidence.";
+            return;
+        }
+
         if (_project.Incidents.Count == 0)
         {
             StatusText = "Save at least one incident before exporting evidence.";
@@ -422,6 +603,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public async Task<string?> CaptureFrameToProjectAsync()
     {
+        if (ProjectDirectory is null)
+        {
+            StatusText = "Create or open a project before capturing evidence.";
+            return null;
+        }
+
         var assetsDirectory = Path.Combine(ProjectDirectory, "assets");
         Directory.CreateDirectory(assetsDirectory);
         var destination = Path.Combine(assetsDirectory, $"frame-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmssfff}.png");
@@ -461,6 +648,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public async Task AddCropAndRecognizeAsync(string cropPath)
     {
+        if (ProjectDirectory is null)
+        {
+            throw new InvalidOperationException("Create or open a project before adding evidence.");
+        }
+
         var sourceId = ImportedMedia.FirstOrDefault()?.Id ?? _demoMediaId;
         _pendingAttachments.Add(new EvidenceAsset(
             Guid.NewGuid(),

@@ -36,6 +36,94 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) => (DataContext as IDisposable)?.Dispose();
     }
 
+    private async void OnCreateProjectClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose where to create the RoadWatcher project",
+            AllowMultiple = false
+        });
+        var parentDirectory = folders.FirstOrDefault()?.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(parentDirectory) || DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.Now;
+        var title = $"Ride — {now:MMMM d, yyyy HH:mm}";
+        var projectDirectory = Path.Combine(parentDirectory, $"Ride-{now:yyyyMMdd-HHmmss}.roadwatcher");
+        try
+        {
+            await viewModel.CreateProjectAsync(projectDirectory, title);
+        }
+        catch (Exception exception)
+        {
+            viewModel.StatusText = $"Project creation failed: {exception.Message}";
+        }
+    }
+
+    private async void OnOpenProjectClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Open a .roadwatcher project folder",
+            AllowMultiple = false
+        });
+        var projectDirectory = folders.FirstOrDefault()?.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(projectDirectory) || DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            await viewModel.OpenProjectAsync(projectDirectory);
+        }
+        catch (Exception exception)
+        {
+            viewModel.StatusText = $"Project open failed: {exception.Message}";
+        }
+    }
+
+    private async void OnRelinkSourceClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is not MainWindowViewModel viewModel || viewModel.MissingSources.Count == 0)
+        {
+            return;
+        }
+
+        var missing = viewModel.MissingSources[0];
+        var patterns = missing.Kind == ProjectSourceKind.Media
+            ? new[] { "*.mp4", "*.mov", "*.mkv", "*.m4v", "*.avi" }
+            : new[] { "*.gpx" };
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = $"Relink {missing.DisplayName}",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType(missing.Kind == ProjectSourceKind.Media ? "Source video" : "GPX track")
+                {
+                    Patterns = patterns
+                }
+            ]
+        });
+        var replacementPath = files.FirstOrDefault()?.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(replacementPath))
+        {
+            return;
+        }
+
+        try
+        {
+            await viewModel.RelinkSourceAsync(missing, replacementPath);
+        }
+        catch (Exception exception)
+        {
+            viewModel.StatusText = $"Relink failed: {exception.Message}";
+        }
+    }
+
     private async void OnImportRideClicked(object? sender, RoutedEventArgs eventArgs)
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
@@ -92,6 +180,12 @@ public sealed partial class MainWindow : Window
         var sourcePath = viewModel.LastCapturedFramePath ?? await viewModel.CaptureFrameToProjectAsync();
         if (string.IsNullOrWhiteSpace(sourcePath))
         {
+            return;
+        }
+
+        if (viewModel.ProjectDirectory is null)
+        {
+            viewModel.StatusText = "Create or open a project before adding evidence.";
             return;
         }
 

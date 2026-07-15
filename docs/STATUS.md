@@ -43,6 +43,10 @@ M07 — V1 acceptance closure: project lifecycle and real virtual timeline integ
   - no `ILocationResolver` adapter is composed; the demo intersection is hard-coded.
 - M07 first slices are scoped as project create/open/save/close/relink, followed by multi-clip segment construction and project-time playback across clip boundaries and gaps.
 - Release baseline re-established on 2026-07-14: Release build succeeds with zero warnings and all 7 tests pass. The first sandboxed restore was blocked by NuGet network policy; the approved retry succeeded without source changes.
+- Project lifecycle slice implemented: the workbench now creates, opens, explicitly saves, closes, and reopens `.roadwatcher` folders; imports are saved immediately rather than waiting for an incident save.
+- Opening a project restores persisted media references, GPX points/anchors, incident and attachment counts, and reports unavailable sources without discarding their evidence records.
+- Missing media/GPX can be relinked from the workbench. Relinking preserves source IDs and refuses files that conflict with a recorded SHA-256 or, when no hash exists, the recorded byte length.
+- M07 lifecycle screenshot recorded at a 1152 × 820 logical viewport (1750 × 1286 physical capture) in the no-project-open state; Release build succeeds with zero warnings and all 10 tests pass.
 
 ## Milestone commits
 
@@ -57,13 +61,12 @@ M07 — V1 acceptance closure: project lifecycle and real virtual timeline integ
 
 ## Next actions
 
-1. Implement and test project create/open/save/close/reopen plus missing-source detection and relinking.
-2. Wire imported and reopened media to `IVirtualTimeline`, including real gap resolution, clip-boundary playback, seek, capture, and incident provenance.
-3. Add editable and persisted one/two-anchor GPX synchronization controls.
-4. Add derived H.264 review clips and GPX excerpts with complete provenance and manifest coverage, then compose an opt-in cached/throttled location resolver.
-5. Run the complete two-video/one-GPX acceptance journey and capture the M07 UI milestone evidence.
-6. Run the representative-video performance matrix with user-provided 4K60 HEVC footage; do not claim 4K60 acceptance without it.
-7. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.
+1. Wire imported and reopened media to `IVirtualTimeline`, including real gap resolution, clip-boundary playback, seek, capture, and incident provenance.
+2. Add editable and persisted one/two-anchor GPX synchronization controls.
+3. Add derived H.264 review clips and GPX excerpts with complete provenance and manifest coverage, then compose an opt-in cached/throttled location resolver.
+4. Run the complete two-video/one-GPX acceptance journey and capture the completed M07 UI milestone evidence.
+5. Run the representative-video performance matrix with user-provided 4K60 HEVC footage; do not claim 4K60 acceptance without it.
+6. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.
 
 ## Known risks
 
