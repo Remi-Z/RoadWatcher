@@ -6,7 +6,9 @@ A RoadWatcher project is a folder named `<project>.roadwatcher`.
 ride.roadwatcher/
   project.json
   assets/        # screenshots and confirmed crops
-  sources/       # optional user-requested copies of source video/GPX
+  sources/
+    media/       # optional hashed project-local video copies
+    gpx/         # optional hashed project-local GPX copies
   cache/         # disposable thumbnails, proxies, and rounded-coordinate geocoding.json cache
   exports/       # generated evidence packages
 ```
@@ -30,6 +32,8 @@ Minimum top-level shape:
 ```
 
 Unknown properties must be ignored on read so newer projects remain inspectable. A migration creates a backup before changing `schemaVersion`.
+
+The import header defaults to reference mode. With `Copy sources` checked, RoadWatcher streams each selection to a same-directory temporary file, calculates SHA-256 during the copy, atomically promotes it under `sources/media` or `sources/gpx`, and records `isProjectCopy: true`. Identical same-name files reuse the verified copy; different same-name files receive a numeric suffix.
 
 ## Timeline and evidence provenance
 

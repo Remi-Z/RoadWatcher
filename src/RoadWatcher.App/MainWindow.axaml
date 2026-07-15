@@ -68,24 +68,33 @@
 
     <!-- Header -->
     <Border Grid.Column="1" Grid.ColumnSpan="5" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="*,Auto,8,Auto,16,Auto" Margin="14,0,18,0">
+      <Grid ColumnDefinitions="*,Auto,8,Auto,8,Auto,16,Auto" Margin="14,0,18,0">
         <StackPanel VerticalAlignment="Center" Spacing="3">
           <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding ProjectTitle}" />
           <TextBlock Classes="muted" FontSize="10" Text="{Binding LoadedMediaName}" />
         </StackPanel>
-        <Button Grid.Column="1" VerticalAlignment="Center" Click="OnImportRideClicked">
+        <CheckBox Grid.Column="1"
+                  VerticalAlignment="Center"
+                  IsChecked="{Binding CopySourcesIntoProject}"
+                  Content="Copy sources"
+                  ToolTip.Tip="Store imported media and GPX under this project"
+                  AutomationProperties.Name="Copy imported sources into project" />
+        <Button Grid.Column="3"
+                VerticalAlignment="Center"
+                Click="OnImportRideClicked"
+                AutomationProperties.Name="Import ride sources">
           <StackPanel Orientation="Horizontal" Spacing="7">
             <materialIcons:MaterialIcon Kind="FolderPlusOutline" Width="18" Height="18" />
             <TextBlock Text="Import ride" />
           </StackPanel>
         </Button>
-        <Button Grid.Column="3" VerticalAlignment="Center" Click="OnRelinkSourceClicked" IsVisible="{Binding HasMissingSources}">
+        <Button Grid.Column="5" VerticalAlignment="Center" Click="OnRelinkSourceClicked" IsVisible="{Binding HasMissingSources}">
           <StackPanel Orientation="Horizontal" Spacing="7">
             <materialIcons:MaterialIcon Kind="LinkVariant" Width="18" Height="18" />
             <TextBlock Text="Relink missing" />
           </StackPanel>
         </Button>
-        <StackPanel Grid.Column="5" VerticalAlignment="Center" Spacing="3">
+        <StackPanel Grid.Column="7" VerticalAlignment="Center" Spacing="3">
           <TextBlock Foreground="{StaticResource AccentTeal}" Text="Project lifecycle active" />
           <TextBlock Classes="muted" FontSize="10" Text="{Binding MissingSourceCount, StringFormat={}{0} missing source(s)}" />
         </StackPanel>

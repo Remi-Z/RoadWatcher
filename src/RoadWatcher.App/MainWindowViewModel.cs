@@ -20,6 +20,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly GpxTrackService _gpxTrackService = new();
     private readonly JsonProjectStore _projectStore = new();
     private readonly ProjectLifecycleService _projectLifecycle;
+    private readonly ProjectSourceCopyService _sourceCopyService = new();
     private readonly TesseractPlateRecognizer _plateRecognizer = new();
     private readonly DominantVehicleColorEstimator _colourEstimator = new();
     private ProjectDocument _project = new();
@@ -154,6 +155,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _locationResolutionStatus = "Optional online lookup • © OpenStreetMap contributors";
+
+    [ObservableProperty]
+    private bool _copySourcesIntoProject;
 
     public MainWindowViewModel()
     {
@@ -416,6 +420,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public async Task ImportRideAsync(
         IReadOnlyList<string> mediaPaths,
         IReadOnlyList<string> gpxPaths,
+        bool copyToProject = false,
         CancellationToken cancellationToken = default)
     {
         if (ProjectDirectory is null)
@@ -425,31 +430,50 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         if (mediaPaths.Count > 0)
         {
-            await ImportMediaAsync(mediaPaths, cancellationToken);
+            await ImportMediaAsync(mediaPaths, copyToProject, cancellationToken);
         }
 
         if (gpxPaths.Count > 0)
         {
-            await ImportGpxAsync(gpxPaths[0], isDemo: false, cancellationToken);
+            await ImportGpxAsync(gpxPaths[0], isDemo: false, copyToProject, cancellationToken);
         }
 
         await _projectLifecycle.SaveAsync(_project, ProjectDirectory, cancellationToken);
+        var importedCount = mediaPaths.Count + Math.Min(1, gpxPaths.Count);
+        StatusText = copyToProject
+            ? $"Imported {importedCount} source(s) • verified copies stored inside the project"
+            : $"Imported {importedCount} source(s) by reference • originals remain in place";
     }
 
-    public async Task ImportMediaAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default)
+    public async Task ImportMediaAsync(
+        IReadOnlyList<string> paths,
+        bool copyToProject = false,
+        CancellationToken cancellationToken = default)
     {
+        if (ProjectDirectory is null)
+        {
+            throw new InvalidOperationException("Create or open a project before importing media.");
+        }
+
         var sources = new List<MediaSource>(paths.Count);
         foreach (var path in paths)
         {
-            var file = new FileInfo(path);
-            var probe = await _mediaEngine.ProbeAsync(path, cancellationToken);
+            var selectedFile = new FileInfo(path);
+            var copy = copyToProject
+                ? await _sourceCopyService.CopyAsync(path, ProjectDirectory, ProjectSourceKind.Media, cancellationToken)
+                : null;
+            var effectivePath = copy?.FullPath ?? selectedFile.FullName;
+            var storedPath = copy?.RelativePath ?? selectedFile.FullName;
+            var probe = await _mediaEngine.ProbeAsync(effectivePath, cancellationToken);
             sources.Add(new MediaSource(
                 Guid.NewGuid(),
-                file.Name,
-                file.FullName,
-                file.Length,
-                probe.RecordedAt ?? file.LastWriteTimeUtc,
-                probe.Duration));
+                selectedFile.Name,
+                storedPath,
+                copy?.FileSize ?? selectedFile.Length,
+                probe.RecordedAt ?? selectedFile.LastWriteTimeUtc,
+                probe.Duration,
+                copy?.Sha256,
+                copyToProject));
         }
 
         foreach (var source in sources.Where(source => _project.Media.All(existing => existing.Path != source.Path)))
@@ -457,6 +481,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             _project.Media.Add(source);
         }
         ImportedMedia = _project.Media
+            .Select(source => source with
+            {
+                Path = ProjectLifecycleService.ResolveStoredPath(ProjectDirectory, source.Path)
+            })
             .Where(source => File.Exists(source.Path))
             .ToArray();
         ImportedClipCount = ImportedMedia.Count;
@@ -588,25 +616,42 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         await SeekProjectTimeAsync(nextProjectTime, resumePlayback: IsPlaying);
     }
 
-    private async Task ImportGpxAsync(string path, bool isDemo, CancellationToken cancellationToken = default)
+    private async Task ImportGpxAsync(
+        string path,
+        bool isDemo,
+        bool copyToProject = false,
+        CancellationToken cancellationToken = default)
     {
-        var points = await _gpxTrackService.ReadAsync(path, cancellationToken);
+        if (ProjectDirectory is null)
+        {
+            throw new InvalidOperationException("Create or open a project before importing GPX.");
+        }
+
+        var selectedFile = new FileInfo(path);
+        var copy = copyToProject
+            ? await _sourceCopyService.CopyAsync(path, ProjectDirectory, ProjectSourceKind.Gpx, cancellationToken)
+            : null;
+        var effectivePath = copy?.FullPath ?? selectedFile.FullName;
+        var storedPath = copy?.RelativePath ?? selectedFile.FullName;
+        var points = await _gpxTrackService.ReadAsync(effectivePath, cancellationToken);
         GpxPoints = points;
         var existingSource = _project.GpxSources.FirstOrDefault(source =>
-            source.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+            ProjectLifecycleService.ResolveStoredPath(ProjectDirectory, source.Path)
+                .Equals(effectivePath, StringComparison.OrdinalIgnoreCase));
         var sourceId = existingSource?.Id ?? Guid.NewGuid();
         var anchor = new SyncAnchor(sourceId, TimeSpan.Zero, points[0].RecordedAt);
         _gpxTimelineMapper = new GpxTimelineMapper([anchor]);
         GpxTrackChanged?.Invoke(this, points);
         if (existingSource is null)
         {
-            var file = new FileInfo(path);
             _project.GpxSources.Add(new GpxSource(
                 sourceId,
-                file.Name,
-                file.FullName,
+                selectedFile.Name,
+                storedPath,
                 points,
-                file.Length));
+                copy?.FileSize ?? selectedFile.Length,
+                copy?.Sha256,
+                copyToProject));
         }
         _project.Timeline.SyncAnchors.RemoveAll(existing => existing.GpxSourceId == sourceId);
         _project.Timeline.SyncAnchors.Add(anchor);
@@ -616,8 +661,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         if (!isDemo)
         {
             LoadedMediaName = ImportedMedia.Count > 0
-                ? $"{ImportedMedia[0].DisplayName}  +  {Path.GetFileName(path)}"
-                : Path.GetFileName(path);
+                ? $"{ImportedMedia[0].DisplayName}  +  {selectedFile.Name}"
+                : selectedFile.Name;
         }
 
         StatusText = $"GPX aligned • {points.Count} points • offset +00:00.000";

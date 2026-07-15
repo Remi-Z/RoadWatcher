@@ -184,7 +184,7 @@ public sealed partial class MainWindow : Window
         {
             var gpxPaths = paths.Where(path => Path.GetExtension(path).Equals(".gpx", StringComparison.OrdinalIgnoreCase)).ToArray();
             var mediaPaths = paths.Except(gpxPaths, StringComparer.OrdinalIgnoreCase).ToArray();
-            await viewModel.ImportRideAsync(mediaPaths, gpxPaths);
+            await viewModel.ImportRideAsync(mediaPaths, gpxPaths, viewModel.CopySourcesIntoProject);
         }
         catch (Exception exception)
         {

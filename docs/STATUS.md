@@ -64,6 +64,8 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 - The hard-coded demo intersection is removed. Reviewers can explicitly request a Nominatim address suggestion for the marked incident coordinate, edit intersection/address independently, and confirm or preserve it as unconfirmed before save; offline/manual entry remains available.
 - Public Nominatim access is policy-aligned: no automatic playback requests, identifying User-Agent, process-wide one-request-per-second throttle, project-local rounded-coordinate cache, visible OpenStreetMap attribution, and environment-switchable endpoint/user-agent.
 - Release UI acceptance returned one real address, then returned the same value from cache in 301 ms with the endpoint deliberately offline. The edited intersection, full address, and confirmation flag survived save. `location-resolution.png` records the 1152 × 820 logical state, and all 20 tests pass.
+- The import header now exposes optional project-local copying while preserving reference import as the default. Media/GPX copies are streamed to temporary files, hashed during copy, atomically promoted into separate source folders, deduplicated by content, and collision-safe.
+- Release native-picker acceptance copied the deterministic 300,337-byte clip to `sources/media/timeline-clip-1.mp4`; the persisted relative path, `isProjectCopy`, and SHA-256 all verified. `source-copy.png` records the checked option and success status; all 22 tests pass.
 
 ## Milestone commits
 
@@ -78,8 +80,8 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 
 ## Next actions
 
-1. Expose the optional project-local source-copy import path and finish any remaining V1 workflow polish.
-2. Run the complete two-video/one-GPX acceptance journey and capture the completed M07 UI milestone evidence.
+1. Run the complete two-video/one-GPX acceptance journey from a fresh project and capture the completed M07 milestone evidence.
+2. Audit remaining UI fields, long-ride bounds, packaging output, and V1 scope for any unresolved implementation gap.
 3. Run the representative-video performance matrix with user-provided 4K60 HEVC footage; do not claim 4K60 acceptance without it.
 4. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.
 

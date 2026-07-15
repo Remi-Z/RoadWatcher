@@ -18,6 +18,7 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - FFmpeg is discovered from `ROADWATCHER_FFMPEG` or `PATH`; unavailable-tool instructions and per-clip warnings are package payloads instead of fatal export errors.
 - Replaced the hard-coded demo intersection with an opt-in Nominatim adapter and editable intersection/address fields plus explicit reviewer confirmation.
 - Reverse lookups use a custom User-Agent, a process-wide one-request-per-second gate, a rounded-coordinate project cache, visible OpenStreetMap attribution, and environment-configurable endpoint/user-agent overrides.
+- Added an explicit `Copy sources` import option. Verified copies are atomically stored under `sources/media` or `sources/gpx`, hashed during the copy, collision-safe, deduplicated by SHA-256, and persisted as project-relative paths.
 
 ## Tested interactions
 
@@ -36,11 +37,13 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - Triggered one real Nominatim request from the Release UI and received an address for the synchronized playhead coordinate; no automatic request was made during playback/open.
 - Relaunched with the endpoint deliberately set to unreachable localhost, requested the same suggestion, and received it from the project cache in 301 ms. Edited the intersection to `Robert St & Harbord St`, confirmed it, saved the incident, and verified address/intersection/confirmation in `project.json`.
 - Automated tests verify request URI/User-Agent construction, rounded-coordinate memory cache, cache reuse by a new resolver instance without HTTP, and coordinate validation.
+- Exercised the Windows native picker from the Release UI with `Copy sources` checked. The selected 300,337-byte clip persisted as `sources/media/timeline-clip-1.mp4` with `isProjectCopy: true`; its recorded SHA-256 matched the copied file.
+- Re-imported the same clip and observed verified duplicate reuse rather than a second physical file. Automated tests also cover differing same-name collision suffixes and GPX/media separation.
 
 ## Build and test results
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore` — passed, 0 warnings, 0 errors.
-- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 20/20 tests.
+- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 22/22 tests.
 
 ## Screenshot state
 
@@ -48,13 +51,12 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - `virtual-timeline.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, deterministic two-clip/one-GPX project playing at project 4.3 seconds inside the five-second source gap. Both clip blocks, the real gap block, last available source frame, synchronized telemetry, and gap status are visible.
 - `gpx-synchronization.png`: 520 × 442 physical flyout inside the 1152 × 820 logical workbench, persisted +2.500-second offset, editable playhead timestamp, and two-anchor drift status of -1.500 seconds. The editor is a flyout so the map remains visible in the Context dock while it is closed or in use.
 - `location-resolution.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, cached suggestion returned with the network endpoint offline, manually edited intersection, full address, OpenStreetMap provider attribution, and checked confirmation state. Captured with the DPI-aware `PrintWindow` fallback after the ordinary Windows helper observed a different virtual desktop.
+- `source-copy.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, native-picker import completed with `Copy sources` checked, three persisted timeline sources visible, and the verified-copy success status. Captured with the same DPI-aware `PrintWindow` fallback.
 
 ## Known limitations
 
-- The source-copy option is not yet exposed; relinking currently targets referenced external or already project-local files.
-- The picker-based UI journey remains a manual acceptance item; automated coverage exercises the underlying lifecycle and recovery adapter.
 - Representative 4K60 HEVC footage has not been supplied, so performance acceptance remains unverified.
 
 ## Exact next action
 
-Expose the optional project-local source-copy import path and finish remaining V1 workflow polish before the final acceptance pass.
+Run the complete V1 acceptance journey from a fresh project, close/reopen it, validate the exported manifest, and perform the remaining UI/performance/packaging audits.
