@@ -71,6 +71,41 @@ public interface IEvidenceExporter
 
 public sealed record ExportResult(string PackageDirectory, string ManifestPath, IReadOnlyList<string> Files);
 
+public interface IReviewClipGenerator
+{
+    Task<ExternalToolAvailability> GetAvailabilityAsync(CancellationToken cancellationToken = default);
+    Task<DerivedReviewClip> GenerateAsync(
+        ReviewClipRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record ExternalToolAvailability(
+    bool IsAvailable,
+    string Tool,
+    string? Version,
+    string? ExecutablePath,
+    string? SetupInstructions);
+
+public sealed record ReviewClipRequest(
+    string SourcePath,
+    string DestinationPath,
+    Guid SourceMediaId,
+    TimeSpan ProjectStart,
+    TimeSpan ProjectEnd,
+    TimeSpan SourceStart,
+    TimeSpan SourceEnd);
+
+public sealed record DerivedReviewClip(
+    string Path,
+    string Tool,
+    string Version,
+    string Command,
+    Guid SourceMediaId,
+    TimeSpan ProjectStart,
+    TimeSpan ProjectEnd,
+    TimeSpan SourceStart,
+    TimeSpan SourceEnd);
+
 public interface IProjectStore
 {
     Task<ProjectDocument> OpenAsync(string projectDirectory, CancellationToken cancellationToken = default);

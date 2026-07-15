@@ -2,18 +2,31 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Xml.Linq;
 using RoadWatcher.Core;
 
 namespace RoadWatcher.Infrastructure;
 
-public sealed class EvidencePackageExporter(string projectDirectory) : IEvidenceExporter
+public sealed class EvidencePackageExporter : IEvidenceExporter
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
     };
 
-    private readonly string _projectDirectory = Path.GetFullPath(projectDirectory);
+    private readonly string _projectDirectory;
+    private readonly IReviewClipGenerator _reviewClipGenerator;
+    private readonly IGpxTrackService _gpxTrackService;
+
+    public EvidencePackageExporter(
+        string projectDirectory,
+        IReviewClipGenerator? reviewClipGenerator = null,
+        IGpxTrackService? gpxTrackService = null)
+    {
+        _projectDirectory = Path.GetFullPath(projectDirectory);
+        _reviewClipGenerator = reviewClipGenerator ?? new FfmpegReviewClipGenerator();
+        _gpxTrackService = gpxTrackService ?? new GpxTrackService();
+    }
 
     public async Task<ExportResult> ExportAsync(
         ProjectDocument project,
@@ -24,14 +37,14 @@ public sealed class EvidencePackageExporter(string projectDirectory) : IEvidence
         var packageDirectory = Path.GetFullPath(destinationDirectory);
         Directory.CreateDirectory(packageDirectory);
 
-        var exportedFiles = new List<string>();
+        var exportedFiles = new List<ExportedPayload>();
         var projectPath = Path.Combine(packageDirectory, "project.json");
         await WriteJsonAsync(projectPath, project, cancellationToken);
-        exportedFiles.Add(projectPath);
+        exportedFiles.Add(new ExportedPayload(projectPath, "project"));
 
         var summaryPath = Path.Combine(packageDirectory, "incident-summary.html");
         await File.WriteAllTextAsync(summaryPath, BuildSummary(project), new UTF8Encoding(false), cancellationToken);
-        exportedFiles.Add(summaryPath);
+        exportedFiles.Add(new ExportedPayload(summaryPath, "summary"));
 
         var evidenceDirectory = Path.Combine(packageDirectory, "evidence");
         foreach (var asset in project.Incidents.SelectMany(incident => incident.Attachments).DistinctBy(asset => asset.Id))
@@ -46,28 +59,291 @@ public sealed class EvidencePackageExporter(string projectDirectory) : IEvidence
             var safeFileName = $"{asset.Id:N}-{Path.GetFileName(sourcePath)}";
             var destinationPath = Path.Combine(evidenceDirectory, safeFileName);
             File.Copy(sourcePath, destinationPath, overwrite: true);
-            exportedFiles.Add(destinationPath);
+            exportedFiles.Add(new ExportedPayload(
+                destinationPath,
+                asset.Kind,
+                asset.ProjectTime,
+                asset.ProjectTime,
+                asset.SourceMediaId,
+                asset.SourceTime,
+                asset.SourceTime,
+                Derivation: asset.Derivation));
         }
+
+        await ExportGpxExcerptsAsync(project, packageDirectory, exportedFiles, cancellationToken);
+        await ExportReviewClipsAsync(project, packageDirectory, exportedFiles, cancellationToken);
 
         var manifestPath = Path.Combine(packageDirectory, "manifest.json");
         var entries = new List<ManifestEntry>(exportedFiles.Count);
-        foreach (var file in exportedFiles.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        foreach (var payload in exportedFiles.OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase))
         {
             entries.Add(new ManifestEntry(
-                NormalizeRelativePath(Path.GetRelativePath(packageDirectory, file)),
-                new FileInfo(file).Length,
-                await CalculateSha256Async(file, cancellationToken)));
+                NormalizeRelativePath(Path.GetRelativePath(packageDirectory, payload.Path)),
+                payload.Kind,
+                new FileInfo(payload.Path).Length,
+                await CalculateSha256Async(payload.Path, cancellationToken),
+                payload.ProjectStart,
+                payload.ProjectEnd,
+                payload.SourceMediaId,
+                payload.SourceStart,
+                payload.SourceEnd,
+                payload.SourceGpxId,
+                payload.GpxStart,
+                payload.GpxEnd,
+                payload.Tool,
+                payload.ToolVersion,
+                payload.Command,
+                payload.Derivation));
         }
 
         var manifest = new EvidenceManifest(
-            1,
+            2,
             project.ProjectId,
             DateTimeOffset.UtcNow,
             "SHA-256",
             entries);
         await WriteJsonAsync(manifestPath, manifest, cancellationToken);
 
-        return new ExportResult(packageDirectory, manifestPath, [.. exportedFiles, manifestPath]);
+        return new ExportResult(packageDirectory, manifestPath, [.. exportedFiles.Select(item => item.Path), manifestPath]);
+    }
+
+    private async Task ExportReviewClipsAsync(
+        ProjectDocument project,
+        string packageDirectory,
+        List<ExportedPayload> exportedFiles,
+        CancellationToken cancellationToken)
+    {
+        var requests = BuildReviewClipRequests(project, packageDirectory);
+        if (requests.Count == 0)
+        {
+            return;
+        }
+
+        var availability = await _reviewClipGenerator.GetAvailabilityAsync(cancellationToken);
+        if (!availability.IsAvailable)
+        {
+            var setupPath = Path.Combine(packageDirectory, "FFMPEG-SETUP.txt");
+            var setup = availability.SetupInstructions ??
+                "Install FFmpeg 8.x, place ffmpeg on PATH, or set ROADWATCHER_FFMPEG to its executable path, then export again.";
+            await File.WriteAllTextAsync(setupPath, setup + Environment.NewLine, new UTF8Encoding(false), cancellationToken);
+            exportedFiles.Add(new ExportedPayload(
+                setupPath,
+                "setup-instructions",
+                Tool: availability.Tool,
+                ToolVersion: availability.Version,
+                Derivation: "Review clips were skipped because FFmpeg was unavailable."));
+            return;
+        }
+
+        var warnings = new List<string>();
+        foreach (var request in requests)
+        {
+            try
+            {
+                var derived = await _reviewClipGenerator.GenerateAsync(request, cancellationToken);
+                exportedFiles.Add(new ExportedPayload(
+                    derived.Path,
+                    "review-clip",
+                    derived.ProjectStart,
+                    derived.ProjectEnd,
+                    derived.SourceMediaId,
+                    derived.SourceStart,
+                    derived.SourceEnd,
+                    Tool: derived.Tool,
+                    ToolVersion: derived.Version,
+                    Command: derived.Command,
+                    Derivation: "H.264/AAC incident review clip; CRF 20, medium preset, yuv420p, faststart."));
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                if (File.Exists(request.DestinationPath))
+                {
+                    File.Delete(request.DestinationPath);
+                }
+                warnings.Add($"{Path.GetFileName(request.DestinationPath)}: {exception.Message}");
+            }
+        }
+
+        if (warnings.Count > 0)
+        {
+            var warningPath = Path.Combine(packageDirectory, "export-warnings.txt");
+            await File.WriteAllLinesAsync(warningPath, warnings, new UTF8Encoding(false), cancellationToken);
+            exportedFiles.Add(new ExportedPayload(
+                warningPath,
+                "export-warnings",
+                Tool: availability.Tool,
+                ToolVersion: availability.Version));
+        }
+    }
+
+    private List<ReviewClipRequest> BuildReviewClipRequests(ProjectDocument project, string packageDirectory)
+    {
+        var clipsDirectory = Path.Combine(packageDirectory, "review-clips");
+        var mediaById = project.Media.ToDictionary(source => source.Id);
+        var requests = new List<ReviewClipRequest>();
+        foreach (var incident in project.Incidents.OrderBy(item => item.ProjectStart))
+        {
+            var ordinal = 0;
+            foreach (var segment in project.Timeline.Segments.OrderBy(item => item.ProjectStart))
+            {
+                if (!mediaById.TryGetValue(segment.MediaSourceId, out var media))
+                {
+                    continue;
+                }
+
+                var projectStart = Max(incident.ProjectStart, segment.ProjectStart);
+                var projectEnd = Min(incident.ProjectEnd, segment.ProjectStart + segment.Duration);
+                if (projectEnd <= projectStart)
+                {
+                    continue;
+                }
+
+                var sourcePath = ProjectLifecycleService.ResolveStoredPath(_projectDirectory, media.Path);
+                if (!File.Exists(sourcePath))
+                {
+                    continue;
+                }
+
+                ordinal++;
+                var sourceStart = segment.SourceStart + (projectStart - segment.ProjectStart);
+                var sourceEnd = segment.SourceStart + (projectEnd - segment.ProjectStart);
+                requests.Add(new ReviewClipRequest(
+                    sourcePath,
+                    Path.Combine(clipsDirectory, $"incident-{incident.Id:N}-{ordinal:D2}.mp4"),
+                    media.Id,
+                    projectStart,
+                    projectEnd,
+                    sourceStart,
+                    sourceEnd));
+            }
+        }
+
+        return requests;
+    }
+
+    private async Task ExportGpxExcerptsAsync(
+        ProjectDocument project,
+        string packageDirectory,
+        List<ExportedPayload> exportedFiles,
+        CancellationToken cancellationToken)
+    {
+        var excerptsDirectory = Path.Combine(packageDirectory, "gpx");
+        foreach (var incident in project.Incidents.OrderBy(item => item.ProjectStart))
+        {
+            foreach (var source in project.GpxSources)
+            {
+                var anchors = project.Timeline.SyncAnchors
+                    .Where(anchor => anchor.GpxSourceId == source.Id)
+                    .OrderBy(anchor => anchor.ProjectTime)
+                    .ToArray();
+                if (anchors.Length == 0 || source.Points.Count == 0)
+                {
+                    continue;
+                }
+
+                var mapper = new GpxTimelineMapper(anchors);
+                var mappedStart = mapper.MapToGpxTime(incident.ProjectStart);
+                var mappedEnd = mapper.MapToGpxTime(incident.ProjectEnd);
+                if (mappedEnd < mappedStart)
+                {
+                    (mappedStart, mappedEnd) = (mappedEnd, mappedStart);
+                }
+
+                var orderedPoints = source.Points.OrderBy(point => point.RecordedAt).ToArray();
+                var excerptStart = mappedStart < orderedPoints[0].RecordedAt ? orderedPoints[0].RecordedAt : mappedStart;
+                var excerptEnd = mappedEnd > orderedPoints[^1].RecordedAt ? orderedPoints[^1].RecordedAt : mappedEnd;
+                if (excerptEnd < excerptStart)
+                {
+                    continue;
+                }
+
+                var points = BuildExcerptPoints(orderedPoints, excerptStart, excerptEnd);
+                if (points.Count == 0)
+                {
+                    continue;
+                }
+
+                Directory.CreateDirectory(excerptsDirectory);
+                var path = Path.Combine(excerptsDirectory, $"incident-{incident.Id:N}-{source.Id:N}.gpx");
+                await WriteGpxAsync(path, project, incident, source, points, cancellationToken);
+                exportedFiles.Add(new ExportedPayload(
+                    path,
+                    "gpx-excerpt",
+                    incident.ProjectStart,
+                    incident.ProjectEnd,
+                    SourceGpxId: source.Id,
+                    GpxStart: excerptStart,
+                    GpxEnd: excerptEnd,
+                    Tool: "RoadWatcher GPX interpolator",
+                    ToolVersion: "1",
+                    Derivation: $"Incident window mapped with {anchors.Length} synchronization anchor(s); boundaries interpolated and clamped to available track time."));
+            }
+        }
+    }
+
+    private IReadOnlyList<TrackPoint> BuildExcerptPoints(
+        IReadOnlyList<TrackPoint> points,
+        DateTimeOffset start,
+        DateTimeOffset end)
+    {
+        var excerpt = new List<TrackPoint>();
+        var startSample = _gpxTrackService.SampleAt(points, start);
+        if (startSample is not null)
+        {
+            excerpt.Add(ToTrackPoint(startSample));
+        }
+
+        excerpt.AddRange(points.Where(point => point.RecordedAt > start && point.RecordedAt < end));
+        if (end > start)
+        {
+            var endSample = _gpxTrackService.SampleAt(points, end);
+            if (endSample is not null)
+            {
+                excerpt.Add(ToTrackPoint(endSample));
+            }
+        }
+
+        return excerpt.DistinctBy(point => point.RecordedAt).OrderBy(point => point.RecordedAt).ToArray();
+    }
+
+    private static TrackPoint ToTrackPoint(TelemetrySample sample) =>
+        new(sample.Time, sample.Latitude, sample.Longitude, null, sample.SpeedMetersPerSecond);
+
+    private static async Task WriteGpxAsync(
+        string path,
+        ProjectDocument project,
+        Incident incident,
+        GpxSource source,
+        IReadOnlyList<TrackPoint> points,
+        CancellationToken cancellationToken)
+    {
+        XNamespace gpx = "http://www.topografix.com/GPX/1/1";
+        var document = new XDocument(
+            new XDeclaration("1.0", "utf-8", null),
+            new XElement(gpx + "gpx",
+                new XAttribute("version", "1.1"),
+                new XAttribute("creator", "RoadWatcher"),
+                new XElement(gpx + "metadata",
+                    new XElement(gpx + "name", $"{project.Title} incident {incident.Id}"),
+                    new XElement(gpx + "desc", $"Excerpt derived from {source.DisplayName}")),
+                new XElement(gpx + "trk",
+                    new XElement(gpx + "name", $"Incident {incident.Id}"),
+                    new XElement(gpx + "trkseg",
+                        points.Select(point =>
+                            new XElement(gpx + "trkpt",
+                                new XAttribute("lat", point.Latitude.ToString("F8", System.Globalization.CultureInfo.InvariantCulture)),
+                                new XAttribute("lon", point.Longitude.ToString("F8", System.Globalization.CultureInfo.InvariantCulture)),
+                                point.ElevationMeters is { } elevation
+                                    ? new XElement(gpx + "ele", elevation.ToString("F3", System.Globalization.CultureInfo.InvariantCulture))
+                                    : null,
+                                new XElement(gpx + "time", point.RecordedAt.UtcDateTime.ToString("O")),
+                                point.SpeedMetersPerSecond is { } speed
+                                    ? new XElement(gpx + "speed", speed.ToString("F3", System.Globalization.CultureInfo.InvariantCulture))
+                                    : null))))));
+
+        await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        await document.SaveAsync(stream, SaveOptions.None, cancellationToken);
+        await stream.FlushAsync(cancellationToken);
     }
 
     private string ResolveProjectPath(string relativePath)
@@ -174,6 +450,10 @@ public sealed class EvidencePackageExporter(string projectDirectory) : IEvidence
 
     private static string NormalizeRelativePath(string path) => path.Replace('\\', '/');
 
+    private static TimeSpan Max(TimeSpan left, TimeSpan right) => left > right ? left : right;
+
+    private static TimeSpan Min(TimeSpan left, TimeSpan right) => left < right ? left : right;
+
     private sealed record EvidenceManifest(
         int SchemaVersion,
         Guid ProjectId,
@@ -181,5 +461,37 @@ public sealed class EvidencePackageExporter(string projectDirectory) : IEvidence
         string Algorithm,
         IReadOnlyList<ManifestEntry> Files);
 
-    private sealed record ManifestEntry(string Path, long Size, string Sha256);
+    private sealed record ManifestEntry(
+        string Path,
+        string Kind,
+        long Size,
+        string Sha256,
+        TimeSpan? ProjectStart = null,
+        TimeSpan? ProjectEnd = null,
+        Guid? SourceMediaId = null,
+        TimeSpan? SourceStart = null,
+        TimeSpan? SourceEnd = null,
+        Guid? SourceGpxId = null,
+        DateTimeOffset? GpxStart = null,
+        DateTimeOffset? GpxEnd = null,
+        string? Tool = null,
+        string? ToolVersion = null,
+        string? Command = null,
+        string? Derivation = null);
+
+    private sealed record ExportedPayload(
+        string Path,
+        string Kind,
+        TimeSpan? ProjectStart = null,
+        TimeSpan? ProjectEnd = null,
+        Guid? SourceMediaId = null,
+        TimeSpan? SourceStart = null,
+        TimeSpan? SourceEnd = null,
+        Guid? SourceGpxId = null,
+        DateTimeOffset? GpxStart = null,
+        DateTimeOffset? GpxEnd = null,
+        string? Tool = null,
+        string? ToolVersion = null,
+        string? Command = null,
+        string? Derivation = null);
 }

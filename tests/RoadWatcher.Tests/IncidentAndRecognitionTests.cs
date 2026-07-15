@@ -127,4 +127,199 @@ public sealed class IncidentAndRecognitionTests
             }
         }
     }
+
+    [Fact]
+    public async Task Evidence_export_derives_segment_clips_and_synchronized_gpx_with_provenance()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "roadwatcher-tests", Guid.NewGuid().ToString("N"));
+        var projectDirectory = Path.Combine(root, "ride.roadwatcher");
+        var exportDirectory = Path.Combine(projectDirectory, "exports", "complete-evidence-test");
+        var firstMediaId = Guid.NewGuid();
+        var secondMediaId = Guid.NewGuid();
+        var gpxId = Guid.NewGuid();
+        var incidentId = Guid.NewGuid();
+        try
+        {
+            Directory.CreateDirectory(projectDirectory);
+            await File.WriteAllBytesAsync(Path.Combine(projectDirectory, "first.mp4"), [1, 2, 3]);
+            await File.WriteAllBytesAsync(Path.Combine(projectDirectory, "second.mp4"), [4, 5, 6]);
+            var gpxStart = new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero);
+            var project = new ProjectDocument
+            {
+                Title = "Complete export",
+                Media =
+                [
+                    new MediaSource(firstMediaId, "first.mp4", "first.mp4", 3, null, TimeSpan.FromSeconds(3)),
+                    new MediaSource(secondMediaId, "second.mp4", "second.mp4", 3, null, TimeSpan.FromSeconds(3))
+                ],
+                GpxSources =
+                [
+                    new GpxSource(
+                        gpxId,
+                        "ride.gpx",
+                        "ride.gpx",
+                        Enumerable.Range(0, 15)
+                            .Select(second => new TrackPoint(
+                                gpxStart.AddSeconds(second),
+                                43.65 + second * 0.0001,
+                                -79.38 - second * 0.0001,
+                                SpeedMetersPerSecond: 5 + second * 0.1))
+                            .ToArray())
+                ],
+                Timeline = new TimelineDefinition
+                {
+                    Segments =
+                    [
+                        new TimelineSegment(firstMediaId, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(3)),
+                        new TimelineSegment(secondMediaId, TimeSpan.FromSeconds(8), TimeSpan.Zero, TimeSpan.FromSeconds(3))
+                    ],
+                    SyncAnchors = [new SyncAnchor(gpxId, TimeSpan.Zero, gpxStart)]
+                },
+                Incidents =
+                [
+                    new Incident
+                    {
+                        Id = incidentId,
+                        ProjectStart = TimeSpan.FromSeconds(1),
+                        ProjectEnd = TimeSpan.FromSeconds(10),
+                        MediaSourceId = firstMediaId,
+                        SourceTime = TimeSpan.FromSeconds(1)
+                    }
+                ]
+            };
+            var generator = new FakeReviewClipGenerator();
+
+            var result = await new EvidencePackageExporter(projectDirectory, generator)
+                .ExportAsync(project, exportDirectory);
+
+            Assert.Equal(2, generator.Requests.Count);
+            Assert.Equal(TimeSpan.FromSeconds(1), generator.Requests[0].ProjectStart);
+            Assert.Equal(TimeSpan.FromSeconds(3), generator.Requests[0].ProjectEnd);
+            Assert.Equal(TimeSpan.FromSeconds(8), generator.Requests[1].ProjectStart);
+            Assert.Equal(TimeSpan.FromSeconds(10), generator.Requests[1].ProjectEnd);
+            Assert.Equal(6, result.Files.Count);
+            Assert.True(File.Exists(Path.Combine(
+                exportDirectory,
+                "gpx",
+                $"incident-{incidentId:N}-{gpxId:N}.gpx")));
+
+            await using var manifestStream = File.OpenRead(result.ManifestPath);
+            using var manifest = await JsonDocument.ParseAsync(manifestStream);
+            Assert.Equal(2, manifest.RootElement.GetProperty("schemaVersion").GetInt32());
+            var entries = manifest.RootElement.GetProperty("files").EnumerateArray().ToArray();
+            var clips = entries.Where(entry => entry.GetProperty("kind").GetString() == "review-clip").ToArray();
+            Assert.Equal(2, clips.Length);
+            Assert.All(clips, entry =>
+            {
+                Assert.Equal("Fake FFmpeg", entry.GetProperty("tool").GetString());
+                Assert.Equal("8.1-test", entry.GetProperty("toolVersion").GetString());
+                Assert.Contains("-c:v libx264", entry.GetProperty("command").GetString());
+                Assert.NotEqual(Guid.Empty, entry.GetProperty("sourceMediaId").GetGuid());
+            });
+            var gpxEntry = Assert.Single(entries, entry => entry.GetProperty("kind").GetString() == "gpx-excerpt");
+            Assert.Equal(gpxId, gpxEntry.GetProperty("sourceGpxId").GetGuid());
+            Assert.Equal(gpxStart.AddSeconds(1), gpxEntry.GetProperty("gpxStart").GetDateTimeOffset());
+            Assert.Equal(gpxStart.AddSeconds(10), gpxEntry.GetProperty("gpxEnd").GetDateTimeOffset());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Evidence_export_explains_how_to_enable_missing_ffmpeg()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "roadwatcher-tests", Guid.NewGuid().ToString("N"));
+        var projectDirectory = Path.Combine(root, "ride.roadwatcher");
+        var exportDirectory = Path.Combine(projectDirectory, "exports", "missing-ffmpeg-test");
+        var sourceId = Guid.NewGuid();
+        try
+        {
+            Directory.CreateDirectory(projectDirectory);
+            await File.WriteAllBytesAsync(Path.Combine(projectDirectory, "source.mp4"), [1, 2, 3]);
+            var project = new ProjectDocument
+            {
+                Media = [new MediaSource(sourceId, "source.mp4", "source.mp4", 3, null, TimeSpan.FromSeconds(3))],
+                Timeline = new TimelineDefinition
+                {
+                    Segments = [new TimelineSegment(sourceId, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(3))]
+                },
+                Incidents =
+                [
+                    new Incident
+                    {
+                        ProjectStart = TimeSpan.Zero,
+                        ProjectEnd = TimeSpan.FromSeconds(2),
+                        MediaSourceId = sourceId
+                    }
+                ]
+            };
+
+            var result = await new EvidencePackageExporter(projectDirectory, new MissingReviewClipGenerator())
+                .ExportAsync(project, exportDirectory);
+
+            var setupPath = Path.Combine(exportDirectory, "FFMPEG-SETUP.txt");
+            Assert.Contains(setupPath, result.Files);
+            Assert.Contains("ROADWATCHER_FFMPEG", await File.ReadAllTextAsync(setupPath));
+            await using var manifestStream = File.OpenRead(result.ManifestPath);
+            using var manifest = await JsonDocument.ParseAsync(manifestStream);
+            Assert.Contains(
+                manifest.RootElement.GetProperty("files").EnumerateArray(),
+                entry => entry.GetProperty("kind").GetString() == "setup-instructions");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    private sealed class FakeReviewClipGenerator : IReviewClipGenerator
+    {
+        public List<ReviewClipRequest> Requests { get; } = [];
+
+        public Task<ExternalToolAvailability> GetAvailabilityAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ExternalToolAvailability(true, "Fake FFmpeg", "8.1-test", "fake-ffmpeg", null));
+
+        public async Task<DerivedReviewClip> GenerateAsync(
+            ReviewClipRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Requests.Add(request);
+            Directory.CreateDirectory(Path.GetDirectoryName(request.DestinationPath)!);
+            await File.WriteAllBytesAsync(request.DestinationPath, [0, 0, 0, 1], cancellationToken);
+            return new DerivedReviewClip(
+                request.DestinationPath,
+                "Fake FFmpeg",
+                "8.1-test",
+                "fake-ffmpeg -c:v libx264",
+                request.SourceMediaId,
+                request.ProjectStart,
+                request.ProjectEnd,
+                request.SourceStart,
+                request.SourceEnd);
+        }
+    }
+
+    private sealed class MissingReviewClipGenerator : IReviewClipGenerator
+    {
+        public Task<ExternalToolAvailability> GetAvailabilityAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ExternalToolAvailability(
+                false,
+                "FFmpeg",
+                null,
+                "ffmpeg",
+                "Install FFmpeg or set ROADWATCHER_FFMPEG, then export again."));
+
+        public Task<DerivedReviewClip> GenerateAsync(
+            ReviewClipRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
 }

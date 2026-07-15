@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Current milestone
 
-M07 — V1 acceptance closure: project lifecycle and real virtual timeline integration.
+M07 — V1 acceptance closure: complete evidence workflow and acceptance hardening.
 
 ## Completed
 
@@ -57,6 +57,10 @@ M07 — V1 acceptance closure: project lifecycle and real virtual timeline integ
 - Every GPX change rebuilds the existing `GpxTimelineMapper`, updates telemetry/map immediately, and atomically saves `timeline.syncAnchors`.
 - UI acceptance applied a +2.5-second offset and a second anchor at project 8 seconds, producing -1.5 seconds of drift; project 4 seconds mapped to 14:03:36, and the same two-anchor status/telemetry returned after reopen.
 - M07 GPX editor screenshot records the 520 × 442 physical flyout inside the 1152 × 820 logical workbench. Release build succeeds with zero warnings and all 13 tests pass.
+- Evidence export now creates a derived H.264/AAC review clip for every incident/segment intersection, so incidents crossing real timeline gaps retain source-correct clip boundaries rather than fabricating gap footage.
+- Each synchronized GPX source contributes an incident-window GPX 1.1 excerpt with interpolated boundary samples. Manifest schema 2 records payload kind/hash/size plus project, media, GPX, tool, version, command, and derivation provenance where applicable.
+- FFmpeg 8.x is an optional adapter discovered through `ROADWATCHER_FFMPEG` or `PATH`. Missing FFmpeg produces manifested setup instructions; individual failures produce manifested warnings without discarding the canonical JSON, HTML, images, or GPX excerpts.
+- Release UI acceptance with local FFmpeg 8.1.1 produced 25 manifested payloads from six incidents: 12 H.264/yuv420p review clips and six GPX excerpts. All 25 SHA-256 hashes matched and no warning/fallback file was needed. Release build succeeds with zero warnings and all 15 tests pass.
 
 ## Milestone commits
 
@@ -71,8 +75,8 @@ M07 — V1 acceptance closure: project lifecycle and real virtual timeline integ
 
 ## Next actions
 
-1. Add derived H.264 review clips and GPX excerpts with complete provenance and manifest coverage.
-2. Compose an opt-in cached/throttled location resolver with editable suggestions.
+1. Compose an opt-in cached/throttled location resolver with editable suggestions.
+2. Expose the optional project-local source-copy import path and finish any remaining V1 workflow polish.
 3. Run the complete two-video/one-GPX acceptance journey and capture the completed M07 UI milestone evidence.
 4. Run the representative-video performance matrix with user-provided 4K60 HEVC footage; do not claim 4K60 acceptance without it.
 5. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.
