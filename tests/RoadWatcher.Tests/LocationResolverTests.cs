@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
+using RoadWatcher.Core;
 using RoadWatcher.Infrastructure;
 
 namespace RoadWatcher.Tests;
@@ -89,6 +91,43 @@ public sealed class LocationResolverTests
             resolver.ResolveAsync(latitude, longitude));
     }
 
+    [Fact]
+    public async Task Nominatim_cache_is_bounded_to_two_thousand_recent_coordinates()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "roadwatcher-tests", Guid.NewGuid().ToString("N"));
+        var cachePath = Path.Combine(root, "geocoding.json");
+        try
+        {
+            Directory.CreateDirectory(root);
+            var entries = Enumerable.Range(0, 2_001).ToDictionary(
+                index => $"{index / 100000d:F5},{index / 100000d:F5}",
+                index => new CacheFixture(
+                    index / 100000d,
+                    index / 100000d,
+                    new LocationSuggestion(null, $"Address {index}", "Fixture"),
+                    DateTimeOffset.UtcNow.AddMinutes(-index)));
+            await File.WriteAllTextAsync(cachePath, JsonSerializer.Serialize(entries, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+            using var client = new HttpClient(new TrackingHandler("""{"display_name":"New address"}"""));
+            var resolver = new NominatimLocationResolver(
+                cachePath,
+                client,
+                new Uri("https://example.test/reverse"),
+                TimeSpan.Zero);
+
+            await resolver.ResolveAsync(43.7, -79.4);
+
+            using var cache = JsonDocument.Parse(await File.ReadAllTextAsync(cachePath));
+            Assert.Equal(2_000, cache.RootElement.EnumerateObject().Count());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private sealed class TrackingHandler(string responseJson, bool throwOnRequest = false) : HttpMessageHandler
     {
         public int RequestCount { get; private set; }
@@ -113,4 +152,10 @@ public sealed class LocationResolverTests
             });
         }
     }
+
+    private sealed record CacheFixture(
+        double Latitude,
+        double Longitude,
+        LocationSuggestion Suggestion,
+        DateTimeOffset ResolvedAt);
 }

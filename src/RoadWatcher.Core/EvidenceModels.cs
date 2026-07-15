@@ -89,7 +89,8 @@ public sealed record IncidentLocation(
     double Longitude,
     string? Intersection,
     string? Address,
-    bool UserConfirmed);
+    bool UserConfirmed,
+    string? Provider = null);
 
 public sealed record VehicleObservation(
     string? PlateNumber,

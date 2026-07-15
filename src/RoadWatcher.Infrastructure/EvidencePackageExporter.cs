@@ -408,6 +408,7 @@ public sealed class EvidencePackageExporter : IEvidenceExporter
             {
                 AppendField(builder, "Location", location.Intersection ?? location.Address ?? $"{location.Latitude:F6}, {location.Longitude:F6}", html);
                 AppendField(builder, "Coordinates", $"{location.Latitude:F6}, {location.Longitude:F6}", html);
+                AppendField(builder, "Location provider", location.Provider, html);
             }
             if (incident.Vehicle is { } vehicle)
             {

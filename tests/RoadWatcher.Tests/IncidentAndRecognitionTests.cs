@@ -22,6 +22,13 @@ public sealed class IncidentAndRecognitionTests
                 ProjectEnd = TimeSpan.FromSeconds(40),
                 MediaSourceId = sourceId,
                 SourceTime = TimeSpan.FromSeconds(25),
+                Location = new IncidentLocation(
+                    43.65,
+                    -79.38,
+                    "Queen St W & University Ave",
+                    "Toronto, Ontario",
+                    true,
+                    "OpenStreetMap Nominatim"),
                 Notes = "Vehicle occupied the marked lane.",
                 Attachments =
                 [
@@ -45,6 +52,7 @@ public sealed class IncidentAndRecognitionTests
             var incident = Assert.Single(reopened.Incidents);
             Assert.Equal(sourceId, incident.MediaSourceId);
             Assert.Equal(TimeSpan.FromSeconds(25), incident.SourceTime);
+            Assert.Equal("OpenStreetMap Nominatim", incident.Location?.Provider);
             var attachment = Assert.Single(incident.Attachments);
             Assert.Equal("assets/frame.png", attachment.RelativePath);
             Assert.Equal(TimeSpan.FromSeconds(30), attachment.ProjectTime);

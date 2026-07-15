@@ -40,3 +40,5 @@ The import header defaults to reference mode. With `Copy sources` checked, RoadW
 `timeline.segments` is authoritative after import. Every segment records its source media ID, project start, source start, duration, and track. Project-time gaps are represented by intervals with no segment; they are not synthetic media. Newly imported clips whose recorded times are within two seconds of the preceding clip end may be treated as adjacent.
 
 Every incident retains its project window plus source media ID and source time. New evidence attachments also write optional `projectTime` alongside source media ID and source time. Readers must continue accepting schema-version-1 attachments that predate `projectTime`.
+
+Incident locations may include optional `provider` metadata. Its absence remains valid for schema-version-1 projects created before online suggestions were implemented. Coordinates are authoritative and remain present whether a provider returns a suggestion or the reviewer enters text manually.

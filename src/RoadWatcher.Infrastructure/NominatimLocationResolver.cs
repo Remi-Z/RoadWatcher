@@ -7,6 +7,7 @@ namespace RoadWatcher.Infrastructure;
 
 public sealed class NominatimLocationResolver : ILocationResolver
 {
+    private const int MaximumCacheEntries = 2_000;
     private const string DefaultEndpoint = "https://nominatim.openstreetmap.org/reverse";
     private const string DefaultUserAgent = "RoadWatcher/0.1 (desktop evidence review; opt-in reverse lookup)";
     private static readonly HttpClient SharedHttpClient = new();
@@ -127,6 +128,14 @@ public sealed class NominatimLocationResolver : ILocationResolver
         {
             await EnsureCacheLoadedAsync(cancellationToken);
             _cache![key] = value;
+            foreach (var staleKey in _cache
+                         .OrderByDescending(item => item.Value.ResolvedAt)
+                         .Skip(MaximumCacheEntries)
+                         .Select(item => item.Key)
+                         .ToArray())
+            {
+                _cache.Remove(staleKey);
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(_cachePath)!);
             var temporaryPath = _cachePath + ".tmp";
             await using (var stream = new FileStream(temporaryPath, FileMode.Create, FileAccess.Write, FileShare.None))

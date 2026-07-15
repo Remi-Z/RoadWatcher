@@ -35,6 +35,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private GpxTimelineMapper? _gpxTimelineMapper;
     private TelemetrySample? _currentTelemetrySample;
     private TelemetrySample? _incidentLocationSample;
+    private string? _incidentLocationProvider;
     private Guid? _editingIncidentId;
     private double _incidentStartSeconds;
     private double _incidentEndSeconds;
@@ -325,6 +326,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _loadedMediaSourceId = null;
         _currentTelemetrySample = null;
         _incidentLocationSample = null;
+        _incidentLocationProvider = null;
         _editingIncidentId = null;
         Intersection = string.Empty;
         Address = string.Empty;
@@ -390,6 +392,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         AttachmentCount = 0;
         _pendingAttachments.Clear();
         _incidentLocationSample = null;
+        _incidentLocationProvider = null;
         _editingIncidentId = null;
         HasSelectedIncident = false;
         SaveIncidentButtonText = "Save incident";
@@ -953,6 +956,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _pendingAttachments.Clear();
         AttachmentCount = 0;
         _incidentLocationSample = _currentTelemetrySample;
+        _incidentLocationProvider = null;
         Intersection = string.Empty;
         Address = string.Empty;
         IsLocationConfirmed = false;
@@ -992,6 +996,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _incidentLocationSample = incident.Location is { } location
             ? new TelemetrySample(DateTimeOffset.MinValue, location.Latitude, location.Longitude, 0, null)
             : null;
+        _incidentLocationProvider = incident.Location?.Provider;
         PlateNumber = incident.Vehicle?.PlateNumber ?? string.Empty;
         SelectedProvince = incident.Vehicle?.Province ?? "ON";
         VehicleColor = incident.Vehicle?.Colour ?? "Other";
@@ -1030,6 +1035,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         LocationResolutionStatus = "Looking up this coordinate once…";
+        _incidentLocationProvider = "OpenStreetMap Nominatim";
         try
         {
             var suggestion = await _locationResolver.ResolveAsync(sample.Latitude, sample.Longitude);
@@ -1042,6 +1048,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             Intersection = suggestion.Intersection ?? string.Empty;
             Address = suggestion.Address ?? string.Empty;
             IsLocationConfirmed = false;
+            _incidentLocationProvider = suggestion.Provider;
             LocationText = !string.IsNullOrWhiteSpace(Intersection)
                 ? Intersection
                 : !string.IsNullOrWhiteSpace(Address)
@@ -1106,7 +1113,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                     sample.Longitude,
                     NullIfWhiteSpace(Intersection),
                     NullIfWhiteSpace(Address),
-                    IsLocationConfirmed),
+                    IsLocationConfirmed,
+                    _incidentLocationProvider),
             Vehicle = new VehicleObservation(
                 PlateNumber,
                 SelectedProvince,
