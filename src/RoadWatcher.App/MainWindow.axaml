@@ -167,6 +167,35 @@
           <mapsui:MapControl x:Name="ContextMap" />
         </Border>
         <StackPanel Grid.Row="2" Margin="16,12,16,16" Spacing="10">
+          <Button IsEnabled="{Binding HasGpx}" Content="GPX synchronization…" AutomationProperties.Name="GPX synchronization">
+            <Button.Flyout>
+              <Flyout>
+                <Border Width="320" Padding="14" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="6">
+                  <StackPanel Spacing="7">
+                    <TextBlock FontWeight="SemiBold" Text="GPX synchronization" />
+                    <TextBlock Classes="muted" FontSize="10" Text="One-anchor offset (seconds)" />
+                    <Grid ColumnDefinitions="*,Auto">
+                      <NumericUpDown Minimum="-86400"
+                                     Maximum="86400"
+                                     Increment="0.1"
+                                     FormatString="0.000"
+                                     Value="{Binding GpxOffsetSeconds}"
+                                     AutomationProperties.Name="GPX offset seconds" />
+                      <Button Grid.Column="1" Margin="6,0,0,0" Command="{Binding ApplyGpxOffsetCommand}" Content="Apply" AutomationProperties.Name="Apply GPX offset" />
+                    </Grid>
+                    <TextBlock Classes="muted" FontSize="10" Text="GPX time at current playhead" />
+                    <TextBox FontSize="10" Text="{Binding GpxAnchorTimeText}" AutomationProperties.Name="GPX anchor timestamp" />
+                    <Grid ColumnDefinitions="*,*">
+                      <Button Margin="0,0,3,0" Command="{Binding SetFirstGpxAnchorCommand}" Content="Set first" AutomationProperties.Name="Set first GPX anchor" />
+                      <Button Grid.Column="1" Margin="3,0,0,0" Command="{Binding SetSecondGpxAnchorCommand}" Content="Set second" AutomationProperties.Name="Set second GPX anchor" />
+                    </Grid>
+                    <Button Command="{Binding ClearGpxDriftCommand}" Content="Clear drift correction" AutomationProperties.Name="Clear GPX drift correction" />
+                    <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="{Binding GpxSyncStatusText}" />
+                  </StackPanel>
+                </Border>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
           <TextBlock FontWeight="SemiBold" Text="Overlay Layers" />
           <CheckBox IsChecked="True">
             <StackPanel Orientation="Horizontal" Spacing="8">

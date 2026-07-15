@@ -53,6 +53,10 @@ M07 — V1 acceptance closure: project lifecycle and real virtual timeline integ
 - Two generated three-second H.264 fixtures plus one GPX track exercised the real LibVLC path: playback entered the five-second gap at project 3.8 seconds and loaded clip 2 at project 8.4/source 0.4 seconds.
 - A paused seek to project 9 seconds captured and saved an incident on clip 2 with incident source time 1 second and attachment project/source times 9/1 seconds; source IDs, image existence, and the persisted SHA-256 were verified after JSON save.
 - ADR 0002 records authoritative persisted segments and backward-compatible optional attachment `projectTime`. Release build succeeds with zero warnings and all 11 tests pass.
+- GPX synchronization controls implemented as a standard Avalonia flyout so the Context map remains persistent. Users can apply a one-anchor offset, set first/second anchors at the playhead with an editable timestamp, and clear drift correction.
+- Every GPX change rebuilds the existing `GpxTimelineMapper`, updates telemetry/map immediately, and atomically saves `timeline.syncAnchors`.
+- UI acceptance applied a +2.5-second offset and a second anchor at project 8 seconds, producing -1.5 seconds of drift; project 4 seconds mapped to 14:03:36, and the same two-anchor status/telemetry returned after reopen.
+- M07 GPX editor screenshot records the 520 × 442 physical flyout inside the 1152 × 820 logical workbench. Release build succeeds with zero warnings and all 13 tests pass.
 
 ## Milestone commits
 
@@ -67,8 +71,8 @@ M07 — V1 acceptance closure: project lifecycle and real virtual timeline integ
 
 ## Next actions
 
-1. Add editable and persisted one/two-anchor GPX synchronization controls.
-2. Add derived H.264 review clips and GPX excerpts with complete provenance and manifest coverage, then compose an opt-in cached/throttled location resolver.
+1. Add derived H.264 review clips and GPX excerpts with complete provenance and manifest coverage.
+2. Compose an opt-in cached/throttled location resolver with editable suggestions.
 3. Run the complete two-video/one-GPX acceptance journey and capture the completed M07 UI milestone evidence.
 4. Run the representative-video performance matrix with user-provided 4K60 HEVC footage; do not claim 4K60 acceptance without it.
 5. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.

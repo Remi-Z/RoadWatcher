@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Security.Cryptography;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -127,6 +128,18 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _timelineSummaryText = "No project timeline";
 
+    [ObservableProperty]
+    private bool _hasGpx;
+
+    [ObservableProperty]
+    private double _gpxOffsetSeconds;
+
+    [ObservableProperty]
+    private string _gpxAnchorTimeText = "";
+
+    [ObservableProperty]
+    private string _gpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
+
     public MainWindowViewModel()
     {
         _projectLifecycle = new ProjectLifecycleService(_projectStore);
@@ -247,6 +260,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         ImportedMedia = [];
         GpxPoints = [];
         _gpxTimelineMapper = null;
+        HasGpx = false;
+        GpxOffsetSeconds = 0;
+        GpxAnchorTimeText = string.Empty;
+        GpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
         _virtualTimeline = new VirtualTimeline([]);
         _activeSegment = null;
         _loadedMediaSourceId = null;
@@ -353,9 +370,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             var anchors = project.Timeline.SyncAnchors
                 .Where(anchor => anchor.GpxSourceId == gpx.Id)
                 .ToArray();
-            _gpxTimelineMapper = new GpxTimelineMapper(anchors.Length > 0
-                ? anchors
-                : [new SyncAnchor(gpx.Id, TimeSpan.Zero, gpx.Points[0].RecordedAt)]);
+            ConfigureGpxSynchronization(gpx, anchors);
             GpxTrackChanged?.Invoke(this, GpxPoints);
             UpdateTelemetry(CurrentSeconds);
         }
@@ -363,6 +378,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             GpxPoints = [];
             _gpxTimelineMapper = null;
+            HasGpx = false;
+            GpxOffsetSeconds = 0;
+            GpxAnchorTimeText = string.Empty;
+            GpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
         }
     }
 
@@ -439,6 +458,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         UpdateTelemetry(value);
+        UpdateGpxAnchorClock(value);
     }
 
     private async Task SeekProjectTimeAsync(
@@ -562,6 +582,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
         _project.Timeline.SyncAnchors.RemoveAll(existing => existing.GpxSourceId == sourceId);
         _project.Timeline.SyncAnchors.Add(anchor);
+        ConfigureGpxSynchronization(_project.GpxSources.Single(source => source.Id == sourceId), [anchor]);
         UpdateTelemetry(CurrentSeconds);
 
         if (!isDemo)
@@ -572,6 +593,161 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         StatusText = $"GPX aligned • {points.Count} points • offset +00:00.000";
+    }
+
+    [RelayCommand]
+    private async Task ApplyGpxOffsetAsync()
+    {
+        var gpx = GetActiveGpxSource();
+        if (gpx is null || !double.IsFinite(GpxOffsetSeconds))
+        {
+            GpxSyncStatusText = "A GPX source and finite offset are required.";
+            return;
+        }
+
+        var anchor = new SyncAnchor(
+            gpx.Id,
+            TimeSpan.Zero,
+            gpx.Points[0].RecordedAt.AddSeconds(GpxOffsetSeconds));
+        await PersistGpxAnchorsAsync(gpx, [anchor]);
+    }
+
+    [RelayCommand]
+    private async Task SetFirstGpxAnchorAsync()
+    {
+        var gpx = GetActiveGpxSource();
+        if (gpx is null || !TryParseGpxAnchorTime(out var gpxTime))
+        {
+            GpxSyncStatusText = "Enter a complete GPX timestamp including its UTC offset.";
+            return;
+        }
+
+        var current = _project.Timeline.SyncAnchors
+            .Where(anchor => anchor.GpxSourceId == gpx.Id)
+            .OrderBy(anchor => anchor.ProjectTime)
+            .Take(2)
+            .ToList();
+        var first = new SyncAnchor(gpx.Id, TimeSpan.FromSeconds(CurrentSeconds), gpxTime);
+        var updated = current.Count >= 2 ? new[] { first, current[^1] } : new[] { first };
+        await PersistGpxAnchorsAsync(gpx, updated);
+    }
+
+    [RelayCommand]
+    private async Task SetSecondGpxAnchorAsync()
+    {
+        var gpx = GetActiveGpxSource();
+        if (gpx is null || !TryParseGpxAnchorTime(out var gpxTime))
+        {
+            GpxSyncStatusText = "Enter a complete GPX timestamp including its UTC offset.";
+            return;
+        }
+
+        var current = _project.Timeline.SyncAnchors
+            .Where(anchor => anchor.GpxSourceId == gpx.Id)
+            .OrderBy(anchor => anchor.ProjectTime)
+            .Take(2)
+            .ToList();
+        if (current.Count == 0)
+        {
+            GpxSyncStatusText = "Set the first anchor before adding drift correction.";
+            return;
+        }
+
+        var second = new SyncAnchor(gpx.Id, TimeSpan.FromSeconds(CurrentSeconds), gpxTime);
+        await PersistGpxAnchorsAsync(gpx, [current[0], second]);
+    }
+
+    [RelayCommand]
+    private async Task ClearGpxDriftAsync()
+    {
+        var gpx = GetActiveGpxSource();
+        var first = gpx is null
+            ? null
+            : _project.Timeline.SyncAnchors
+                .Where(anchor => anchor.GpxSourceId == gpx.Id)
+                .OrderBy(anchor => anchor.ProjectTime)
+                .FirstOrDefault();
+        if (gpx is null || first is null)
+        {
+            GpxSyncStatusText = "No GPX synchronization anchor is available.";
+            return;
+        }
+
+        await PersistGpxAnchorsAsync(gpx, [first]);
+    }
+
+    private async Task PersistGpxAnchorsAsync(
+        GpxSource gpx,
+        IReadOnlyList<SyncAnchor> anchors)
+    {
+        var ordered = anchors.OrderBy(anchor => anchor.ProjectTime).ToArray();
+        try
+        {
+            var mapper = new GpxTimelineMapper(ordered);
+            _ = mapper.MapToGpxTime(TimeSpan.FromSeconds(CurrentSeconds));
+        }
+        catch (Exception exception)
+        {
+            GpxSyncStatusText = $"Synchronization not applied: {exception.Message}";
+            return;
+        }
+
+        _project.Timeline.SyncAnchors.RemoveAll(anchor => anchor.GpxSourceId == gpx.Id);
+        _project.Timeline.SyncAnchors.AddRange(ordered);
+        ConfigureGpxSynchronization(gpx, ordered);
+        UpdateTelemetry(CurrentSeconds);
+        if (ProjectDirectory is not null)
+        {
+            await _projectLifecycle.SaveAsync(_project, ProjectDirectory);
+        }
+        StatusText = $"GPX synchronization saved • {GpxSyncStatusText}";
+    }
+
+    private void ConfigureGpxSynchronization(
+        GpxSource gpx,
+        IReadOnlyList<SyncAnchor> anchors)
+    {
+        var effective = anchors.Count > 0
+            ? anchors.OrderBy(anchor => anchor.ProjectTime).Take(2).ToArray()
+            : [new SyncAnchor(gpx.Id, TimeSpan.Zero, gpx.Points[0].RecordedAt)];
+        _gpxTimelineMapper = new GpxTimelineMapper(effective);
+        HasGpx = true;
+        var first = effective[0];
+        GpxOffsetSeconds = (first.GpxTime - (gpx.Points[0].RecordedAt + first.ProjectTime)).TotalSeconds;
+        if (effective.Length == 1)
+        {
+            GpxSyncStatusText = $"One anchor • offset {GpxOffsetSeconds:+0.000;-0.000;0.000} s";
+        }
+        else
+        {
+            var projectDelta = effective[1].ProjectTime - effective[0].ProjectTime;
+            var gpxDelta = effective[1].GpxTime - effective[0].GpxTime;
+            var driftSeconds = (gpxDelta - projectDelta).TotalSeconds;
+            GpxSyncStatusText = $"Two anchors • drift {driftSeconds:+0.000;-0.000;0.000} s";
+        }
+        UpdateGpxAnchorClock(CurrentSeconds);
+    }
+
+    private GpxSource? GetActiveGpxSource() =>
+        _project.GpxSources.FirstOrDefault(source => source.Points.Count > 0);
+
+    private bool TryParseGpxAnchorTime(out DateTimeOffset value) =>
+        DateTimeOffset.TryParse(
+            GpxAnchorTimeText,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AllowWhiteSpaces,
+            out value);
+
+    private void UpdateGpxAnchorClock(double projectSeconds)
+    {
+        if (_gpxTimelineMapper is null)
+        {
+            return;
+        }
+
+        GpxAnchorTimeText = _gpxTimelineMapper
+            .MapToGpxTime(TimeSpan.FromSeconds(projectSeconds))
+            .ToString("yyyy-MM-dd HH:mm:ss.fff zzz", CultureInfo.InvariantCulture);
     }
 
     private void UpdateTelemetry(double projectSeconds)

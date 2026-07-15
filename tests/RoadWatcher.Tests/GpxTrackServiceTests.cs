@@ -6,6 +6,21 @@ namespace RoadWatcher.Tests;
 public sealed class GpxTrackServiceTests
 {
     [Fact]
+    public void One_sync_anchor_applies_editable_offset()
+    {
+        var sourceId = Guid.NewGuid();
+        var anchor = new SyncAnchor(
+            sourceId,
+            TimeSpan.FromSeconds(10),
+            DateTimeOffset.Parse("2026-07-12T14:00:12.500-04:00"));
+        var mapper = new GpxTimelineMapper([anchor]);
+
+        var atProjectZero = mapper.MapToGpxTime(TimeSpan.Zero);
+
+        Assert.Equal(DateTimeOffset.Parse("2026-07-12T14:00:02.500-04:00"), atProjectZero);
+    }
+
+    [Fact]
     public async Task Read_and_sample_interpolates_speed_and_acceleration()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Demo", "demo-ride.gpx");
@@ -32,5 +47,17 @@ public sealed class GpxTrackServiceTests
 
         Assert.Equal(DateTimeOffset.Parse("2026-07-12T14:30:03-04:00"), midpoint);
     }
-}
 
+    [Fact]
+    public void Two_sync_anchors_reject_identical_project_times()
+    {
+        var sourceId = Guid.NewGuid();
+        var mapper = new GpxTimelineMapper(
+        [
+            new SyncAnchor(sourceId, TimeSpan.FromSeconds(4), DateTimeOffset.Parse("2026-07-12T14:00:00-04:00")),
+            new SyncAnchor(sourceId, TimeSpan.FromSeconds(4), DateTimeOffset.Parse("2026-07-12T14:00:01-04:00"))
+        ]);
+
+        Assert.Throws<InvalidOperationException>(() => mapper.MapToGpxTime(TimeSpan.FromSeconds(4)));
+    }
+}
