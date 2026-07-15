@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -24,6 +25,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private ProjectDocument _project = new();
     private readonly List<EvidenceAsset> _pendingAttachments = [];
     private readonly SemaphoreSlim _mediaTransitionLock = new(1, 1);
+    private ILocationResolver? _locationResolver;
     private IVirtualTimeline _virtualTimeline = new VirtualTimeline([]);
     private TimelineSegment? _activeSegment;
     private Guid? _loadedMediaSourceId;
@@ -31,6 +33,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _updatingFromMedia;
     private GpxTimelineMapper? _gpxTimelineMapper;
     private TelemetrySample? _currentTelemetrySample;
+    private TelemetrySample? _incidentLocationSample;
     private double _incidentStartSeconds;
     private double _incidentEndSeconds;
 
@@ -139,6 +142,18 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _gpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
+
+    [ObservableProperty]
+    private string _intersection = string.Empty;
+
+    [ObservableProperty]
+    private string _address = string.Empty;
+
+    [ObservableProperty]
+    private bool _isLocationConfirmed;
+
+    [ObservableProperty]
+    private string _locationResolutionStatus = "Optional online lookup • © OpenStreetMap contributors";
 
     public MainWindowViewModel()
     {
@@ -260,6 +275,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         ImportedMedia = [];
         GpxPoints = [];
         _gpxTimelineMapper = null;
+        _locationResolver = null;
         HasGpx = false;
         GpxOffsetSeconds = 0;
         GpxAnchorTimeText = string.Empty;
@@ -268,6 +284,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _activeSegment = null;
         _loadedMediaSourceId = null;
         _currentTelemetrySample = null;
+        _incidentLocationSample = null;
+        Intersection = string.Empty;
+        Address = string.Empty;
+        IsLocationConfirmed = false;
+        LocationResolutionStatus = "Optional online lookup • © OpenStreetMap contributors";
         _pendingAttachments.Clear();
         MissingSources.Clear();
         MissingSourceCount = 0;
@@ -318,10 +339,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         IsPlaying = false;
         _project = project;
         ProjectDirectory = Path.GetFullPath(projectDirectory);
+        _locationResolver = new NominatimLocationResolver(
+            Path.Combine(ProjectDirectory, "cache", "geocoding.json"));
         ProjectTitle = project.Title;
         IncidentCount = project.Incidents.Count;
         AttachmentCount = project.Incidents.Sum(incident => incident.Attachments.Count);
         _pendingAttachments.Clear();
+        _incidentLocationSample = null;
+        Intersection = string.Empty;
+        Address = string.Empty;
+        IsLocationConfirmed = false;
+        LocationResolutionStatus = "Optional online lookup • © OpenStreetMap contributors";
 
         MissingSources.Clear();
         foreach (var missing in missingSources)
@@ -770,15 +798,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             : "—";
         TelemetryClockText = sample.Time.ToLocalTime().ToString("HH:mm:ss");
         CoordinateText = $"{sample.Latitude:F5}, {sample.Longitude:F5}".Replace('-', '−');
-        LocationText = IsNearBloorSpadina(sample.Latitude, sample.Longitude)
-            ? "Bloor St W & Spadina Ave"
-            : CoordinateText;
+        LocationText = CoordinateText;
         TelemetrySampleChanged?.Invoke(this, sample);
         _currentTelemetrySample = sample;
     }
-
-    private static bool IsNearBloorSpadina(double latitude, double longitude) =>
-        Math.Abs(latitude - 43.66745) < 0.001 && Math.Abs(longitude - (-79.40089)) < 0.0015;
 
     [RelayCommand]
     private async Task TogglePlaybackAsync()
@@ -836,11 +859,54 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _mediaEngine.Pause();
         _incidentStartSeconds = Math.Max(0, CurrentSeconds - 15);
         _incidentEndSeconds = Math.Min(MaximumSeconds, CurrentSeconds + 15);
+        _incidentLocationSample = _currentTelemetrySample;
+        Intersection = string.Empty;
+        Address = string.Empty;
+        IsLocationConfirmed = false;
+        LocationResolutionStatus = _incidentLocationSample is null
+            ? "No synchronized GPX position is available for this incident."
+            : "Location is unconfirmed • edit manually or request one online suggestion";
         var centreTime = _currentTelemetrySample?.Time ?? new DateTimeOffset(DateTime.Today) + TimeSpan.FromSeconds(CurrentSeconds);
         IncidentStartText = (centreTime - TimeSpan.FromSeconds(CurrentSeconds - _incidentStartSeconds)).ToString("HH:mm:ss.fff");
         IncidentEndText = (centreTime + TimeSpan.FromSeconds(_incidentEndSeconds - CurrentSeconds)).ToString("HH:mm:ss.fff");
         IncidentDurationText = $"Duration  {TimeSpan.FromSeconds(_incidentEndSeconds - _incidentStartSeconds):mm\\:ss\\.fff}";
         StatusText = $"Incident window marked ±15 seconds around {CurrentTimeText}";
+    }
+
+    [RelayCommand]
+    private async Task SuggestLocationAsync()
+    {
+        var sample = _incidentLocationSample ?? _currentTelemetrySample;
+        if (_locationResolver is null || sample is null)
+        {
+            LocationResolutionStatus = "Open a project with synchronized GPX before requesting a suggestion.";
+            return;
+        }
+
+        LocationResolutionStatus = "Looking up this coordinate once…";
+        try
+        {
+            var suggestion = await _locationResolver.ResolveAsync(sample.Latitude, sample.Longitude);
+            if (suggestion is null)
+            {
+                LocationResolutionStatus = "No address suggestion was returned • enter the location manually";
+                return;
+            }
+
+            Intersection = suggestion.Intersection ?? string.Empty;
+            Address = suggestion.Address ?? string.Empty;
+            IsLocationConfirmed = false;
+            LocationText = !string.IsNullOrWhiteSpace(Intersection)
+                ? Intersection
+                : !string.IsNullOrWhiteSpace(Address)
+                    ? Address
+                    : CoordinateText;
+            LocationResolutionStatus = $"Suggested by {suggestion.Provider} • review, edit, then confirm";
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException or TaskCanceledException)
+        {
+            LocationResolutionStatus = $"Lookup unavailable • {exception.Message} • manual entry remains available";
+        }
     }
 
     [RelayCommand]
@@ -860,7 +926,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         var sourceId = timelinePosition.MediaSourceId;
-        var sample = _currentTelemetrySample;
+        var sample = _incidentLocationSample ?? _currentTelemetrySample;
         var incident = new Incident
         {
             Type = MapIncidentType(SelectedCategory),
@@ -873,9 +939,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 : new IncidentLocation(
                     sample.Latitude,
                     sample.Longitude,
-                    IsNearBloorSpadina(sample.Latitude, sample.Longitude) ? "Bloor St W & Spadina Ave" : null,
-                    null,
-                    UserConfirmed: true),
+                    NullIfWhiteSpace(Intersection),
+                    NullIfWhiteSpace(Address),
+                    IsLocationConfirmed),
             Vehicle = new VehicleObservation(
                 PlateNumber,
                 "ON",
@@ -891,7 +957,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _project.Incidents.Add(incident);
         await _projectStore.SaveAsync(_project, ProjectDirectory);
         IncidentCount = _project.Incidents.Count;
-        StatusText = $"Incident saved • {IncidentCount} record(s) • {AttachmentCount} attachment(s)";
+        StatusText = IsLocationConfirmed
+            ? $"Incident saved • {IncidentCount} record(s) • location confirmed"
+            : $"Incident saved • {IncidentCount} record(s) • location remains unconfirmed";
     }
 
     [RelayCommand]
@@ -1082,6 +1150,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         "Dooring risk" => IncidentType.DooringRisk,
         _ => IncidentType.Other
     };
+
+    private static string? NullIfWhiteSpace(string value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     public void Dispose()
     {

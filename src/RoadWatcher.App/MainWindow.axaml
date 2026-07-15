@@ -241,12 +241,29 @@
             </Grid>
             <TextBlock Classes="muted" FontSize="11" Text="{Binding IncidentDurationText}" />
 
-            <TextBlock Margin="0,8,0,0" Classes="muted" Text="Location (confirmed)" />
-            <TextBlock TextWrapping="Wrap" Text="Bloor St W &amp; Spadina Ave, Toronto, ON" />
+            <TextBlock Margin="0,8,0,0" Classes="muted" Text="Location" />
+            <TextBox Watermark="Intersection (optional)"
+                     Text="{Binding Intersection}"
+                     AutomationProperties.Name="Incident intersection" />
+            <TextBox MinHeight="48"
+                     Watermark="Address (optional)"
+                     TextWrapping="Wrap"
+                     Text="{Binding Address}"
+                     AutomationProperties.Name="Incident address" />
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Classes="muted" FontSize="11" Text="{Binding CoordinateText}" />
-              <TextBlock Grid.Column="1" Foreground="{StaticResource AccentTeal}" FontSize="11" Text="✓ Verified" />
+              <CheckBox Grid.Column="1"
+                        IsChecked="{Binding IsLocationConfirmed}"
+                        Content="Confirmed"
+                        AutomationProperties.Name="Confirm incident location" />
             </Grid>
+            <Button Command="{Binding SuggestLocationCommand}"
+                    Content="Suggest address online"
+                    AutomationProperties.Name="Suggest incident address online" />
+            <TextBlock Classes="muted"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Text="{Binding LocationResolutionStatus}" />
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Vehicle plate" />
             <Grid ColumnDefinitions="*,66">

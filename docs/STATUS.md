@@ -33,7 +33,7 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 
 ## In progress
 
-- Evidence-backed V1 gap audit completed against `docs/PRODUCT.md`:
+- Evidence-backed V1 gap audit completed against `docs/PRODUCT.md` (historical gaps below are being closed in the subsequent entries):
   - project creation/open/close/reopen and source relinking are not exposed by the application;
   - imported media is persisted only when an incident is saved, and reopening does not restore media, GPX, incidents, attachments, or synchronization state into the workbench;
   - multiple selected clips are probed, but playback, seeking, capture, and incident provenance remain bound to the first clip rather than `IVirtualTimeline`;
@@ -61,6 +61,9 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 - Each synchronized GPX source contributes an incident-window GPX 1.1 excerpt with interpolated boundary samples. Manifest schema 2 records payload kind/hash/size plus project, media, GPX, tool, version, command, and derivation provenance where applicable.
 - FFmpeg 8.x is an optional adapter discovered through `ROADWATCHER_FFMPEG` or `PATH`. Missing FFmpeg produces manifested setup instructions; individual failures produce manifested warnings without discarding the canonical JSON, HTML, images, or GPX excerpts.
 - Release UI acceptance with local FFmpeg 8.1.1 produced 25 manifested payloads from six incidents: 12 H.264/yuv420p review clips and six GPX excerpts. All 25 SHA-256 hashes matched and no warning/fallback file was needed. Release build succeeds with zero warnings and all 15 tests pass.
+- The hard-coded demo intersection is removed. Reviewers can explicitly request a Nominatim address suggestion for the marked incident coordinate, edit intersection/address independently, and confirm or preserve it as unconfirmed before save; offline/manual entry remains available.
+- Public Nominatim access is policy-aligned: no automatic playback requests, identifying User-Agent, process-wide one-request-per-second throttle, project-local rounded-coordinate cache, visible OpenStreetMap attribution, and environment-switchable endpoint/user-agent.
+- Release UI acceptance returned one real address, then returned the same value from cache in 301 ms with the endpoint deliberately offline. The edited intersection, full address, and confirmation flag survived save. `location-resolution.png` records the 1152 × 820 logical state, and all 20 tests pass.
 
 ## Milestone commits
 
@@ -75,11 +78,10 @@ M07 — V1 acceptance closure: complete evidence workflow and acceptance hardeni
 
 ## Next actions
 
-1. Compose an opt-in cached/throttled location resolver with editable suggestions.
-2. Expose the optional project-local source-copy import path and finish any remaining V1 workflow polish.
-3. Run the complete two-video/one-GPX acceptance journey and capture the completed M07 UI milestone evidence.
-4. Run the representative-video performance matrix with user-provided 4K60 HEVC footage; do not claim 4K60 acceptance without it.
-5. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.
+1. Expose the optional project-local source-copy import path and finish any remaining V1 workflow polish.
+2. Run the complete two-video/one-GPX acceptance journey and capture the completed M07 UI milestone evidence.
+3. Run the representative-video performance matrix with user-provided 4K60 HEVC footage; do not claim 4K60 acceptance without it.
+4. Compile/sign the installer and run clean-VM acceptance when Inno Setup and a publisher certificate are available.
 
 ## Known risks
 

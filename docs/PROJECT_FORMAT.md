@@ -7,7 +7,7 @@ ride.roadwatcher/
   project.json
   assets/        # screenshots and confirmed crops
   sources/       # optional user-requested copies of source video/GPX
-  cache/         # disposable thumbnails, proxies, geocode cache
+  cache/         # disposable thumbnails, proxies, and rounded-coordinate geocoding.json cache
   exports/       # generated evidence packages
 ```
 

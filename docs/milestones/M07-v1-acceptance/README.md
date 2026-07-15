@@ -16,6 +16,8 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - Added a map-preserving GPX synchronization flyout for offset, editable first/second playhead anchors, drift status, and clearing drift correction; every change is saved immediately.
 - Completed evidence packages with one H.264/AAC review clip for each incident/segment intersection, synchronized GPX excerpts with interpolated boundaries, and manifest schema 2 provenance for every payload.
 - FFmpeg is discovered from `ROADWATCHER_FFMPEG` or `PATH`; unavailable-tool instructions and per-clip warnings are package payloads instead of fatal export errors.
+- Replaced the hard-coded demo intersection with an opt-in Nominatim adapter and editable intersection/address fields plus explicit reviewer confirmation.
+- Reverse lookups use a custom User-Agent, a process-wide one-request-per-second gate, a rounded-coordinate project cache, visible OpenStreetMap attribution, and environment-configurable endpoint/user-agent overrides.
 
 ## Tested interactions
 
@@ -31,17 +33,21 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 - Exported the six-incident acceptance project through the Release UI using FFmpeg 8.1.1: the package contained 25 manifested payloads, including 12 segment-aware review clips and six GPX excerpts.
 - Recalculated all 25 SHA-256 payload hashes with zero mismatches and probed every derived clip as H.264/yuv420p; no setup fallback or export warnings were produced.
 - Verified the missing-FFmpeg path in an automated test: canonical payloads remain available and `FFMPEG-SETUP.txt` is included in the manifest.
+- Triggered one real Nominatim request from the Release UI and received an address for the synchronized playhead coordinate; no automatic request was made during playback/open.
+- Relaunched with the endpoint deliberately set to unreachable localhost, requested the same suggestion, and received it from the project cache in 301 ms. Edited the intersection to `Robert St & Harbord St`, confirmed it, saved the incident, and verified address/intersection/confirmation in `project.json`.
+- Automated tests verify request URI/User-Agent construction, rounded-coordinate memory cache, cache reuse by a new resolver instance without HTTP, and coordinate validation.
 
 ## Build and test results
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore` — passed, 0 warnings, 0 errors.
-- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 15/15 tests.
+- `dotnet test RoadWatcher.slnx --configuration Release --no-build` — passed, 20/20 tests.
 
 ## Screenshot state
 
 - `project-lifecycle.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, clean Release build, no project open, zero missing sources, lifecycle controls visible. Captured with the Windows `PrintWindow` fallback because ordinary desktop-region capture observed a different Windows virtual desktop.
 - `virtual-timeline.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, deterministic two-clip/one-GPX project playing at project 4.3 seconds inside the five-second source gap. Both clip blocks, the real gap block, last available source frame, synchronized telemetry, and gap status are visible.
 - `gpx-synchronization.png`: 520 × 442 physical flyout inside the 1152 × 820 logical workbench, persisted +2.500-second offset, editable playhead timestamp, and two-anchor drift status of -1.500 seconds. The editor is a flyout so the map remains visible in the Context dock while it is closed or in use.
+- `location-resolution.png`: 1152 × 820 logical viewport, 1750 × 1286 physical capture, cached suggestion returned with the network endpoint offline, manually edited intersection, full address, OpenStreetMap provider attribution, and checked confirmation state. Captured with the DPI-aware `PrintWindow` fallback after the ordinary Windows helper observed a different virtual desktop.
 
 ## Known limitations
 
@@ -51,4 +57,4 @@ Close the evidence-backed gaps between the current workbench and the V1 acceptan
 
 ## Exact next action
 
-Compose the opt-in cached/throttled location resolver and keep its suggestions editable and non-blocking.
+Expose the optional project-local source-copy import path and finish remaining V1 workflow polish before the final acceptance pass.
