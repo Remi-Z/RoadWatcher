@@ -17,12 +17,19 @@ Implement the synchronized-review improvements requested for the virtual timelin
 - Only explicit-offset embedded camera timestamps participate in automatic placement. Fresh clips are ordered by that timestamp and preserve true gaps; later imports occupy a free metadata-derived interval only when they fit without moving the existing edited layout.
 - Offset-less timestamps remain available as assumed-local camera clocks for reviewer comparison rather than silently changing timeline layout. The first trusted clip records an unconfirmed timeline camera-clock reference for the exact-time guide planned in a later slice.
 
+## Slice 3 — previewable GPX synchronization core
+
+- A source-scoped synchronization session snapshots one or two persisted anchors, creates a candidate mapper without mutating the project, and supports a whole-route translation or a single-anchor move.
+- Candidate project times may be negative so the later visual workspace integration can align pre-video GPX without fabricating playable media. Cancel restores the untouched original snapshot; commit returns a defensive immutable replacement set for atomic persistence.
+- The session intentionally caps anchors at two because the current mapper is a one/two-anchor mapper; it cannot silently accept a third anchor that would be ignored.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed with 0 warnings and 0 errors.
-- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed 68/68 for the committed metadata slice.
+- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core.
 - The primary viewport test covers a -15 to +75 second visual range, pointer mapping, and pan clamping after zoom.
 - Metadata parser fallbacks, trusted-gap layout, later-import collision/manual-layout protection, confidence selection, timeline edit preservation, JSON round-trip, and schema-v1 optional-field compatibility are unit tested. A local `ffprobe` read is bounded to five seconds and failure remains advisory.
+- GPX candidate-session tests cover negative project time, whole-route translation, isolated anchor moves, source/order validation, two-anchor limit, cancel, and defensive snapshots.
 
 ## Screenshot state
 

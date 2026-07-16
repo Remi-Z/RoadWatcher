@@ -40,6 +40,8 @@ M08 — Timeline, map, and playback review UX: implementation has begun with the
 - Fresh imports automatically order trusted clips and retain genuine capture-time gaps. A later trusted import is placed only when it fits a free interval, so an edited layout is never shifted; inconclusive metadata appends instead. The first trusted source provides a persisted, unconfirmed camera clock reference for the upcoming exact-time/synchronization UI.
 - Camera-clock references now follow the same source frame through a clip move or reorder. Malformed higher-priority metadata falls through to valid lower-priority tags; lower-confidence `ffprobe` time cannot hide a trusted LibVLC value; and a metadata proposal appends rather than contradicting a manually edited layout.
 - Schema-version-1 read compatibility is covered for projects without the new optional capture clock fields. Isolated Release build passed with zero warnings and the metadata-focused suite passed 68/68.
+- GPX synchronization now has an immutable candidate-session core for a single source and one or two anchors. It can translate the complete candidate into negative visual time, move an individual anchor with strict order validation, cancel to a defensive original snapshot, or produce an immutable commit snapshot without mutating evidence state.
+- The core deliberately matches the existing one/two-anchor mapper; UI integration will expose its live-preview state on the map and timeline next. The suite passed 72/72.
 
 ## M07 closure record
 
