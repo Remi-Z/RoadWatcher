@@ -371,7 +371,8 @@
         </Grid>
         <controls:VirtualTimelineControl x:Name="TimelineSurface"
                                          Grid.Row="1"
-                                         DurationSeconds="{Binding MaximumSeconds}"
+                                         DurationSeconds="{Binding TimelineDisplayDurationSeconds}"
+                                         MinimumSeconds="{Binding TimelineDisplayStartSeconds}"
                                          PositionSeconds="{Binding CurrentSeconds}"
                                          Blocks="{Binding TimelineBlocks}"
                                          Incidents="{Binding IncidentMarkers}"
@@ -384,7 +385,7 @@
                                          HasSelectedIncident="{Binding HasSelectedIncident}"
                                          SelectedIncidentStartSeconds="{Binding SelectedIncidentStartSeconds}"
                                          SelectedIncidentEndSeconds="{Binding SelectedIncidentEndSeconds}"
-                                         ToolTip.Tip="Shift+wheel zoom • wheel pan • drag clips/GPX anchors • Alt+Arrow nudges nearest GPX anchor"
+                                         ToolTip.Tip="Shift+wheel zoom • wheel pan • visual GPX workspace extends around media • drag clips/GPX anchors • Alt+Arrow nudges nearest GPX anchor"
                                          AutomationProperties.Name="Interactive project timeline" />
 
         <Grid Grid.Row="2" Margin="14,8" ColumnDefinitions="*,Auto">

@@ -67,6 +67,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private double _maximumSeconds = 1;
 
     [ObservableProperty]
+    private double _timelineDisplayStartSeconds;
+
+    [ObservableProperty]
+    private double _timelineDisplayDurationSeconds = 1;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PlaybackRateText))]
     private double _playbackRate = 1;
 
@@ -537,6 +543,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             GpxOffsetSeconds = 0;
             GpxAnchorTimeText = string.Empty;
             GpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
+            UpdateTimelineVisualWorkspace();
             GpxTrackChanged?.Invoke(this, []);
         }
     }
@@ -1544,6 +1551,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             GpxSyncStatusText = $"Two anchors • drift {driftSeconds:+0.000;-0.000;0.000} s";
         }
         UpdateGpxAnchorClock(CurrentSeconds);
+        UpdateTimelineVisualWorkspace();
     }
 
     private GpxSource? GetActiveGpxSource() =>
@@ -2096,7 +2104,36 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         TimelineRulerLabels = Enumerable.Range(0, 5)
             .Select(index => FormatTimelineTime(TimeSpan.FromTicks(_virtualTimeline.Duration.Ticks * index / 4)))
             .ToArray();
+        UpdateTimelineVisualWorkspace();
         RebuildIncidentDisplay();
+    }
+
+    /// <summary>
+    /// Keeps the timeline's visual domain separate from the playable evidence
+    /// domain. GPX can therefore be inspected and aligned outside the first and
+    /// last clips without creating synthetic media or evidence time.
+    /// </summary>
+    private void UpdateTimelineVisualWorkspace()
+    {
+        var projectEnd = Math.Max(0, _virtualTimeline.Duration.TotalSeconds);
+        if (projectEnd <= 0 && !HasGpx)
+        {
+            TimelineDisplayStartSeconds = 0;
+            TimelineDisplayDurationSeconds = 1;
+            return;
+        }
+
+        var coverageStart = HasGpx && double.IsFinite(GpxCoverageStartSeconds)
+            ? GpxCoverageStartSeconds
+            : 0;
+        var coverageEnd = HasGpx && double.IsFinite(GpxCoverageEndSeconds)
+            ? GpxCoverageEndSeconds
+            : projectEnd;
+        var first = Math.Min(0, Math.Min(coverageStart, coverageEnd));
+        var last = Math.Max(projectEnd, Math.Max(coverageStart, coverageEnd));
+        var padding = Math.Clamp(Math.Max(1, projectEnd) * 0.05, 5, 60);
+        TimelineDisplayStartSeconds = first - padding;
+        TimelineDisplayDurationSeconds = Math.Max(1, last - first + padding * 2);
     }
 
     private void RebuildIncidentDisplay()

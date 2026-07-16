@@ -15,6 +15,27 @@ public sealed class TimelineViewportStateTests
     }
 
     [Fact]
+    public void Fit_maps_a_visual_workspace_before_and_after_playable_media()
+    {
+        var viewport = TimelineViewportState.Fit(
+            durationSeconds: 90,
+            viewportWidth: 900,
+            minimumSeconds: -15);
+
+        Assert.Equal(0, viewport.TimeToPixel(-15), 6);
+        Assert.Equal(900, viewport.TimeToPixel(75), 6);
+        Assert.Equal(-15, viewport.PixelToTime(-100), 6);
+        Assert.Equal(75, viewport.PixelToTime(1_000), 6);
+
+        var zoomed = viewport.ZoomAt(scale: 4, anchorPixel: 450);
+        Assert.Equal(-15, zoomed.PanByPixels(-100_000).OffsetSeconds, 6);
+        Assert.Equal(
+            75 - zoomed.VisibleDurationSeconds,
+            zoomed.PanByPixels(100_000).OffsetSeconds,
+            6);
+    }
+
+    [Fact]
     public void Cursor_centered_zoom_preserves_the_time_beneath_the_pointer()
     {
         var viewport = TimelineViewportState

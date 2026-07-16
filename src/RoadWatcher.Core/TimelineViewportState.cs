@@ -4,25 +4,31 @@ public readonly record struct TimelineViewportState(
     double DurationSeconds,
     double ViewportWidth,
     double PixelsPerSecond,
-    double OffsetSeconds)
+    double OffsetSeconds,
+    double MinimumSeconds = 0)
 {
     public const double DefaultMaximumPixelsPerSecond = 200;
 
     public double VisibleDurationSeconds => ViewportWidth / PixelsPerSecond;
+    public double MaximumSeconds => MinimumSeconds + DurationSeconds;
 
-    public static TimelineViewportState Fit(double durationSeconds, double viewportWidth)
+    public static TimelineViewportState Fit(
+        double durationSeconds,
+        double viewportWidth,
+        double minimumSeconds = 0)
     {
         var duration = Math.Max(0.001, durationSeconds);
         var width = Math.Max(1, viewportWidth);
-        return new TimelineViewportState(duration, width, width / duration, 0);
+        var minimum = double.IsFinite(minimumSeconds) ? minimumSeconds : 0;
+        return new TimelineViewportState(duration, width, width / duration, minimum, minimum);
     }
 
     public double TimeToPixel(double seconds) => (seconds - OffsetSeconds) * PixelsPerSecond;
 
     public double PixelToTime(double pixel) => Math.Clamp(
         OffsetSeconds + pixel / PixelsPerSecond,
-        0,
-        DurationSeconds);
+        MinimumSeconds,
+        MaximumSeconds);
 
     public TimelineViewportState Resize(double viewportWidth)
     {
@@ -74,16 +80,18 @@ public readonly record struct TimelineViewportState(
     {
         var duration = Math.Max(0.001, state.DurationSeconds);
         var width = Math.Max(1, state.ViewportWidth);
+        var minimum = double.IsFinite(state.MinimumSeconds) ? state.MinimumSeconds : 0;
         var fitPixelsPerSecond = width / duration;
         var pixelsPerSecond = Math.Max(fitPixelsPerSecond, state.PixelsPerSecond);
         var visibleDuration = width / pixelsPerSecond;
-        var maximumOffset = Math.Max(0, duration - visibleDuration);
+        var maximumOffset = Math.Max(minimum, minimum + duration - visibleDuration);
         return state with
         {
             DurationSeconds = duration,
             ViewportWidth = width,
             PixelsPerSecond = pixelsPerSecond,
-            OffsetSeconds = Math.Clamp(state.OffsetSeconds, 0, maximumOffset)
+            MinimumSeconds = minimum,
+            OffsetSeconds = Math.Clamp(state.OffsetSeconds, minimum, maximumOffset)
         };
     }
 }

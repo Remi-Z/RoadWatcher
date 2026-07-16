@@ -23,6 +23,9 @@ public sealed class VirtualTimelineControl : Control
     public static readonly StyledProperty<double> DurationSecondsProperty =
         AvaloniaProperty.Register<VirtualTimelineControl, double>(nameof(DurationSeconds), 1);
 
+    public static readonly StyledProperty<double> MinimumSecondsProperty =
+        AvaloniaProperty.Register<VirtualTimelineControl, double>(nameof(MinimumSeconds));
+
     public static readonly StyledProperty<double> PositionSecondsProperty =
         AvaloniaProperty.Register<VirtualTimelineControl, double>(
             nameof(PositionSeconds),
@@ -98,6 +101,7 @@ public sealed class VirtualTimelineControl : Control
     {
         AffectsRender<VirtualTimelineControl>(
             DurationSecondsProperty,
+            MinimumSecondsProperty,
             PositionSecondsProperty,
             BlocksProperty,
             IncidentsProperty,
@@ -123,6 +127,16 @@ public sealed class VirtualTimelineControl : Control
     {
         get => GetValue(DurationSecondsProperty);
         set => SetValue(DurationSecondsProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the first visible project-time value. This may be negative so
+    /// reviewers can align GPX coverage before the first piece of evidence media.
+    /// </summary>
+    public double MinimumSeconds
+    {
+        get => GetValue(MinimumSecondsProperty);
+        set => SetValue(MinimumSecondsProperty, value);
     }
 
     public double PositionSeconds
@@ -219,7 +233,7 @@ public sealed class VirtualTimelineControl : Control
     public void Fit()
     {
         _isFit = true;
-        _viewport = TimelineViewportState.Fit(DurationSeconds, GetTimeAreaWidth());
+        _viewport = TimelineViewportState.Fit(DurationSeconds, GetTimeAreaWidth(), MinimumSeconds);
         InvalidateVisual();
     }
 
@@ -301,9 +315,9 @@ public sealed class VirtualTimelineControl : Control
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == DurationSecondsProperty)
+        if (change.Property == DurationSecondsProperty || change.Property == MinimumSecondsProperty)
         {
-            _viewport = TimelineViewportState.Fit(DurationSeconds, GetTimeAreaWidth());
+            _viewport = TimelineViewportState.Fit(DurationSeconds, GetTimeAreaWidth(), MinimumSeconds);
             _isFit = true;
         }
     }
@@ -312,7 +326,7 @@ public sealed class VirtualTimelineControl : Control
     {
         base.OnSizeChanged(e);
         _viewport = _isFit
-            ? TimelineViewportState.Fit(DurationSeconds, GetTimeAreaWidth())
+            ? TimelineViewportState.Fit(DurationSeconds, GetTimeAreaWidth(), MinimumSeconds)
             : _viewport.Resize(GetTimeAreaWidth());
     }
 
@@ -1212,12 +1226,14 @@ public sealed class VirtualTimelineControl : Control
 
     private static string FormatTime(double seconds)
     {
-        var value = TimeSpan.FromSeconds(Math.Max(0, seconds));
-        return value.TotalHours >= 1
+        var sign = seconds < 0 ? "−" : string.Empty;
+        var value = TimeSpan.FromSeconds(Math.Abs(seconds));
+        var formatted = value.TotalHours >= 1
             ? value.ToString(@"hh\:mm\:ss")
             : value.TotalMinutes >= 1
                 ? value.ToString(@"mm\:ss")
                 : value.ToString(@"ss\.fff");
+        return sign + formatted;
     }
 }
 

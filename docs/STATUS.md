@@ -4,7 +4,7 @@ Last updated: 2026-07-16
 
 ## Current milestone
 
-M07 — V1 plus virtual-timeline editor (V1.5) acceptance closure: implementation and visible-UI audit complete; representative 4K60 and signed-installer release validation remain external gates.
+M08 — Timeline, map, and playback review UX: implementation has begun with the visual synchronization workspace; M07 representative-footage and signed-installer release gates remain external.
 
 ## Completed
 
@@ -30,6 +30,12 @@ M07 — V1 plus virtual-timeline editor (V1.5) acceptance closure: implementatio
 - The self-contained `win-x64` app launches successfully with the bundled x64 VLC runtime; the verified portable ZIP is 126.1 MiB.
 - M06 keeps active VLC playback inside the workbench by reattaching the approved VideoView to its late-created native child handle and moving telemetry out of `VideoView.Content`.
 - Synthetic H.264 playback, a 1440 × 1024 logical milestone capture, and Win32 window enumeration confirm one RoadWatcher-owned top-level window with no VLC/overlay popup.
+
+## M08 progress
+
+- The virtual timeline now has a display-time domain independent of playable project time. It fits the union of video/GPX coverage plus 5% padding clamped to 5–60 seconds, supports negative/pre-video labels, and keeps playback, capture, and incident evidence bounded to real media time.
+- The first modular slice adds pure viewport coverage for pre/post-media workspace, pans and zooms within that display domain, and binds it through the existing virtual timeline rather than adding another control or chart dependency.
+- Isolated Release build passed with zero warnings and the focused suite passed 55/55. The normal Release app output is currently held by a running RoadWatcher process, so verification uses `artifacts/verification` rather than interrupting an active reviewer session.
 
 ## M07 closure record
 
