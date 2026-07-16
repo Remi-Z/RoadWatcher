@@ -268,6 +268,7 @@ public sealed class VirtualTimelineControl : Control
     public event EventHandler<TimelineScrubEventArgs>? ScrubPreviewRequested;
     public event EventHandler<TimelineScrubEventArgs>? ScrubCommitted;
     public event EventHandler? ScrubCanceled;
+    public event EventHandler<TimelineJogEventArgs>? JogRequested;
     public event EventHandler<TimelineIncidentEventArgs>? IncidentInvoked;
     public event EventHandler? ClipDragStarted;
     public event EventHandler<TimelineClipEditEventArgs>? ClipEditCommitted;
@@ -534,17 +535,30 @@ public sealed class VirtualTimelineControl : Control
             return;
         }
 
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        var action = TimelineWheelInteraction.Resolve(
+            e.Delta.X,
+            e.Delta.Y,
+            e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+        switch (action.Kind)
         {
-            var anchor = e.GetPosition(this).X - HeaderWidth;
-            ZoomAt(Math.Pow(1.25, e.Delta.Y), anchor);
+            case TimelineWheelActionKind.Zoom:
+            {
+                var anchor = e.GetPosition(this).X - HeaderWidth;
+                ZoomAt(Math.Pow(1.25, action.Value), anchor);
+                break;
+            }
+            case TimelineWheelActionKind.Pan:
+                _isFit = false;
+                _viewport = _viewport.PanByPixels(action.Value);
+                InvalidateVisual();
+                break;
+            case TimelineWheelActionKind.Jog:
+                JogRequested?.Invoke(this, new TimelineJogEventArgs(action.Value));
+                break;
+            default:
+                return;
         }
-        else
-        {
-            _isFit = false;
-            _viewport = _viewport.PanByPixels(-(e.Delta.Y + e.Delta.X) * 60);
-            InvalidateVisual();
-        }
+
         e.Handled = true;
     }
 
@@ -1780,6 +1794,11 @@ public sealed class VirtualTimelineControl : Control
 public sealed class TimelineScrubEventArgs(double projectSeconds) : EventArgs
 {
     public double ProjectSeconds { get; } = projectSeconds;
+}
+
+public sealed class TimelineJogEventArgs(double projectDeltaSeconds) : EventArgs
+{
+    public double ProjectDeltaSeconds { get; } = projectDeltaSeconds;
 }
 
 public sealed class TimelineClipPreviewEventArgs(TimelineBlockViewModel block) : EventArgs

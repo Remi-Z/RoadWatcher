@@ -388,7 +388,7 @@
                                          HasSelectedIncident="{Binding HasSelectedIncident}"
                                          SelectedIncidentStartSeconds="{Binding SelectedIncidentStartSeconds}"
                                          SelectedIncidentEndSeconds="{Binding SelectedIncidentEndSeconds}"
-                                         ToolTip.Tip="Shift+wheel zoom • wheel pan • visual GPX workspace extends around media • drag the GPX route or anchors to preview sync • Alt+Arrow nudges nearest GPX anchor"
+                                         ToolTip.Tip="Wheel jogs video time • Shift+wheel zooms • horizontal scroll pans the timeline without moving the cursor • visual GPX workspace extends around media • drag the GPX route or anchors to preview sync • Alt+Arrow nudges nearest GPX anchor"
                                          AutomationProperties.Name="Interactive project timeline" />
 
         <Grid Grid.Row="2" Margin="14,8" ColumnDefinitions="*,Auto">

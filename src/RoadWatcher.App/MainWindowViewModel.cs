@@ -823,6 +823,32 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         await SeekProjectTimeAsync(target, resumePlayback, cancellationToken);
     }
 
+    public async Task JogTimelineAsync(
+        double projectDeltaSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        if (!HasLoadedMedia ||
+            !double.IsFinite(projectDeltaSeconds) ||
+            Math.Abs(projectDeltaSeconds) < 0.000001)
+        {
+            return;
+        }
+
+        var target = Math.Clamp(CurrentSeconds + projectDeltaSeconds, 0, MaximumSeconds);
+        if (Math.Abs(target - CurrentSeconds) < 0.000001)
+        {
+            return;
+        }
+
+        var resumePlayback = IsPlaying;
+        _updatingFromMedia = true;
+        CurrentSeconds = target;
+        _updatingFromMedia = false;
+        UpdateTelemetry(target);
+        UpdateGpxAnchorClock(target);
+        await SeekProjectTimeAsync(TimeSpan.FromSeconds(target), resumePlayback, cancellationToken);
+    }
+
     public void CancelTimelineScrub()
     {
         UpdateTelemetry(CurrentSeconds);

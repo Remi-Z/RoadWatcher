@@ -47,6 +47,7 @@ public sealed partial class MainWindow : Window
             timeline.ScrubPreviewRequested += OnTimelineScrubPreviewRequested;
             timeline.ScrubCommitted += OnTimelineScrubCommitted;
             timeline.ScrubCanceled += OnTimelineScrubCanceled;
+            timeline.JogRequested += OnTimelineJogRequested;
             timeline.IncidentInvoked += OnTimelineIncidentInvoked;
             timeline.ClipDragStarted += OnTimelineClipDragStarted;
             timeline.ClipEditCommitted += OnTimelineClipEditCommitted;
@@ -343,6 +344,14 @@ public sealed partial class MainWindow : Window
         if (DataContext is MainWindowViewModel viewModel)
         {
             viewModel.CancelTimelineScrub();
+        }
+    }
+
+    private async void OnTimelineJogRequested(object? sender, TimelineJogEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            await viewModel.JogTimelineAsync(eventArgs.ProjectDeltaSeconds);
         }
     }
 
