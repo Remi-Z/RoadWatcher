@@ -103,7 +103,7 @@ public sealed class ProjectLifecycleService(IProjectStore projectStore) : IProje
                     .ToList()
             };
         }
-        else
+        else if (missingSource.Kind == ProjectSourceKind.Gpx)
         {
             var existing = project.GpxSources.SingleOrDefault(source => source.Id == missingSource.SourceId)
                 ?? throw new InvalidDataException($"GPX source '{missingSource.SourceId}' is not part of this project.");
@@ -121,6 +121,10 @@ public sealed class ProjectLifecycleService(IProjectStore projectStore) : IProje
                         : source)
                     .ToList()
             };
+        }
+        else
+        {
+            throw new InvalidDataException($"'{missingSource.Kind}' is not a relinkable evidence source.");
         }
 
         await _projectStore.SaveAsync(updated, projectDirectory, cancellationToken);

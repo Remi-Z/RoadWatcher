@@ -59,7 +59,13 @@ public sealed class JsonProjectStoreTests
                             "hevc",
                             3840,
                             2160,
-                            59.94))
+                            59.94),
+                        ReviewPreview: new MediaReviewPreview(
+                            "sources/previews/GL010123.LRV",
+                            56,
+                            TimeSpan.FromMinutes(2),
+                            "preview-sha",
+                            IsProjectCopy: true))
                 ],
                 Timeline = new TimelineDefinition
                 {
@@ -81,6 +87,7 @@ public sealed class JsonProjectStoreTests
 
             var media = Assert.Single(actual.Media);
             Assert.Equal(expected.Media[0].CaptureMetadata, media.CaptureMetadata);
+            Assert.Equal(expected.Media[0].ReviewPreview, media.ReviewPreview);
             Assert.Equal(expected.Timeline.ClockReference, actual.Timeline.ClockReference);
             Assert.Equal(1, actual.SchemaVersion);
             Assert.DoesNotContain("isTrustedForTimeline", savedJson, StringComparison.Ordinal);

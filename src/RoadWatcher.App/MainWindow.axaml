@@ -59,11 +59,11 @@
           <Button Classes="nav"
                   Command="{Binding PrepareProxiesCommand}"
                   IsEnabled="{Binding HasLoadedMedia}"
-                  ToolTip.Tip="Generate bounded FFmpeg review proxies"
-                  AutomationProperties.Name="Prepare cached media proxies">
+                  ToolTip.Tip="Use supplied .LRV previews or generate bounded FFmpeg review proxies"
+                  AutomationProperties.Name="Prepare review previews">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <materialIcons:MaterialIcon Kind="MovieOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Proxies" />
+              <TextBlock VerticalAlignment="Center" Text="Previews" />
             </StackPanel>
           </Button>
         </StackPanel>

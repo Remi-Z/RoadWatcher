@@ -204,11 +204,11 @@ public sealed partial class MainWindow : Window
             [
                 new FilePickerFileType("Ride sources")
                 {
-                    Patterns = ["*.mp4", "*.mov", "*.mkv", "*.m4v", "*.avi", "*.gpx"]
+                    Patterns = ["*.mp4", "*.mov", "*.mkv", "*.m4v", "*.avi", "*.lrv", "*.gpx"]
                 },
                 new FilePickerFileType("Action-camera video")
                 {
-                    Patterns = ["*.mp4", "*.mov", "*.mkv", "*.m4v", "*.avi"]
+                    Patterns = ["*.mp4", "*.mov", "*.mkv", "*.m4v", "*.avi", "*.lrv"]
                 },
                 new FilePickerFileType("GPX track")
                 {

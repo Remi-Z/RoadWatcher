@@ -22,7 +22,13 @@ public sealed class ProjectSourceCopyService
         }
 
         var fullProjectDirectory = Path.GetFullPath(projectDirectory);
-        var kindDirectory = kind == ProjectSourceKind.Media ? "media" : "gpx";
+        var kindDirectory = kind switch
+        {
+            ProjectSourceKind.Media => "media",
+            ProjectSourceKind.Gpx => "gpx",
+            ProjectSourceKind.ReviewPreview => "previews",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unsupported project source kind.")
+        };
         var destinationDirectory = Path.Combine(fullProjectDirectory, "sources", kindDirectory);
         Directory.CreateDirectory(destinationDirectory);
         var temporaryPath = Path.Combine(destinationDirectory, $".{Guid.NewGuid():N}.importing");

@@ -24,7 +24,20 @@ public sealed record MediaSource(
     TimeSpan Duration,
     string? Sha256 = null,
     bool IsProjectCopy = false,
-    MediaCaptureMetadata? CaptureMetadata = null);
+    MediaCaptureMetadata? CaptureMetadata = null,
+    MediaReviewPreview? ReviewPreview = null);
+
+/// <summary>
+/// An optional, user-supplied review-only derivative such as an action camera
+/// <c>.LRV</c> file. It is persisted only to speed playback; frame capture and
+/// exported evidence continue to use the authoritative <see cref="MediaSource.Path"/>.
+/// </summary>
+public sealed record MediaReviewPreview(
+    string Path,
+    long FileSize,
+    TimeSpan Duration,
+    string? Sha256 = null,
+    bool IsProjectCopy = false);
 
 /// <summary>
 /// Capture-clock information retained alongside a media source.  The selected
@@ -249,7 +262,8 @@ public sealed record AnalysisSuggestion(
 public enum ProjectSourceKind
 {
     Media,
-    Gpx
+    Gpx,
+    ReviewPreview
 }
 
 public sealed record MissingProjectSource(

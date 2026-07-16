@@ -74,4 +74,30 @@ public sealed class ProjectSourceCopyTests
             }
         }
     }
+
+    [Fact]
+    public async Task Source_copy_places_review_preview_in_a_separate_non_evidence_folder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "roadwatcher-tests", Guid.NewGuid().ToString("N"));
+        var projectDirectory = Path.Combine(root, "ride.roadwatcher");
+        var sourcePath = Path.Combine(root, "GL010123.LRV");
+        try
+        {
+            Directory.CreateDirectory(root);
+            await File.WriteAllBytesAsync(sourcePath, [1, 2, 3]);
+
+            var result = await new ProjectSourceCopyService()
+                .CopyAsync(sourcePath, projectDirectory, ProjectSourceKind.ReviewPreview);
+
+            Assert.Equal(Path.Combine("sources", "previews", "GL010123.LRV"), result.RelativePath);
+            Assert.True(File.Exists(result.FullPath));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
 }

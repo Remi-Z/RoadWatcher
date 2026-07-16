@@ -85,11 +85,18 @@ Implement the synchronized-review improvements requested for the virtual timelin
 - The comparison remains transient: it never seeks playback, changes telemetry, or mutates evidence/project synchronization. The status reports each signed project position and the `GPX − camera` delta; live anchor/route/offset previews recompute the GPX guide before anything is saved.
 - Offset-less input is rejected rather than accepting a machine-local zone. Either guide can remain available when its counterpart is missing or malformed, and guide positions are deliberately not clamped so an out-of-range clock mismatch remains visible in the visual (not playable) workspace.
 
+## Slice 14 — supplied LRV review previews
+
+- The import picker accepts `.LRV` files as review-only companions, never as timeline clips. A pure matcher attaches one only when its exact/action-camera (`GX`/`GL` or `GOPR`) identity and duration uniquely match one authoritative video; ambiguous or incompatible candidates are ignored rather than guessed.
+- Playback chooses a valid supplied LRV before a cached FFmpeg proxy, then the original source. The existing bounded FFmpeg generation remains the automatic fallback for clips without an LRV; the renamed **Previews** action makes this choice clear.
+- A supplied preview is persisted separately from evidence media and, when project copying is selected, goes under `sources/previews`. Capturing a frame always temporarily restores the original source, then returns to the chosen review asset, so no LRV/proxy frame can become evidence.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed with 0 warnings and 0 errors.
 - `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-handoff\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, 73/73 after the live-preview integration, 91/91 after the continuous-speed/unknown-telemetry slice, 101/101 after the wheel-navigation slice, 107/107 after live map-route progress, 109/109 after the decoder-ready handoff, 120/120 after the playback-rate bar, 126/126 after the map-style catalog/selector, 135/135 after the delayed player-progress preview, 140/140 after the map stop-frame preview, and 149/149 after the exact-time guide. The alternate output path avoids a locked DLL in the active reviewer process.
 - The primary viewport test covers a -15 to +75 second visual range, pointer mapping, and pan clamping after zoom.
+- The supplied-LRV matcher/selection, preview-folder copy, and JSON round-trip are covered; the full shared suite passed 159/159 after this slice.
 - The added viewport-domain test verifies that a drag-time workspace expansion preserves the current zoom and visible offset rather than resetting to Fit.
 - Metadata parser fallbacks, trusted-gap layout, later-import collision/manual-layout protection, confidence selection, timeline edit preservation, JSON round-trip, and schema-v1 optional-field compatibility are unit tested. A local `ffprobe` read is bounded to five seconds and failure remains advisory.
 - GPX candidate-session tests cover negative project time, whole-route translation, isolated anchor moves, source/order validation, two-anchor limit, cancel, and defensive snapshots.

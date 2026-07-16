@@ -26,6 +26,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly IMediaProxyGenerator _proxyGenerator = new FfmpegMediaProxyGenerator();
     private readonly MediaProxyCache _proxyCache = new();
     private readonly Dictionary<Guid, string> _availableProxyPaths = [];
+    private readonly Dictionary<Guid, string> _availableSuppliedLrvPaths = [];
     private readonly TesseractPlateRecognizer _plateRecognizer = new();
     private readonly DominantVehicleColorEstimator _colourEstimator = new();
     private readonly SemaphoreSlim _projectMutationGate = new(1, 1);
@@ -48,7 +49,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private Guid? _editingIncidentId;
     private double _incidentStartSeconds;
     private double _incidentEndSeconds;
-    private bool _loadedMediaUsesProxy;
+    private MediaReviewPlaybackKind _loadedPlaybackKind;
+    private string? _loadedPlaybackPath;
     private bool _normalizingPlaybackRate;
     private double _lastAppliedPlaybackRate = PlaybackRateScale.Default;
     private bool _timelineScrubWasPlaying;
@@ -471,8 +473,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _virtualTimeline = new VirtualTimeline([]);
         _activeSegment = null;
         _loadedMediaSourceId = null;
-        _loadedMediaUsesProxy = false;
+        _loadedPlaybackKind = MediaReviewPlaybackKind.Original;
+        _loadedPlaybackPath = null;
         _availableProxyPaths.Clear();
+        _availableSuppliedLrvPaths.Clear();
         _currentTelemetrySample = null;
         _incidentLocationSample = null;
         _incidentLocationProvider = null;
@@ -578,10 +582,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             .Where(source => File.Exists(ProjectLifecycleService.ResolveStoredPath(projectDirectory, source.Path)))
             .Select(source => source with
             {
-                Path = ProjectLifecycleService.ResolveStoredPath(projectDirectory, source.Path)
+                Path = ProjectLifecycleService.ResolveStoredPath(projectDirectory, source.Path),
+                ReviewPreview = ResolveReviewPreview(projectDirectory, source.ReviewPreview)
             })
             .ToArray();
-        RefreshAvailableProxyPaths();
+        RefreshAvailableReviewPreviewPaths();
         ImportedClipCount = ImportedMedia.Count;
         if (project.Timeline.Segments.Count == 0 && project.Media.Count > 0)
         {
@@ -590,7 +595,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _virtualTimeline = new VirtualTimeline(project.Timeline.Segments);
         _activeSegment = null;
         _loadedMediaSourceId = null;
-        _loadedMediaUsesProxy = false;
+        _loadedPlaybackKind = MediaReviewPlaybackKind.Original;
+        _loadedPlaybackPath = null;
         MaximumSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
         RebuildTimelineDisplay();
         HasLoadedMedia = false;
@@ -669,9 +675,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         await _projectLifecycle.SaveAsync(_project, ProjectDirectory, cancellationToken);
         var importedCount = mediaPaths.Count + Math.Min(1, gpxPaths.Count);
+        var suppliedLrvCount = mediaPaths.Count(MediaReviewPreviewPolicy.IsSuppliedLrv);
         StatusText = copyToProject
             ? $"Imported {importedCount} source(s) • verified copies stored inside the project"
             : $"Imported {importedCount} source(s) by reference • originals remain in place";
+        if (suppliedLrvCount > 0)
+        {
+            StatusText += $" • {suppliedLrvCount} supplied LRV candidate(s) evaluated for preview playback";
+        }
     }
 
     public async Task EnsureTimelineThumbnailAsync(
@@ -1613,20 +1624,36 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
+        RefreshAvailableReviewPreviewPaths();
+        var sourcesNeedingProxy = ImportedMedia
+            .Where(source => !_availableSuppliedLrvPaths.ContainsKey(source.Id))
+            .ToArray();
+        if (sourcesNeedingProxy.Length == 0)
+        {
+            _loadedMediaSourceId = null;
+            _loadedPlaybackKind = MediaReviewPlaybackKind.Original;
+            _loadedPlaybackPath = null;
+            await SeekProjectTimeAsync(TimeSpan.FromSeconds(CurrentSeconds), resumePlayback: IsPlaying);
+            StatusText = $"{_availableSuppliedLrvPaths.Count} supplied LRV preview(s) ready • FFmpeg was not needed • source-direct capture preserved";
+            return;
+        }
+
         _proxyAvailability ??= await _proxyGenerator.GetAvailabilityAsync();
         if (!_proxyAvailability.IsAvailable)
         {
-            StatusText = "Proxy preparation unavailable • install FFmpeg or set ROADWATCHER_FFMPEG";
+            StatusText = _availableSuppliedLrvPaths.Count > 0
+                ? $"{_availableSuppliedLrvPaths.Count} supplied LRV preview(s) ready • install FFmpeg or set ROADWATCHER_FFMPEG for the remaining clips"
+                : "Proxy preparation unavailable • install FFmpeg or set ROADWATCHER_FFMPEG";
             return;
         }
 
         var generated = 0;
         var reused = 0;
         var failed = 0;
-        for (var index = 0; index < ImportedMedia.Count; index++)
+        for (var index = 0; index < sourcesNeedingProxy.Length; index++)
         {
-            var source = ImportedMedia[index];
-            StatusText = $"Preparing proxy {index + 1}/{ImportedMedia.Count} • {source.DisplayName}";
+            var source = sourcesNeedingProxy[index];
+            StatusText = $"Preparing proxy {index + 1}/{sourcesNeedingProxy.Length} • {source.DisplayName}";
             try
             {
                 var destination = _proxyCache.GetPath(ProjectDirectory, source.Id, source.Path);
@@ -1651,20 +1678,23 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         _proxyCache.EnforceLimits(ProjectDirectory);
-        RefreshAvailableProxyPaths();
+        RefreshAvailableReviewPreviewPaths();
         _loadedMediaSourceId = null;
-        _loadedMediaUsesProxy = false;
+        _loadedPlaybackKind = MediaReviewPlaybackKind.Original;
+        _loadedPlaybackPath = null;
         await SeekProjectTimeAsync(TimeSpan.FromSeconds(CurrentSeconds), resumePlayback: IsPlaying);
 
-        var ready = _availableProxyPaths.Count;
+        var ready = ImportedMedia.Count(source =>
+            _availableSuppliedLrvPaths.ContainsKey(source.Id) || _availableProxyPaths.ContainsKey(source.Id));
         StatusText = failed == 0
-            ? $"{ready} cached proxy/proxies ready • {generated} generated, {reused} reused • source-direct capture preserved"
-            : $"{ready} cached proxy/proxies ready • {failed} failed • source playback remains available";
+            ? $"{ready} review preview(s) ready • {_availableSuppliedLrvPaths.Count} supplied LRV, {generated} generated, {reused} reused • source-direct capture preserved"
+            : $"{ready} review preview(s) ready • {_availableSuppliedLrvPaths.Count} supplied LRV, {failed} failed • source playback remains available";
     }
 
-    private void RefreshAvailableProxyPaths()
+    private void RefreshAvailableReviewPreviewPaths()
     {
         _availableProxyPaths.Clear();
+        _availableSuppliedLrvPaths.Clear();
         if (ProjectDirectory is null)
         {
             return;
@@ -1672,6 +1702,13 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         foreach (var source in ImportedMedia.Where(source => File.Exists(source.Path)))
         {
+            if (source.ReviewPreview is { } suppliedPreview &&
+                MediaReviewPreviewPolicy.IsSuppliedLrv(suppliedPreview.Path) &&
+                File.Exists(suppliedPreview.Path))
+            {
+                _availableSuppliedLrvPaths[source.Id] = suppliedPreview.Path;
+            }
+
             var proxyPath = _proxyCache.GetPath(ProjectDirectory, source.Id, source.Path);
             if (File.Exists(proxyPath) && new FileInfo(proxyPath).Length > 0)
             {
@@ -1679,6 +1716,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             }
         }
     }
+
+    private static MediaReviewPreview? ResolveReviewPreview(
+        string projectDirectory,
+        MediaReviewPreview? preview) => preview is null
+            ? null
+            : preview with { Path = ProjectLifecycleService.ResolveStoredPath(projectDirectory, preview.Path) };
+
+    private static bool PathsEqual(string first, string second) =>
+        string.Equals(Path.GetFullPath(first), Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase);
 
     public async Task ImportMediaAsync(
         IReadOnlyList<string> paths,
@@ -1699,8 +1745,16 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var sources = new List<MediaSource>(paths.Count);
-        foreach (var path in paths)
+        var videoPaths = paths
+            .Where(path => !MediaReviewPreviewPolicy.IsSuppliedLrv(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var suppliedLrvPaths = paths
+            .Where(MediaReviewPreviewPolicy.IsSuppliedLrv)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var sources = new List<MediaSource>(videoPaths.Length);
+        foreach (var path in videoPaths)
         {
             var selectedFile = new FileInfo(path);
             var copy = copyToProject
@@ -1727,18 +1781,75 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 captureMetadata));
         }
 
-        foreach (var source in sources.Where(source => _project.Media.All(existing => existing.Path != source.Path)))
+        var newSources = sources
+            .Where(source => _project.Media.All(existing => !PathsEqual(
+                ProjectLifecycleService.ResolveStoredPath(ProjectDirectory, existing.Path),
+                ProjectLifecycleService.ResolveStoredPath(ProjectDirectory, source.Path))))
+            .ToArray();
+        var suppliedLrvs = new List<MediaReviewPreviewCandidate>(suppliedLrvPaths.Length);
+        foreach (var path in suppliedLrvPaths)
         {
-            _project.Media.Add(source);
+            var selectedFile = new FileInfo(path);
+            if (!selectedFile.Exists)
+            {
+                throw new FileNotFoundException("The selected supplied LRV preview does not exist.", selectedFile.FullName);
+            }
+
+            var probe = await _mediaEngine.ProbeAsync(selectedFile.FullName, cancellationToken);
+            suppliedLrvs.Add(new MediaReviewPreviewCandidate(selectedFile.FullName, probe.Duration));
+        }
+
+        var candidateMedia = _project.Media
+            .Concat(newSources)
+            .Select(source => new MediaReviewVideoCandidate(
+                source.Id,
+                ProjectLifecycleService.ResolveStoredPath(ProjectDirectory, source.Path),
+                source.Duration));
+        var previewMatches = MediaReviewPreviewPolicy.MatchSuppliedLrvs(candidateMedia, suppliedLrvs);
+        var lrvByPath = suppliedLrvs.ToDictionary(candidate => candidate.Path, StringComparer.OrdinalIgnoreCase);
+        var previewsByMediaId = new Dictionary<Guid, MediaReviewPreview>();
+        foreach (var match in previewMatches)
+        {
+            var lrv = lrvByPath[match.PreviewPath];
+            var selectedFile = new FileInfo(lrv.Path);
+            var copy = copyToProject
+                ? await _sourceCopyService.CopyAsync(
+                    selectedFile.FullName,
+                    ProjectDirectory,
+                    ProjectSourceKind.ReviewPreview,
+                    cancellationToken)
+                : null;
+            previewsByMediaId[match.MediaSourceId] = new MediaReviewPreview(
+                copy?.RelativePath ?? selectedFile.FullName,
+                copy?.FileSize ?? selectedFile.Length,
+                lrv.Duration,
+                copy?.Sha256,
+                copyToProject);
+        }
+
+        for (var index = 0; index < _project.Media.Count; index++)
+        {
+            var existing = _project.Media[index];
+            if (previewsByMediaId.TryGetValue(existing.Id, out var preview))
+            {
+                _project.Media[index] = existing with { ReviewPreview = preview };
+            }
+        }
+        foreach (var source in newSources)
+        {
+            _project.Media.Add(previewsByMediaId.TryGetValue(source.Id, out var preview)
+                ? source with { ReviewPreview = preview }
+                : source);
         }
         ImportedMedia = _project.Media
             .Select(source => source with
             {
-                Path = ProjectLifecycleService.ResolveStoredPath(ProjectDirectory, source.Path)
+                Path = ProjectLifecycleService.ResolveStoredPath(ProjectDirectory, source.Path),
+                ReviewPreview = ResolveReviewPreview(ProjectDirectory, source.ReviewPreview)
             })
             .Where(source => File.Exists(source.Path))
             .ToArray();
-        RefreshAvailableProxyPaths();
+        RefreshAvailableReviewPreviewPaths();
         ImportedClipCount = ImportedMedia.Count;
         var updatedSegments = TimelineSegmentPlanner.AppendMissing(
             _project.Timeline.Segments,
@@ -1751,17 +1862,33 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         RebuildTimelineDisplay();
         UpdateCameraClockReferenceText();
         RefreshExactTimelineGuide(updateVisualWorkspace: true);
-        if (sources.Count == 0)
+        if (newSources.Length == 0)
         {
+            if (previewMatches.Count > 0 && HasLoadedMedia)
+            {
+                _loadedMediaSourceId = null;
+                _loadedPlaybackKind = MediaReviewPlaybackKind.Original;
+                _loadedPlaybackPath = null;
+                await SeekProjectTimeAsync(TimeSpan.FromSeconds(CurrentSeconds), resumePlayback: IsPlaying, cancellationToken);
+            }
+
+            StatusText = suppliedLrvs.Count == 0
+                ? "No new video sources were imported."
+                : previewMatches.Count > 0
+                    ? $"Attached {previewMatches.Count} supplied LRV preview(s) • source-direct capture preserved"
+                    : "No supplied LRV preview matched a video uniquely; no preview was attached.";
             return;
         }
 
         HasLoadedMedia = true;
         CurrentSeconds = 0;
         await SeekProjectTimeAsync(TimeSpan.Zero, resumePlayback: false, cancellationToken);
-        StatusText = sources.Count == 1
-            ? $"Imported {sources[0].DisplayName} • ready to review"
-            : $"Imported {sources.Count} source clips • playing {sources[0].DisplayName}";
+        var lrvStatus = previewMatches.Count == 0
+            ? suppliedLrvs.Count == 0 ? string.Empty : " • no supplied LRV matched a video uniquely"
+            : $" • {previewMatches.Count} supplied LRV preview(s) attached";
+        StatusText = newSources.Length == 1
+            ? $"Imported {newSources[0].DisplayName} • ready to review{lrvStatus}"
+            : $"Imported {newSources.Length} source clips • playing {newSources[0].DisplayName}{lrvStatus}";
     }
 
     private void EnsureTimelineClockReference()
@@ -1915,12 +2042,25 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            var usesProxy = _availableProxyPaths.TryGetValue(source.Id, out var proxyPath) &&
-                File.Exists(proxyPath);
-            var playbackSource = usesProxy
-                ? source with { Path = proxyPath! }
+            var suppliedLrvPath = _availableSuppliedLrvPaths.TryGetValue(source.Id, out var availableLrv) &&
+                File.Exists(availableLrv)
+                ? availableLrv
+                : null;
+            var generatedProxyPath = _availableProxyPaths.TryGetValue(source.Id, out var availableProxy) &&
+                File.Exists(availableProxy)
+                ? availableProxy
+                : null;
+            var playback = MediaReviewPreviewPolicy.SelectPlaybackSource(
+                source.Path,
+                suppliedLrvPath,
+                generatedProxyPath);
+            var playbackSource = playback.IsPreview
+                ? source with { Path = playback.Path }
                 : source;
-            var sourceChanged = _loadedMediaSourceId != source.Id || _loadedMediaUsesProxy != usesProxy;
+            var sourceChanged = _loadedMediaSourceId != source.Id ||
+                _loadedPlaybackKind != playback.Kind ||
+                string.IsNullOrWhiteSpace(_loadedPlaybackPath) ||
+                !PathsEqual(_loadedPlaybackPath, playback.Path);
             var shouldResumePlayback = resumePlayback && IsPlaying;
             if (sourceChanged)
             {
@@ -1931,11 +2071,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                     PlaybackRate,
                     cancellationToken);
                 _loadedMediaSourceId = source.Id;
-                _loadedMediaUsesProxy = usesProxy;
+                _loadedPlaybackKind = playback.Kind;
+                _loadedPlaybackPath = playback.Path;
             }
-            if (usesProxy)
+            if (playback.Kind == MediaReviewPlaybackKind.GeneratedProxy)
             {
-                File.SetLastAccessTimeUtc(proxyPath!, DateTime.UtcNow);
+                File.SetLastAccessTimeUtc(playback.Path, DateTime.UtcNow);
             }
 
             if (seekVersion != Volatile.Read(ref _timelineSeekVersion))
@@ -1948,15 +2089,23 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             {
                 _mediaEngine.Seek(position.SourceTime);
             }
-            LoadedMediaName = usesProxy
-                ? $"{source.DisplayName} • cached proxy"
-                : source.DisplayName;
+            LoadedMediaName = playback.Kind switch
+            {
+                MediaReviewPlaybackKind.SuppliedLrv => $"{source.DisplayName} • supplied LRV preview",
+                MediaReviewPlaybackKind.GeneratedProxy => $"{source.DisplayName} • cached proxy",
+                _ => source.DisplayName
+            };
             if (!sourceChanged && shouldResumePlayback)
             {
                 _mediaEngine.Play();
             }
             StatusText = $"{source.DisplayName} • project {FormatTimelineTime(projectTime)} • source {FormatTimelineTime(position.SourceTime)}" +
-                (usesProxy ? " • proxy playback" : string.Empty);
+                (playback.Kind switch
+                {
+                    MediaReviewPlaybackKind.SuppliedLrv => " • supplied LRV playback",
+                    MediaReviewPlaybackKind.GeneratedProxy => " • proxy playback",
+                    _ => string.Empty
+                });
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -3097,19 +3246,20 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         var requestedProjectTime = TimeSpan.FromSeconds(CurrentSeconds);
-        var restoreProxyPlayback = _loadedMediaUsesProxy;
+        var restorePreviewPlayback = _loadedPlaybackKind != MediaReviewPlaybackKind.Original;
         var resumePlayback = IsPlaying;
         EvidenceAsset? capturedFrame = null;
         TimeSpan? capturedProjectTime = null;
         string? captureError = null;
         try
         {
-            if (restoreProxyPlayback)
+            if (restorePreviewPlayback)
             {
                 _mediaEngine.Pause();
                 await _mediaEngine.LoadAsync(source);
                 _loadedMediaSourceId = source.Id;
-                _loadedMediaUsesProxy = false;
+                _loadedPlaybackKind = MediaReviewPlaybackKind.Original;
+                _loadedPlaybackPath = source.Path;
                 _mediaEngine.SetPlaybackRate(PlaybackRate);
                 _mediaEngine.Seek(timelinePosition.SourceTime);
             }
@@ -3124,10 +3274,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            if (restoreProxyPlayback)
+            if (restorePreviewPlayback)
             {
                 _loadedMediaSourceId = null;
-                _loadedMediaUsesProxy = false;
+                _loadedPlaybackKind = MediaReviewPlaybackKind.Original;
+                _loadedPlaybackPath = null;
                 await SeekProjectTimeAsync(
                     capturedProjectTime ?? requestedProjectTime,
                     resumePlayback: resumePlayback);
