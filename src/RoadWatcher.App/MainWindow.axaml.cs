@@ -26,6 +26,7 @@ public sealed partial class MainWindow : Window
 {
     private Map? _map;
     private MemoryLayer? _routeLayer;
+    private MemoryLayer? _stopLayer;
     private MemoryLayer? _positionLayer;
     private CancellationTokenSource? _timelinePreviewCancellation;
     public MainWindow() : this(null)
@@ -431,15 +432,21 @@ public sealed partial class MainWindow : Window
             Project(-79.39910, 43.66755),
             Project(-79.39730, 43.66768)
         };
-        _routeLayer = new MemoryLayer("GPX route")
+        var demoRoute = CreateRouteFeature(routeCoordinates, GpxSpeedPalette.Steady);
+        _routeLayer = new MemoryLayer("GPX route") { Features = [demoRoute] };
+        map.Layers.Add(_routeLayer);
+
+        _stopLayer = new MemoryLayer("GPX stops")
         {
-            Features = [new GeometryFeature { Geometry = new LineString(routeCoordinates) }],
-            Style = new VectorStyle
+            Features = [],
+            Style = new SymbolStyle
             {
-                Line = new Pen(Color.FromString("#14C9C3"), 5)
+                Fill = new Brush(Color.FromString(GpxSpeedPalette.Stop)),
+                Outline = new Pen(Color.White, 2),
+                SymbolScale = 1.6
             }
         };
-        map.Layers.Add(_routeLayer);
+        map.Layers.Add(_stopLayer);
 
         var projected = SphericalMercator.FromLonLat(-79.40089, 43.66745);
         var centre = new MPoint(projected.x, projected.y);
@@ -462,14 +469,38 @@ public sealed partial class MainWindow : Window
 
     private void UpdateMapRoute(IReadOnlyList<TrackPoint> points)
     {
-        if (_map is null || _routeLayer is null || points.Count < 2)
+        if (_map is null || _routeLayer is null || _stopLayer is null || points.Count < 2)
         {
             return;
         }
 
-        var coordinates = points.Select(point => Project(point.Longitude, point.Latitude)).ToArray();
-        _routeLayer.Features = [new GeometryFeature { Geometry = new LineString(coordinates) }];
+        var profile = GpxSpeedProfile.Analyze(points);
+        _routeLayer.Features = profile.Spans
+            .Where(span => span.Points.Count >= 2)
+            .Select(span => CreateRouteFeature(
+                span.Points.Select(point => Project(point.Longitude, point.Latitude)).ToArray(),
+                GpxSpeedPalette.For(span.Band)))
+            .ToArray();
+        _stopLayer.Features = profile.Stops
+            .Select(stop =>
+            {
+                var coordinate = SphericalMercator.FromLonLat(stop.Longitude, stop.Latitude);
+                return (IFeature)new PointFeature(coordinate.x, coordinate.y);
+            })
+            .ToArray();
         _routeLayer.DataHasChanged();
+        _stopLayer.DataHasChanged();
+        var projectedPoints = points
+            .Select(point => SphericalMercator.FromLonLat(point.Longitude, point.Latitude))
+            .ToArray();
+        var minX = projectedPoints.Min(point => point.x);
+        var maxX = projectedPoints.Max(point => point.x);
+        var minY = projectedPoints.Min(point => point.y);
+        var maxY = projectedPoints.Max(point => point.y);
+        var padding = Math.Max(50, Math.Max(maxX - minX, maxY - minY) * 0.15);
+        _map.Navigator.ZoomToBox(
+            new MRect(minX - padding, minY - padding, maxX + padding, maxY + padding),
+            MBoxFit.Fit);
         _map.RefreshGraphics();
     }
 
@@ -490,5 +521,17 @@ public sealed partial class MainWindow : Window
     {
         var projected = SphericalMercator.FromLonLat(longitude, latitude);
         return new Coordinate(projected.x, projected.y);
+    }
+
+    private static GeometryFeature CreateRouteFeature(
+        IReadOnlyList<Coordinate> coordinates,
+        string color)
+    {
+        var feature = new GeometryFeature { Geometry = new LineString(coordinates.ToArray()) };
+        feature.Styles.Add(new VectorStyle
+        {
+            Line = new Pen(Color.FromString(color), 5)
+        });
+        return feature;
     }
 }

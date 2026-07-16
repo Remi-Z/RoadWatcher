@@ -225,6 +225,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private IReadOnlyList<GpxAnchorViewModel> _gpxTimelineAnchors = [];
 
     [ObservableProperty]
+    private IReadOnlyList<GpxSpeedSegmentViewModel> _gpxTimelineSpeedSegments = [];
+
+    [ObservableProperty]
+    private IReadOnlyList<GpxStopMarkerViewModel> _gpxTimelineStops = [];
+
+    [ObservableProperty]
     private string[] _timelineRulerLabels = ["00:00:00", "00:00:00", "00:00:00", "00:00:00", "00:00:00"];
 
     public MainWindowViewModel()
@@ -355,6 +361,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         GpxCoverageStartSeconds = 0;
         GpxCoverageEndSeconds = 0;
         GpxTimelineAnchors = [];
+        GpxTimelineSpeedSegments = [];
+        GpxTimelineStops = [];
         GpxOffsetSeconds = 0;
         GpxAnchorTimeText = string.Empty;
         GpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
@@ -502,6 +510,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             GpxCoverageStartSeconds = 0;
             GpxCoverageEndSeconds = 0;
             GpxTimelineAnchors = [];
+            GpxTimelineSpeedSegments = [];
+            GpxTimelineStops = [];
             GpxOffsetSeconds = 0;
             GpxAnchorTimeText = string.Empty;
             GpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
@@ -1476,6 +1486,26 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 anchor.GpxSourceId,
                 anchor.ProjectTime,
                 anchor.GpxTime))
+            .ToArray();
+        var speedProfile = GpxSpeedProfile.Analyze(gpx.Points);
+        GpxTimelineSpeedSegments = speedProfile.Spans
+            .Select(span =>
+            {
+                var start = _gpxTimelineMapper.MapToProjectTime(span.StartTime);
+                var end = _gpxTimelineMapper.MapToProjectTime(span.EndTime);
+                return new GpxSpeedSegmentViewModel(
+                    start,
+                    end - start,
+                    GpxSpeedPalette.For(span.Band),
+                    span.AverageSpeedKilometresPerHour);
+            })
+            .Where(segment => segment.Duration > TimeSpan.Zero)
+            .ToArray();
+        GpxTimelineStops = speedProfile.Stops
+            .Select(stop => new GpxStopMarkerViewModel(
+                _gpxTimelineMapper.MapToProjectTime(stop.CentreTime),
+                stop.Duration,
+                $"Stopped {stop.Duration.TotalSeconds:0.#} s"))
             .ToArray();
         var first = effective[0];
         GpxOffsetSeconds = (first.GpxTime - (gpx.Points[0].RecordedAt + first.ProjectTime)).TotalSeconds;

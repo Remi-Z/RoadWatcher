@@ -86,6 +86,8 @@ M07 — V1 acceptance closure: implementation complete and ready for V2 work; re
 - Release acceptance exercised the GPX-anchor reorder rejection, a 100 ms Position edit, Undo, Redo, and final restoration in the 1152 × 820 logical workbench. Release build succeeds with zero warnings and all 43 tests pass.
 - The GPX lane now renders the synchronized recording interval through inverse timeline mapping instead of a decorative full-width line. One/two numbered anchors are direct timeline handles: drag to align fixed GPX times, use Alt+Arrow for 100 ms keyboard nudges (Shift for one second), and use the shared Undo/Redo history for either timeline or flyout synchronization edits.
 - Direct anchor edits enforce increasing project/GPX time, keep edge handles fully visible without changing their exact value, pause/resume active review safely, and persist the candidate project before changing live state. Release acceptance persisted a 100 ms anchor nudge and restored the prior anchors through Undo; Release build succeeds with zero warnings and all 45 tests pass.
+- One shared GPX speed profile now drives the map and timeline: blue below 10 km/h, teal from 10–20, amber from 20–30, and coral at 30+. The compact timeline legend states the fixed units/ranges, while imported map routes auto-fit their extent and retain the same per-segment colours.
+- Stops require continuous speed at or below 1 km/h for at least three seconds with no sample gap above five seconds. They render as magenta timeline markers and map halos so a live-position marker cannot hide them. A disposable multi-speed track exercised all four bands plus a four-second stop in the 1152 × 820 logical workbench; Release build succeeds with zero warnings and all 54 tests pass.
 
 ## Milestone commits
 
@@ -110,6 +112,7 @@ M07 — V1 acceptance closure: implementation complete and ready for V2 work; re
 - `ea49c85` — bounded proxy playback and source-direct capture
 - `2ebc728` — interactive timeline scrubbing and zoom
 - `805367b` — evidence-safe timeline clip editing
+- `19ca13c` — direct GPX timeline synchronization
 
 ## Next actions
 

@@ -55,6 +55,12 @@ public sealed class VirtualTimelineControl : Control
     public static readonly StyledProperty<IReadOnlyList<GpxAnchorViewModel>?> GpxAnchorsProperty =
         AvaloniaProperty.Register<VirtualTimelineControl, IReadOnlyList<GpxAnchorViewModel>?>(nameof(GpxAnchors));
 
+    public static readonly StyledProperty<IReadOnlyList<GpxSpeedSegmentViewModel>?> GpxSpeedSegmentsProperty =
+        AvaloniaProperty.Register<VirtualTimelineControl, IReadOnlyList<GpxSpeedSegmentViewModel>?>(nameof(GpxSpeedSegments));
+
+    public static readonly StyledProperty<IReadOnlyList<GpxStopMarkerViewModel>?> GpxStopsProperty =
+        AvaloniaProperty.Register<VirtualTimelineControl, IReadOnlyList<GpxStopMarkerViewModel>?>(nameof(GpxStops));
+
     public static readonly StyledProperty<TimelineClipEditMode> EditModeProperty =
         AvaloniaProperty.Register<VirtualTimelineControl, TimelineClipEditMode>(
             nameof(EditMode),
@@ -101,6 +107,8 @@ public sealed class VirtualTimelineControl : Control
             GpxCoverageStartSecondsProperty,
             GpxCoverageEndSecondsProperty,
             GpxAnchorsProperty,
+            GpxSpeedSegmentsProperty,
+            GpxStopsProperty,
             EditModeProperty);
     }
 
@@ -174,6 +182,18 @@ public sealed class VirtualTimelineControl : Control
     {
         get => GetValue(GpxAnchorsProperty);
         set => SetValue(GpxAnchorsProperty, value);
+    }
+
+    public IReadOnlyList<GpxSpeedSegmentViewModel>? GpxSpeedSegments
+    {
+        get => GetValue(GpxSpeedSegmentsProperty);
+        set => SetValue(GpxSpeedSegmentsProperty, value);
+    }
+
+    public IReadOnlyList<GpxStopMarkerViewModel>? GpxStops
+    {
+        get => GetValue(GpxStopsProperty);
+        set => SetValue(GpxStopsProperty, value);
     }
 
     public TimelineClipEditMode EditMode
@@ -586,7 +606,43 @@ public sealed class VirtualTimelineControl : Control
         if (coverageEnd > coverageStart)
         {
             context.DrawLine(new Pen(Brush("#17464B"), 9), new Point(coverageStart, y), new Point(coverageEnd, y));
-            context.DrawLine(new Pen(teal, 3), new Point(coverageStart, y), new Point(coverageEnd, y));
+            if (GpxSpeedSegments is { Count: > 0 })
+            {
+                foreach (var segment in GpxSpeedSegments)
+                {
+                    var start = HeaderWidth + _viewport.TimeToPixel(segment.ProjectStart.TotalSeconds);
+                    var end = HeaderWidth + _viewport.TimeToPixel(
+                        (segment.ProjectStart + segment.Duration).TotalSeconds);
+                    if (end > start)
+                    {
+                        context.DrawLine(
+                            new Pen(Brush(segment.Color), 4),
+                            new Point(start, y),
+                            new Point(end, y));
+                    }
+                }
+            }
+            else
+            {
+                context.DrawLine(new Pen(teal, 3), new Point(coverageStart, y), new Point(coverageEnd, y));
+            }
+        }
+
+        if (GpxStops is not null)
+        {
+            foreach (var stop in GpxStops)
+            {
+                var x = Math.Clamp(
+                    HeaderWidth + _viewport.TimeToPixel(stop.ProjectTime.TotalSeconds),
+                    HeaderWidth + 6,
+                    Bounds.Width - 6);
+                context.DrawEllipse(
+                    Brush(GpxSpeedPalette.Stop),
+                    new Pen(Brush("#F3F6F7"), 1),
+                    new Point(x, y),
+                    5,
+                    5);
+            }
         }
 
         if (GpxAnchors is null)
@@ -1123,6 +1179,17 @@ public sealed record GpxAnchorViewModel(
     Guid GpxSourceId,
     TimeSpan ProjectTime,
     DateTimeOffset GpxTime);
+
+public sealed record GpxSpeedSegmentViewModel(
+    TimeSpan ProjectStart,
+    TimeSpan Duration,
+    string Color,
+    double? AverageSpeedKilometresPerHour);
+
+public sealed record GpxStopMarkerViewModel(
+    TimeSpan ProjectTime,
+    TimeSpan Duration,
+    string Label);
 
 public sealed class TimelineGpxAnchorEditEventArgs(
     int anchorIndex,
