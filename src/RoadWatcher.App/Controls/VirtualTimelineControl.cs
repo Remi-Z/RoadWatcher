@@ -7,6 +7,7 @@ using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using RoadWatcher.App;
 using RoadWatcher.Core;
 
 namespace RoadWatcher.App.Controls;
@@ -15,7 +16,18 @@ public sealed class VirtualTimelineControl : Control
 {
     public const double HeaderWidth = 92;
     private const double RulerHeight = 28;
-    private const double LaneHeight = 34;
+    private const double VideoLaneHeight = 34;
+    // The GPX lane deliberately reserves a little more vertical room than the event lanes.
+    // It keeps the fixed-scale speed trace legible without taking space from the video track.
+    private const double GpxLaneHeight = 50;
+    private const double IncidentLaneHeight = 34;
+    private const double SelectedLaneHeight = 34;
+    private const double VideoLaneTop = RulerHeight;
+    private const double GpxLaneTop = VideoLaneTop + VideoLaneHeight;
+    private const double IncidentLaneTop = GpxLaneTop + GpxLaneHeight;
+    private const double SelectedLaneTop = IncidentLaneTop + IncidentLaneHeight;
+    private const double TimelineHeight = SelectedLaneTop + SelectedLaneHeight;
+    private const double GpxRouteY = GpxLaneTop + GpxLaneHeight - 10;
     private const double PreviewWidth = 160;
     private const double PreviewHeight = 90;
     private static readonly long PreviewIntervalTicks = Stopwatch.Frequency * 150 / 1000;
@@ -62,6 +74,16 @@ public sealed class VirtualTimelineControl : Control
     public static readonly StyledProperty<IReadOnlyList<GpxSpeedSegmentViewModel>?> GpxSpeedSegmentsProperty =
         AvaloniaProperty.Register<VirtualTimelineControl, IReadOnlyList<GpxSpeedSegmentViewModel>?>(nameof(GpxSpeedSegments));
 
+    public static readonly StyledProperty<IReadOnlyList<GpxSpeedSampleViewModel>?> GpxSpeedSamplesProperty =
+        AvaloniaProperty.Register<VirtualTimelineControl, IReadOnlyList<GpxSpeedSampleViewModel>?>(nameof(GpxSpeedSamples));
+
+    /// <summary>
+    /// Applies a uniform candidate synchronization shift without rebuilding every cached GPX
+    /// speed sample while the user drags the entire route or edits the numeric offset.
+    /// </summary>
+    public static readonly StyledProperty<double> GpxPresentationOffsetSecondsProperty =
+        AvaloniaProperty.Register<VirtualTimelineControl, double>(nameof(GpxPresentationOffsetSeconds));
+
     public static readonly StyledProperty<IReadOnlyList<GpxStopMarkerViewModel>?> GpxStopsProperty =
         AvaloniaProperty.Register<VirtualTimelineControl, IReadOnlyList<GpxStopMarkerViewModel>?>(nameof(GpxStops));
 
@@ -105,6 +127,8 @@ public sealed class VirtualTimelineControl : Control
     private double _dragGpxRouteDeltaSeconds;
     private long _lastGpxRoutePreviewRequest;
     private TimelineBlockViewModel? _hoverBlock;
+    private readonly Dictionary<string, SolidColorBrush> _gpxBrushes = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Color, double Width), Pen> _gpxPens = [];
 
     static VirtualTimelineControl()
     {
@@ -122,6 +146,8 @@ public sealed class VirtualTimelineControl : Control
             GpxCoverageEndSecondsProperty,
             GpxAnchorsProperty,
             GpxSpeedSegmentsProperty,
+            GpxSpeedSamplesProperty,
+            GpxPresentationOffsetSecondsProperty,
             GpxStopsProperty,
             EditModeProperty);
     }
@@ -212,6 +238,18 @@ public sealed class VirtualTimelineControl : Control
     {
         get => GetValue(GpxSpeedSegmentsProperty);
         set => SetValue(GpxSpeedSegmentsProperty, value);
+    }
+
+    public IReadOnlyList<GpxSpeedSampleViewModel>? GpxSpeedSamples
+    {
+        get => GetValue(GpxSpeedSamplesProperty);
+        set => SetValue(GpxSpeedSamplesProperty, value);
+    }
+
+    public double GpxPresentationOffsetSeconds
+    {
+        get => GetValue(GpxPresentationOffsetSecondsProperty);
+        set => SetValue(GpxPresentationOffsetSecondsProperty, value);
     }
 
     public IReadOnlyList<GpxStopMarkerViewModel>? GpxStops
@@ -324,7 +362,7 @@ public sealed class VirtualTimelineControl : Control
 
     protected override Size MeasureOverride(Size availableSize) => new(
         double.IsFinite(availableSize.Width) ? availableSize.Width : 800,
-        RulerHeight + LaneHeight * 4);
+        TimelineHeight);
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -365,8 +403,7 @@ public sealed class VirtualTimelineControl : Control
             return;
         }
 
-        var incidentLaneTop = RulerHeight + LaneHeight * 2;
-        if (point.Y >= incidentLaneTop && point.Y < incidentLaneTop + LaneHeight && Incidents is not null)
+        if (point.Y >= IncidentLaneTop && point.Y < IncidentLaneTop + IncidentLaneHeight && Incidents is not null)
         {
             var selected = Incidents
                 .Select(incident => new
@@ -385,8 +422,7 @@ public sealed class VirtualTimelineControl : Control
             }
         }
 
-        var gpxLaneTop = RulerHeight + LaneHeight;
-        if (point.Y >= gpxLaneTop && point.Y < gpxLaneTop + LaneHeight && HasGpx)
+        if (point.Y >= GpxLaneTop && point.Y < GpxLaneTop + GpxLaneHeight && HasGpx)
         {
             if (GpxAnchors is { Count: > 0 })
             {
@@ -416,8 +452,7 @@ public sealed class VirtualTimelineControl : Control
             return;
         }
 
-        var frontLaneTop = RulerHeight;
-        if (point.Y >= frontLaneTop && point.Y < frontLaneTop + LaneHeight)
+        if (point.Y >= VideoLaneTop && point.Y < VideoLaneTop + VideoLaneHeight)
         {
             var block = FindBlockAt(point.X);
             if (block?.MediaSourceId is not null)
@@ -618,16 +653,15 @@ public sealed class VirtualTimelineControl : Control
         context.FillRectangle(panel, bounds);
         context.FillRectangle(raised, new Rect(0, 0, bounds.Width, RulerHeight));
         context.DrawLine(border, new Point(HeaderWidth, 0), new Point(HeaderWidth, bounds.Height));
-        for (var row = 0; row <= 4; row++)
+        foreach (var y in new[] { RulerHeight, GpxLaneTop, IncidentLaneTop, SelectedLaneTop, TimelineHeight })
         {
-            var y = RulerHeight + row * LaneHeight;
             context.DrawLine(border, new Point(0, y), new Point(bounds.Width, y));
         }
 
         DrawText(context, "Video (front)", 8, RulerHeight + 10, muted, 10);
-        DrawText(context, "GPX (route)", 8, RulerHeight + LaneHeight + 10, muted, 10);
-        DrawText(context, "Incidents", 8, RulerHeight + LaneHeight * 2 + 10, muted, 10);
-        DrawText(context, "Selected", 8, RulerHeight + LaneHeight * 3 + 10, muted, 10);
+        DrawText(context, "GPX 0–50", 8, GpxLaneTop + 10, muted, 10);
+        DrawText(context, "Incidents", 8, IncidentLaneTop + 10, muted, 10);
+        DrawText(context, "Selected", 8, SelectedLaneTop + 10, muted, 10);
 
         using (context.PushClip(new Rect(HeaderWidth, 0, GetTimeAreaWidth(), bounds.Height)))
         {
@@ -661,7 +695,7 @@ public sealed class VirtualTimelineControl : Control
             return;
         }
 
-        var y = RulerHeight + 4;
+        var y = VideoLaneTop + 4;
         foreach (var block in Blocks)
         {
             var x = HeaderWidth + _viewport.TimeToPixel(block.ProjectStart.TotalSeconds);
@@ -671,7 +705,7 @@ public sealed class VirtualTimelineControl : Control
                 continue;
             }
 
-            var rect = new Rect(x + 1, y, Math.Max(1, width - 2), LaneHeight - 8);
+            var rect = new Rect(x + 1, y, Math.Max(1, width - 2), VideoLaneHeight - 8);
             context.FillRectangle(Brush(block.Background), rect, 2);
             context.DrawRectangle(new Pen(Brush(block.BorderBrush), 1), rect, 2);
             if (_selectedMediaSourceId is not null && block.MediaSourceId == _selectedMediaSourceId)
@@ -691,31 +725,42 @@ public sealed class VirtualTimelineControl : Control
         {
             return;
         }
-        var y = RulerHeight + LaneHeight + LaneHeight / 2;
+        var y = GpxRouteY;
         var coverageStart = HeaderWidth + _viewport.TimeToPixel(GpxCoverageStartSeconds);
         var coverageEnd = HeaderWidth + _viewport.TimeToPixel(GpxCoverageEndSeconds);
+        DrawGpxSpeedGraph(context, y, coverageStart, coverageEnd);
         if (coverageEnd > coverageStart)
         {
-            context.DrawLine(new Pen(Brush("#17464B"), 9), new Point(coverageStart, y), new Point(coverageEnd, y));
+            context.DrawLine(GetGpxPen("#17464B", 9), new Point(coverageStart, y), new Point(coverageEnd, y));
             if (GpxSpeedSegments is { Count: > 0 })
             {
-                foreach (var segment in GpxSpeedSegments)
+                var visibleStart = _viewport.PixelToTime(0) - GpxPresentationOffsetSeconds;
+                var visibleEnd = _viewport.PixelToTime(GetTimeAreaWidth()) - GpxPresentationOffsetSeconds;
+                var firstSegment = Math.Max(
+                    0,
+                    FindFirstSpeedSegmentEndingAfter(GpxSpeedSegments, TimeSpan.FromSeconds(visibleStart)) - 1);
+                for (var index = firstSegment; index < GpxSpeedSegments.Count; index++)
                 {
-                    var start = HeaderWidth + _viewport.TimeToPixel(segment.ProjectStart.TotalSeconds);
+                    var segment = GpxSpeedSegments[index];
+                    var startSeconds = segment.ProjectStart.TotalSeconds + GpxPresentationOffsetSeconds;
+                    var endSeconds = startSeconds + segment.Duration.TotalSeconds;
+                    if (startSeconds > visibleEnd + 0.001)
+                    {
+                        break;
+                    }
+
+                    var start = HeaderWidth + _viewport.TimeToPixel(startSeconds);
                     var end = HeaderWidth + _viewport.TimeToPixel(
-                        (segment.ProjectStart + segment.Duration).TotalSeconds);
+                        endSeconds);
                     if (end > start)
                     {
-                        context.DrawLine(
-                            new Pen(Brush(segment.Color), 4),
-                            new Point(start, y),
-                            new Point(end, y));
+                        context.DrawLine(GetGpxPen(segment.Color, 4), new Point(start, y), new Point(end, y));
                     }
                 }
             }
             else
             {
-                context.DrawLine(new Pen(teal, 3), new Point(coverageStart, y), new Point(coverageEnd, y));
+            context.DrawLine(new Pen(teal, 3), new Point(coverageStart, y), new Point(coverageEnd, y));
             }
         }
 
@@ -724,11 +769,12 @@ public sealed class VirtualTimelineControl : Control
             foreach (var stop in GpxStops)
             {
                 var x = Math.Clamp(
-                    HeaderWidth + _viewport.TimeToPixel(stop.ProjectTime.TotalSeconds),
+                    HeaderWidth + _viewport.TimeToPixel(
+                        stop.ProjectTime.TotalSeconds + GpxPresentationOffsetSeconds),
                     HeaderWidth + 6,
                     Bounds.Width - 6);
                 context.DrawEllipse(
-                    Brush(GpxSpeedPalette.Stop),
+                    GetGpxBrush(GpxSpeedPalette.Stop),
                     new Pen(Brush("#F3F6F7"), 1),
                     new Point(x, y),
                     5,
@@ -752,15 +798,175 @@ public sealed class VirtualTimelineControl : Control
                 ? Brush("#FF6B57")
                 : selected ? Brush("#FFAD18") : Brush("#F3F6F7");
             context.DrawLine(new Pen(brush, selected ? 2 : 1),
-                new Point(x, y - 12), new Point(x, y + 12));
-            context.DrawEllipse(Brush("#0D242D"), new Pen(brush, 2), new Point(x, y), 7, 7);
+                new Point(x, y - 9), new Point(x, y + 9));
+            context.DrawEllipse(Brush("#0D242D"), new Pen(brush, 2), new Point(x, y), 6, 6);
             DrawText(context, (anchor.Index + 1).ToString(CultureInfo.InvariantCulture), x - 2.5, y - 5, brush, 8);
         }
     }
 
+    private void DrawGpxSpeedGraph(
+        DrawingContext context,
+        double routeY,
+        double coverageStart,
+        double coverageEnd)
+    {
+        if (GpxSpeedSamples is not { Count: > 1 } samples)
+        {
+            return;
+        }
+
+        var graphTop = GpxLaneTop + 4;
+        var graphBottom = routeY - 7;
+        if (graphBottom <= graphTop)
+        {
+            return;
+        }
+
+        var graphStart = Math.Max(HeaderWidth, Math.Min(coverageStart, coverageEnd));
+        var graphEnd = Math.Min(Bounds.Width, Math.Max(coverageStart, coverageEnd));
+        if (graphEnd <= graphStart)
+        {
+            return;
+        }
+
+        context.DrawLine(GetGpxPen("#285159", 1), new Point(graphStart, graphBottom), new Point(graphEnd, graphBottom));
+
+        // Work in screen-pixel buckets. This bounds a dense 1 Hz multi-hour source to
+        // roughly two lines per visible pixel while still drawing each bucket's vertical
+        // minimum/maximum envelope, so a short braking or acceleration spike stays visible.
+        var first = Math.Max(
+            0,
+            FindFirstSpeedSampleAtOrAfter(
+                samples,
+                TimeSpan.FromSeconds(
+                    _viewport.PixelToTime(0) - GpxPresentationOffsetSeconds)) - 1);
+        var previous = default(SpeedGraphPoint?);
+        var bucketPixel = int.MinValue;
+        var bucketMinimum = default(SpeedGraphPoint?);
+        var bucketMaximum = default(SpeedGraphPoint?);
+        var bucketLast = default(SpeedGraphPoint?);
+
+        void FlushBucket()
+        {
+            if (bucketLast is not { } last)
+            {
+                return;
+            }
+
+            if (bucketMinimum is { } minimum && bucketMaximum is { } maximum &&
+                Math.Abs(maximum.Point.Y - minimum.Point.Y) > 0.25)
+            {
+                var envelopeColor = GpxSpeedPalette.ForRouteSegmentKilometresPerHour(
+                    (minimum.SpeedKilometresPerHour + maximum.SpeedKilometresPerHour) / 2);
+                context.DrawLine(GetGpxPen(envelopeColor, 1), minimum.Point, maximum.Point);
+            }
+
+            if (previous is { } prior)
+            {
+                var segmentColor = GpxSpeedPalette.ForRouteSegmentKilometresPerHour(
+                    (prior.SpeedKilometresPerHour + last.SpeedKilometresPerHour) / 2);
+                context.DrawLine(GetGpxPen(segmentColor, 1.5), prior.Point, last.Point);
+            }
+
+            previous = last;
+            bucketMinimum = null;
+            bucketMaximum = null;
+            bucketLast = null;
+        }
+
+        for (var index = first; index < samples.Count; index++)
+        {
+            var sample = samples[index];
+            var projectSeconds = sample.ProjectTime.TotalSeconds + GpxPresentationOffsetSeconds;
+            if (projectSeconds > _viewport.PixelToTime(GetTimeAreaWidth()) + 0.001)
+            {
+                break;
+            }
+
+            if (sample.SpeedKilometresPerHour is not { } speed || !double.IsFinite(speed))
+            {
+                FlushBucket();
+                previous = null;
+                continue;
+            }
+
+            var x = HeaderWidth + _viewport.TimeToPixel(projectSeconds);
+            if (x < graphStart - 1 || x > graphEnd + 1)
+            {
+                continue;
+            }
+
+            var normalized = Math.Clamp(speed / GpxSpeedPalette.DisplayMaximumKilometresPerHour, 0, 1);
+            var point = new SpeedGraphPoint(
+                new Point(x, graphBottom - normalized * (graphBottom - graphTop)),
+                speed);
+            var pixel = (int)Math.Floor(x);
+            if (bucketLast is not null && pixel != bucketPixel)
+            {
+                FlushBucket();
+            }
+
+            bucketPixel = pixel;
+            bucketMinimum = bucketMinimum is not { } minimum || point.SpeedKilometresPerHour < minimum.SpeedKilometresPerHour
+                ? point
+                : minimum;
+            bucketMaximum = bucketMaximum is not { } maximum || point.SpeedKilometresPerHour > maximum.SpeedKilometresPerHour
+                ? point
+                : maximum;
+            bucketLast = point;
+        }
+
+        FlushBucket();
+    }
+
+    private static int FindFirstSpeedSampleAtOrAfter(
+        IReadOnlyList<GpxSpeedSampleViewModel> samples,
+        TimeSpan projectTime)
+    {
+        var lower = 0;
+        var upper = samples.Count;
+        while (lower < upper)
+        {
+            var middle = lower + (upper - lower) / 2;
+            if (samples[middle].ProjectTime < projectTime)
+            {
+                lower = middle + 1;
+            }
+            else
+            {
+                upper = middle;
+            }
+        }
+
+        return lower;
+    }
+
+    private static int FindFirstSpeedSegmentEndingAfter(
+        IReadOnlyList<GpxSpeedSegmentViewModel> segments,
+        TimeSpan projectTime)
+    {
+        var lower = 0;
+        var upper = segments.Count;
+        while (lower < upper)
+        {
+            var middle = lower + (upper - lower) / 2;
+            var end = segments[middle].ProjectStart + segments[middle].Duration;
+            if (end < projectTime)
+            {
+                lower = middle + 1;
+            }
+            else
+            {
+                upper = middle;
+            }
+        }
+
+        return lower;
+    }
+
     private void DrawIncidents(DrawingContext context, IBrush muted, IBrush amber)
     {
-        var markerY = RulerHeight + LaneHeight * 2 + LaneHeight / 2;
+        var markerY = IncidentLaneTop + IncidentLaneHeight / 2;
         if (Incidents is not null)
         {
             foreach (var incident in Incidents)
@@ -781,9 +987,9 @@ public sealed class VirtualTimelineControl : Control
             var end = HeaderWidth + _viewport.TimeToPixel(SelectedIncidentEndSeconds);
             var rect = new Rect(
                 start,
-                RulerHeight + LaneHeight * 3 + 8,
+                SelectedLaneTop + 8,
                 Math.Max(2, end - start),
-                LaneHeight - 16);
+                SelectedLaneHeight - 16);
             context.FillRectangle(Brush("#4B3B0D"), rect, 2);
             context.DrawRectangle(new Pen(amber, 1), rect, 2);
         }
@@ -814,7 +1020,7 @@ public sealed class VirtualTimelineControl : Control
             : _hoverBlock!.ProjectStart.TotalSeconds + _hoverBlock.Duration.TotalSeconds / 2;
         var playheadX = HeaderWidth + _viewport.TimeToPixel(previewSeconds);
         var left = Math.Clamp(playheadX - PreviewWidth / 2, HeaderWidth + 4, Bounds.Width - PreviewWidth - 4);
-        var top = RulerHeight + LaneHeight + 2;
+        var top = GpxLaneTop + 2;
         var height = PreviewHeight + 34;
         var rect = new Rect(left, top, PreviewWidth, height);
         context.FillRectangle(raised, rect, 4);
@@ -852,8 +1058,8 @@ public sealed class VirtualTimelineControl : Control
     private void UpdateClipHover(Point point)
     {
         var inVideoLane = point.X >= HeaderWidth &&
-            point.Y >= RulerHeight &&
-            point.Y < RulerHeight + LaneHeight;
+            point.Y >= VideoLaneTop &&
+            point.Y < VideoLaneTop + VideoLaneHeight;
         var block = inVideoLane ? FindBlockAt(point.X) : null;
         if (block?.MediaSourceId is null)
         {
@@ -1225,7 +1431,7 @@ public sealed class VirtualTimelineControl : Control
             return false;
         }
 
-        var y = RulerHeight + LaneHeight + LaneHeight / 2;
+        var y = GpxRouteY;
         if (Math.Abs(point.Y - y) > 11)
         {
             return false;
@@ -1429,13 +1635,13 @@ public sealed class VirtualTimelineControl : Control
             var clips = GetClipBlocks();
             var target = clips[Math.Clamp(_dragTargetIndex, 0, clips.Count - 1)];
             var x = HeaderWidth + _viewport.TimeToPixel(target.ProjectStart.TotalSeconds);
-            context.DrawLine(new Pen(amber, 3), new Point(x, RulerHeight + 2), new Point(x, RulerHeight + LaneHeight - 2));
+            context.DrawLine(new Pen(amber, 3), new Point(x, VideoLaneTop + 2), new Point(x, VideoLaneTop + VideoLaneHeight - 2));
             return;
         }
 
         var ghostX = HeaderWidth + _viewport.TimeToPixel(_dragProposedStartSeconds);
         var width = Math.Max(2, _dragBlock.Duration.TotalSeconds * _viewport.PixelsPerSecond);
-        var rect = new Rect(ghostX + 1, RulerHeight + 4, Math.Max(1, width - 2), LaneHeight - 8);
+        var rect = new Rect(ghostX + 1, VideoLaneTop + 4, Math.Max(1, width - 2), VideoLaneHeight - 8);
         var colour = _dragValid ? Color.Parse("#A014C9C3") : Color.Parse("#B0FF6B57");
         context.FillRectangle(new SolidColorBrush(colour), rect, 2);
         context.DrawRectangle(new Pen(_dragValid ? amber : Brush("#FF6B57"), 2), rect, 2);
@@ -1511,6 +1717,31 @@ public sealed class VirtualTimelineControl : Control
         HeaderWidth + 8,
         Bounds.Width - 8);
 
+    private SolidColorBrush GetGpxBrush(string color)
+    {
+        if (_gpxBrushes.TryGetValue(color, out var brush))
+        {
+            return brush;
+        }
+
+        brush = new SolidColorBrush(Color.Parse(color));
+        _gpxBrushes[color] = brush;
+        return brush;
+    }
+
+    private Pen GetGpxPen(string color, double width)
+    {
+        var key = (color, width);
+        if (_gpxPens.TryGetValue(key, out var pen))
+        {
+            return pen;
+        }
+
+        pen = new Pen(GetGpxBrush(color), width);
+        _gpxPens[key] = pen;
+        return pen;
+    }
+
     private static SolidColorBrush Brush(string value) => new(Color.Parse(value));
 
     private static void DrawText(
@@ -1542,6 +1773,8 @@ public sealed class VirtualTimelineControl : Control
                 : value.ToString(@"ss\.fff");
         return sign + formatted;
     }
+
+    private readonly record struct SpeedGraphPoint(Point Point, double SpeedKilometresPerHour);
 }
 
 public sealed class TimelineScrubEventArgs(double projectSeconds) : EventArgs
@@ -1588,6 +1821,14 @@ public sealed record GpxSpeedSegmentViewModel(
     TimeSpan Duration,
     string Color,
     double? AverageSpeedKilometresPerHour);
+
+/// <summary>
+/// A speed observation mapped into the current project-time candidate for the compact GPX graph.
+/// </summary>
+public sealed record GpxSpeedSampleViewModel(
+    TimeSpan ProjectTime,
+    double? SpeedKilometresPerHour,
+    string Color);
 
 public sealed record GpxStopMarkerViewModel(
     TimeSpan ProjectTime,

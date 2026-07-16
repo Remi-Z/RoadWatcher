@@ -35,10 +35,10 @@ public sealed class GpxTrackService : IGpxTrackService
                 var seconds = (point.RecordedAt - previous.RecordedAt).TotalSeconds;
                 speed = seconds > 0
                     ? HaversineMeters(previous.Latitude, previous.Longitude, point.Latitude, point.Longitude) / seconds
-                    : 0;
+                    : null;
             }
 
-            normalized[index] = point with { SpeedMetersPerSecond = speed ?? 0 };
+            normalized[index] = point with { SpeedMetersPerSecond = speed };
         }
 
         return normalized;
@@ -107,23 +107,37 @@ public sealed class GpxTrackService : IGpxTrackService
         var upper = points[upperIndex];
         var spanSeconds = (upper.RecordedAt - lower.RecordedAt).TotalSeconds;
         var ratio = spanSeconds <= 0 ? 0 : Math.Clamp((time - lower.RecordedAt).TotalSeconds / spanSeconds, 0, 1);
-        var lowerSpeed = lower.SpeedMetersPerSecond ?? 0;
-        var upperSpeed = upper.SpeedMetersPerSecond ?? lowerSpeed;
+        // A missing GPX speed is not evidence that the vehicle was stationary.
+        // Keep the telemetry value unknown unless both samples bound a known value.
+        // This also prevents a fabricated acceleration spike at a missing sample.
+        var speed = InterpolateSpeed(
+            lower.SpeedMetersPerSecond,
+            upper.SpeedMetersPerSecond,
+            ratio);
 
         var accelerationLower = lowerIndex == upperIndex && lowerIndex > 0 ? lowerIndex - 1 : lowerIndex;
         var accelerationUpper = lowerIndex == upperIndex && upperIndex < points.Count - 1 ? upperIndex + 1 : upperIndex;
         var accelerationSeconds = (points[accelerationUpper].RecordedAt - points[accelerationLower].RecordedAt).TotalSeconds;
-        double? acceleration = accelerationSeconds > 0
-            ? ((points[accelerationUpper].SpeedMetersPerSecond ?? 0) - (points[accelerationLower].SpeedMetersPerSecond ?? 0)) / accelerationSeconds
+        var accelerationLowerSpeed = points[accelerationLower].SpeedMetersPerSecond;
+        var accelerationUpperSpeed = points[accelerationUpper].SpeedMetersPerSecond;
+        double? acceleration = accelerationSeconds > 0 &&
+                               accelerationLowerSpeed is { } knownAccelerationLowerSpeed &&
+                               accelerationUpperSpeed is { } knownAccelerationUpperSpeed
+            ? (knownAccelerationUpperSpeed - knownAccelerationLowerSpeed) / accelerationSeconds
             : null;
 
         return new TelemetrySample(
             time,
             Lerp(lower.Latitude, upper.Latitude, ratio),
             Lerp(lower.Longitude, upper.Longitude, ratio),
-            Lerp(lowerSpeed, upperSpeed, ratio),
+            speed,
             acceleration);
     }
+
+    private static double? InterpolateSpeed(double? lowerSpeed, double? upperSpeed, double ratio) =>
+        lowerSpeed is { } knownLowerSpeed && upperSpeed is { } knownUpperSpeed
+            ? Lerp(knownLowerSpeed, knownUpperSpeed, ratio)
+            : null;
 
     private static double? ParseOptionalDouble(XElement element, string localName)
     {

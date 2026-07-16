@@ -43,7 +43,7 @@ public sealed record TelemetrySample(
     DateTimeOffset Time,
     double Latitude,
     double Longitude,
-    double SpeedMetersPerSecond,
+    double? SpeedMetersPerSecond,
     double? AccelerationMetersPerSecondSquared);
 
 public interface ILocationResolver

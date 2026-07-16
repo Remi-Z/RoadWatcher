@@ -557,12 +557,7 @@ public sealed partial class MainWindow : Window
         }
 
         var profile = GpxSpeedProfile.Analyze(points);
-        _routeLayer.Features = profile.Spans
-            .Where(span => span.Points.Count >= 2)
-            .Select(span => CreateRouteFeature(
-                span.Points.Select(point => Project(point.Longitude, point.Latitude)).ToArray(),
-                GpxSpeedPalette.For(span.Band)))
-            .ToArray();
+        _routeLayer.Features = CreateContinuousRouteFeatures(profile.ContinuousSegments);
         _stopLayer.Features = profile.Stops
             .Select(stop =>
             {
@@ -618,14 +613,36 @@ public sealed partial class MainWindow : Window
     }
 
     private static GeometryFeature CreateRouteFeature(
-        IReadOnlyList<Coordinate> coordinates,
+        IReadOnlyList<GpxRouteRenderRun> runs,
         string color)
     {
-        var feature = new GeometryFeature { Geometry = new LineString(coordinates.ToArray()) };
+        var lines = runs
+            .Where(run => run.Points.Count >= 2)
+            .Select(run => new LineString(run.Points
+                .Select(point => Project(point.Longitude, point.Latitude))
+                .ToArray()))
+            .ToArray();
+        var feature = new GeometryFeature
+        {
+            Geometry = lines.Length == 1 ? lines[0] : new MultiLineString(lines)
+        };
         feature.Styles.Add(new VectorStyle
         {
             Line = new Pen(Color.FromString(color), 5)
         });
         return feature;
+    }
+
+    private static IReadOnlyList<IFeature> CreateContinuousRouteFeatures(
+        IReadOnlyList<GpxContinuousSpeedSegment> segments)
+    {
+        // A noisy track can alternate speed colour at every source sample. Grouping all
+        // disconnected runs of a colour into a multi-line feature makes the route's Mapsui
+        // workload strictly bounded without inventing joins between non-adjacent places.
+        var plan = GpxRouteRenderPlanner.Create(segments);
+        return plan.Chunks
+            .Where(chunk => chunk.Runs.Any(run => run.Points.Count >= 2))
+            .Select(chunk => (IFeature)CreateRouteFeature(chunk.Runs, chunk.Color))
+            .ToArray();
     }
 }

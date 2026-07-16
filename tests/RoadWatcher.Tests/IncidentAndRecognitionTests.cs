@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Xml.Linq;
 using RoadWatcher.Core;
 using RoadWatcher.Infrastructure;
 
@@ -171,7 +172,7 @@ public sealed class IncidentAndRecognitionTests
                                 gpxStart.AddSeconds(second),
                                 43.65 + second * 0.0001,
                                 -79.38 - second * 0.0001,
-                                SpeedMetersPerSecond: 5 + second * 0.1))
+                                SpeedMetersPerSecond: second == 1 ? null : 5 + second * 0.1))
                             .ToArray())
                 ],
                 Timeline = new TimelineDefinition
@@ -206,10 +207,17 @@ public sealed class IncidentAndRecognitionTests
             Assert.Equal(TimeSpan.FromSeconds(8), generator.Requests[1].ProjectStart);
             Assert.Equal(TimeSpan.FromSeconds(10), generator.Requests[1].ProjectEnd);
             Assert.Equal(6, result.Files.Count);
-            Assert.True(File.Exists(Path.Combine(
+            var excerptPath = Path.Combine(
                 exportDirectory,
                 "gpx",
-                $"incident-{incidentId:N}-{gpxId:N}.gpx")));
+                $"incident-{incidentId:N}-{gpxId:N}.gpx");
+            Assert.True(File.Exists(excerptPath));
+
+            var excerpt = XDocument.Load(excerptPath);
+            var startPoint = Assert.Single(excerpt.Descendants(), element =>
+                element.Name.LocalName == "trkpt" &&
+                DateTimeOffset.Parse(element.Elements().Single(child => child.Name.LocalName == "time").Value) == gpxStart.AddSeconds(1));
+            Assert.DoesNotContain(startPoint.Elements(), element => element.Name.LocalName == "speed");
 
             await using var manifestStream = File.OpenRead(result.ManifestPath);
             using var manifest = await JsonDocument.ParseAsync(manifestStream);

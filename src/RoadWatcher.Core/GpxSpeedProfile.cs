@@ -16,6 +16,42 @@ public sealed record GpxSpeedSpan(
     double? AverageSpeedKilometresPerHour,
     IReadOnlyList<TrackPoint> Points);
 
+/// <summary>
+/// One raw, timestamped speed observation retained for continuous graph and
+/// route-gradient presentation. A missing or non-finite source speed remains
+/// unknown instead of being represented as a stationary observation.
+/// </summary>
+public sealed record GpxContinuousSpeedSample(
+    DateTimeOffset RecordedAt,
+    double Latitude,
+    double Longitude,
+    double? SpeedMetersPerSecond)
+{
+    public double? SpeedKilometresPerHour => GpxSpeedProfile.ToKilometresPerHour(SpeedMetersPerSecond);
+
+    public GpxSpeedBand Band => GpxSpeedProfile.Classify(SpeedMetersPerSecond);
+}
+
+/// <summary>
+/// A contiguous route section between two adjacent speed samples. The average
+/// is intentionally reported only when both endpoint readings are known, so a
+/// graph or gradient never invents a value for an unknown endpoint.
+/// </summary>
+public sealed record GpxContinuousSpeedSegment(
+    GpxContinuousSpeedSample Start,
+    GpxContinuousSpeedSample End,
+    double? AverageSpeedMetersPerSecond)
+{
+    public DateTimeOffset StartTime => Start.RecordedAt;
+
+    public DateTimeOffset EndTime => End.RecordedAt;
+
+    public double? AverageSpeedKilometresPerHour =>
+        GpxSpeedProfile.ToKilometresPerHour(AverageSpeedMetersPerSecond);
+
+    public GpxSpeedBand Band => GpxSpeedProfile.Classify(AverageSpeedMetersPerSecond);
+}
+
 public sealed record GpxStop(
     DateTimeOffset StartTime,
     DateTimeOffset EndTime,
@@ -28,6 +64,26 @@ public sealed record GpxSpeedProfile(
     IReadOnlyList<GpxSpeedSpan> Spans,
     IReadOnlyList<GpxStop> Stops)
 {
+    private static readonly IReadOnlyList<GpxContinuousSpeedSample> EmptyContinuousSamples =
+        Array.AsReadOnly(Array.Empty<GpxContinuousSpeedSample>());
+
+    private static readonly IReadOnlyList<GpxContinuousSpeedSegment> EmptyContinuousSegments =
+        Array.AsReadOnly(Array.Empty<GpxContinuousSpeedSegment>());
+
+    /// <summary>
+    /// Immutable raw-speed samples ordered by GPX timestamp. This is separate
+    /// from legacy colour spans so graph and gradient consumers retain each
+    /// source observation, including unknown readings.
+    /// </summary>
+    public IReadOnlyList<GpxContinuousSpeedSample> ContinuousSamples { get; init; } =
+        EmptyContinuousSamples;
+
+    /// <summary>
+    /// Immutable sections between adjacent <see cref="ContinuousSamples"/>.
+    /// </summary>
+    public IReadOnlyList<GpxContinuousSpeedSegment> ContinuousSegments { get; init; } =
+        EmptyContinuousSegments;
+
     public const double StopThresholdKilometresPerHour = 1;
     public static readonly TimeSpan MinimumStopDuration = TimeSpan.FromSeconds(3);
     public static readonly TimeSpan MaximumStopSampleGap = TimeSpan.FromSeconds(5);
@@ -35,7 +91,12 @@ public sealed record GpxSpeedProfile(
     public static GpxSpeedProfile Analyze(IEnumerable<TrackPoint> trackPoints)
     {
         var points = trackPoints.OrderBy(point => point.RecordedAt).ToArray();
-        return new GpxSpeedProfile(BuildSpans(points), FindStops(points));
+        var continuousSamples = BuildContinuousSamples(points);
+        return new GpxSpeedProfile(BuildSpans(points), FindStops(points))
+        {
+            ContinuousSamples = continuousSamples,
+            ContinuousSegments = BuildContinuousSegments(continuousSamples)
+        };
     }
 
     public static GpxSpeedBand Classify(double? speedMetersPerSecond)
@@ -53,6 +114,42 @@ public sealed record GpxSpeedProfile(
             < 30 => GpxSpeedBand.Brisk,
             _ => GpxSpeedBand.Fast
         };
+    }
+
+    public static double? ToKilometresPerHour(double? speedMetersPerSecond) =>
+        speedMetersPerSecond is { } speed && double.IsFinite(speed)
+            ? speed * 3.6
+            : null;
+
+    private static IReadOnlyList<GpxContinuousSpeedSample> BuildContinuousSamples(
+        IReadOnlyList<TrackPoint> points) =>
+        Array.AsReadOnly(
+            points.Select(point => new GpxContinuousSpeedSample(
+                point.RecordedAt,
+                point.Latitude,
+                point.Longitude,
+                point.SpeedMetersPerSecond)).ToArray());
+
+    private static IReadOnlyList<GpxContinuousSpeedSegment> BuildContinuousSegments(
+        IReadOnlyList<GpxContinuousSpeedSample> samples)
+    {
+        if (samples.Count < 2)
+        {
+            return EmptyContinuousSegments;
+        }
+
+        var segments = new GpxContinuousSpeedSegment[samples.Count - 1];
+        for (var index = 0; index < segments.Length; index++)
+        {
+            var start = samples[index];
+            var end = samples[index + 1];
+            segments[index] = new GpxContinuousSpeedSegment(
+                start,
+                end,
+                AverageKnownSpeed(start.SpeedMetersPerSecond, end.SpeedMetersPerSecond));
+        }
+
+        return Array.AsReadOnly(segments);
     }
 
     private static IReadOnlyList<GpxSpeedSpan> BuildSpans(IReadOnlyList<TrackPoint> points)
@@ -159,4 +256,10 @@ public sealed record GpxSpeedProfile(
         var effectiveRight = rightSpeed ?? effectiveLeft;
         return (effectiveLeft + effectiveRight) / 2;
     }
+
+    private static double? AverageKnownSpeed(double? leftSpeed, double? rightSpeed) =>
+        leftSpeed is { } left && rightSpeed is { } right &&
+        double.IsFinite(left) && double.IsFinite(right)
+            ? (left + right) / 2
+            : null;
 }

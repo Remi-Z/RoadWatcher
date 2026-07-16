@@ -71,6 +71,55 @@ public sealed class GpxSpeedProfileTests
         Assert.Empty(profile.Stops);
     }
 
+    [Fact]
+    public void Analysis_retains_timestamped_unknown_samples_and_known_adjacent_presentation_speed()
+    {
+        var start = DateTimeOffset.Parse("2026-07-12T12:00:00Z");
+        var profile = GpxSpeedProfile.Analyze(
+        [
+            new TrackPoint(start, 43, -79),
+            Point(start.AddSeconds(1), 4, 43.00001, -79),
+            Point(start.AddSeconds(2), 6, 43.00002, -79)
+        ]);
+
+        Assert.Equal(3, profile.ContinuousSamples.Count);
+        var firstSample = profile.ContinuousSamples[0];
+        Assert.Equal(start, firstSample.RecordedAt);
+        Assert.Null(firstSample.SpeedMetersPerSecond);
+        Assert.Null(firstSample.SpeedKilometresPerHour);
+        Assert.Equal(GpxSpeedBand.Unknown, firstSample.Band);
+
+        Assert.Equal(2, profile.ContinuousSegments.Count);
+        var unknownSegment = profile.ContinuousSegments[0];
+        Assert.Equal(firstSample, unknownSegment.Start);
+        Assert.Null(unknownSegment.AverageSpeedMetersPerSecond);
+        Assert.Null(unknownSegment.AverageSpeedKilometresPerHour);
+        Assert.Equal(GpxSpeedBand.Unknown, unknownSegment.Band);
+
+        var knownSegment = profile.ContinuousSegments[1];
+        Assert.Equal(start.AddSeconds(1), knownSegment.StartTime);
+        Assert.Equal(start.AddSeconds(2), knownSegment.EndTime);
+        Assert.Equal(5, knownSegment.AverageSpeedMetersPerSecond!.Value);
+        Assert.Equal(18, knownSegment.AverageSpeedKilometresPerHour!.Value);
+        Assert.Equal(GpxSpeedBand.Steady, knownSegment.Band);
+
+        var samples = Assert.IsAssignableFrom<IList<GpxContinuousSpeedSample>>(profile.ContinuousSamples);
+        var segments = Assert.IsAssignableFrom<IList<GpxContinuousSpeedSegment>>(profile.ContinuousSegments);
+        Assert.True(samples.IsReadOnly);
+        Assert.True(segments.IsReadOnly);
+    }
+
+    [Fact]
+    public void Existing_two_argument_profile_constructor_keeps_empty_continuous_collections()
+    {
+        var profile = new GpxSpeedProfile(
+            Array.Empty<GpxSpeedSpan>(),
+            Array.Empty<GpxStop>());
+
+        Assert.Empty(profile.ContinuousSamples);
+        Assert.Empty(profile.ContinuousSegments);
+    }
+
     private static TrackPoint Point(
         DateTimeOffset time,
         double speedMetersPerSecond,

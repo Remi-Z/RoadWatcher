@@ -55,6 +55,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private GpxSynchronizationSession? _gpxSynchronizationPreview;
     private bool _suppressGpxOffsetPreview;
     private readonly Dictionary<Guid, GpxSpeedProfile> _gpxSpeedProfileCache = [];
+    private Guid? _gpxTimelineSpeedPresentationSourceId;
+    private SyncAnchor[] _gpxTimelineSpeedPresentationAnchors = [];
     private readonly Stack<TimelineUndoEntry> _timelineUndo = [];
     private readonly Stack<TimelineUndoEntry> _timelineRedo = [];
 
@@ -255,6 +257,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private IReadOnlyList<GpxSpeedSegmentViewModel> _gpxTimelineSpeedSegments = [];
 
     [ObservableProperty]
+    private IReadOnlyList<GpxSpeedSampleViewModel> _gpxTimelineSpeedSamples = [];
+
+    [ObservableProperty]
+    private double _gpxTimelineSpeedPresentationOffsetSeconds;
+
+    [ObservableProperty]
     private IReadOnlyList<GpxStopMarkerViewModel> _gpxTimelineStops = [];
 
     [ObservableProperty]
@@ -423,6 +431,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         GpxCoverageEndSeconds = 0;
         GpxTimelineAnchors = [];
         GpxTimelineSpeedSegments = [];
+        GpxTimelineSpeedSamples = [];
+        ClearGpxTimelineSpeedPresentationCache();
         GpxTimelineStops = [];
         SetGpxOffsetSecondsWithoutPreview(0);
         GpxAnchorTimeText = string.Empty;
@@ -586,6 +596,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             GpxCoverageEndSeconds = 0;
             GpxTimelineAnchors = [];
             GpxTimelineSpeedSegments = [];
+            GpxTimelineSpeedSamples = [];
+            ClearGpxTimelineSpeedPresentationCache();
             GpxTimelineStops = [];
             SetGpxOffsetSecondsWithoutPreview(0);
             GpxAnchorTimeText = string.Empty;
@@ -2049,26 +2061,33 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 anchor.ProjectTime,
                 anchor.GpxTime))
             .ToArray();
-        var speedProfile = GetGpxSpeedProfile(gpx);
-        GpxTimelineSpeedSegments = speedProfile.Spans
-            .Select(span =>
-            {
-                var start = _gpxTimelineMapper.MapToProjectTime(span.StartTime);
-                var end = _gpxTimelineMapper.MapToProjectTime(span.EndTime);
-                return new GpxSpeedSegmentViewModel(
-                    start,
-                    end - start,
-                    GpxSpeedPalette.For(span.Band),
-                    span.AverageSpeedKilometresPerHour);
-            })
-            .Where(segment => segment.Duration > TimeSpan.Zero)
-            .ToArray();
-        GpxTimelineStops = speedProfile.Stops
-            .Select(stop => new GpxStopMarkerViewModel(
-                _gpxTimelineMapper.MapToProjectTime(stop.CentreTime),
-                stop.Duration,
-                $"Stopped {stop.Duration.TotalSeconds:0.#} s"))
-            .ToArray();
+        if (TryGetGpxTimelineSpeedPresentationTranslation(gpx.Id, effective, out var presentationOffset))
+        {
+            // Whole-route dragging and numeric-offset editing translate every GPX timestamp
+            // by the same amount. Keep the immutable speed presentation and let the timeline
+            // apply this lightweight offset instead of remapping a long source at 30 Hz.
+            GpxTimelineSpeedPresentationOffsetSeconds = presentationOffset;
+        }
+        else
+        {
+            var speedProfile = GetGpxSpeedProfile(gpx);
+            GpxTimelineSpeedSegments = MapTimelineSpeedSegments(speedProfile);
+            GpxTimelineSpeedSamples = speedProfile.ContinuousSamples
+                .Select(sample => new GpxSpeedSampleViewModel(
+                    _gpxTimelineMapper.MapToProjectTime(sample.RecordedAt),
+                    sample.SpeedKilometresPerHour,
+                    GpxSpeedPalette.ForRouteSegmentKilometresPerHour(sample.SpeedKilometresPerHour)))
+                .ToArray();
+            GpxTimelineStops = speedProfile.Stops
+                .Select(stop => new GpxStopMarkerViewModel(
+                    _gpxTimelineMapper.MapToProjectTime(stop.CentreTime),
+                    stop.Duration,
+                    $"Stopped {stop.Duration.TotalSeconds:0.#} s"))
+                .ToArray();
+            _gpxTimelineSpeedPresentationSourceId = gpx.Id;
+            _gpxTimelineSpeedPresentationAnchors = [.. effective];
+            GpxTimelineSpeedPresentationOffsetSeconds = 0;
+        }
         var offsetSeconds = GetGpxOffsetSeconds(gpx, effective);
         if (!preserveOffsetEntry)
         {
@@ -2112,6 +2131,84 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         profile = GpxSpeedProfile.Analyze(gpx.Points);
         _gpxSpeedProfileCache[gpx.Id] = profile;
         return profile;
+    }
+
+    private bool TryGetGpxTimelineSpeedPresentationTranslation(
+        Guid sourceId,
+        IReadOnlyList<SyncAnchor> candidateAnchors,
+        out double offsetSeconds)
+    {
+        offsetSeconds = 0;
+        if (_gpxTimelineSpeedPresentationSourceId != sourceId ||
+            _gpxTimelineSpeedPresentationAnchors.Length == 0 ||
+            _gpxTimelineSpeedPresentationAnchors.Length != candidateAnchors.Count)
+        {
+            return false;
+        }
+
+        var offset = candidateAnchors[0].ProjectTime - _gpxTimelineSpeedPresentationAnchors[0].ProjectTime;
+        for (var index = 0; index < candidateAnchors.Count; index++)
+        {
+            var baseline = _gpxTimelineSpeedPresentationAnchors[index];
+            var candidate = candidateAnchors[index];
+            if (candidate.GpxSourceId != baseline.GpxSourceId ||
+                candidate.GpxTime != baseline.GpxTime ||
+                candidate.ProjectTime - baseline.ProjectTime != offset)
+            {
+                return false;
+            }
+        }
+
+        offsetSeconds = offset.TotalSeconds;
+        return true;
+    }
+
+    private void ClearGpxTimelineSpeedPresentationCache()
+    {
+        _gpxTimelineSpeedPresentationSourceId = null;
+        _gpxTimelineSpeedPresentationAnchors = [];
+        GpxTimelineSpeedPresentationOffsetSeconds = 0;
+    }
+
+    private IReadOnlyList<GpxSpeedSegmentViewModel> MapTimelineSpeedSegments(GpxSpeedProfile profile)
+    {
+        if (_gpxTimelineMapper is null)
+        {
+            return [];
+        }
+
+        var mapped = new List<GpxSpeedSegmentViewModel>();
+        foreach (var span in profile.ContinuousSegments)
+        {
+            var start = _gpxTimelineMapper.MapToProjectTime(span.StartTime);
+            var end = _gpxTimelineMapper.MapToProjectTime(span.EndTime);
+            if (end <= start)
+            {
+                continue;
+            }
+
+            var color = GpxSpeedPalette.ForRouteSegmentKilometresPerHour(
+                span.AverageSpeedKilometresPerHour);
+            if (mapped.LastOrDefault() is { } previous &&
+                previous.Color == color &&
+                Math.Abs((previous.ProjectStart + previous.Duration - start).TotalMilliseconds) < 0.001)
+            {
+                mapped[^1] = previous with
+                {
+                    Duration = end - previous.ProjectStart,
+                    AverageSpeedKilometresPerHour = span.AverageSpeedKilometresPerHour
+                };
+                continue;
+            }
+
+            mapped.Add(new GpxSpeedSegmentViewModel(
+                start,
+                end - start,
+                color,
+                span.AverageSpeedKilometresPerHour));
+        }
+
+        return mapped;
     }
 
     partial void OnGpxOffsetSecondsChanged(double value)
@@ -2226,7 +2323,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
-        SpeedKmhText = (sample.SpeedMetersPerSecond * 3.6).ToString("0.0");
+        SpeedKmhText = sample.SpeedMetersPerSecond is { } speed
+            ? (speed * 3.6).ToString("0.0")
+            : "—";
         AccelerationText = sample.AccelerationMetersPerSecondSquared is { } acceleration
             ? acceleration.ToString("0.0").Replace('-', '−')
             : "—";
@@ -2370,7 +2469,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         Address = incident.Location?.Address ?? string.Empty;
         IsLocationConfirmed = incident.Location?.UserConfirmed ?? false;
         _incidentLocationSample = incident.Location is { } location
-            ? new TelemetrySample(DateTimeOffset.MinValue, location.Latitude, location.Longitude, 0, null)
+            ? new TelemetrySample(DateTimeOffset.MinValue, location.Latitude, location.Longitude, null, null)
             : null;
         _incidentLocationProvider = incident.Location?.Provider;
         PlateNumber = incident.Vehicle?.PlateNumber ?? string.Empty;

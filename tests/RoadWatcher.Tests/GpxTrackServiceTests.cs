@@ -30,9 +30,64 @@ public sealed class GpxTrackServiceTests
         var sample = service.SampleAt(points, DateTimeOffset.Parse("2026-07-12T14:32:18-04:00"));
 
         Assert.NotNull(sample);
-        Assert.InRange(sample.SpeedMetersPerSecond * 3.6, 20.4, 20.6);
+        Assert.InRange(sample.SpeedMetersPerSecond!.Value * 3.6, 20.4, 20.6);
         Assert.InRange(sample.AccelerationMetersPerSecondSquared!.Value, -0.81, -0.79);
         Assert.InRange(sample.Latitude, 43.66743, 43.66745);
+    }
+
+    [Fact]
+    public async Task Read_preserves_an_initial_unknown_speed_and_derives_later_missing_speed_from_motion()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"roadwatcher-speed-{Guid.NewGuid():N}.gpx");
+        try
+        {
+            await File.WriteAllTextAsync(path, """
+                <gpx version="1.1" creator="RoadWatcher">
+                  <trk><trkseg>
+                    <trkpt lat="43" lon="-79"><time>2026-07-12T12:00:00Z</time></trkpt>
+                    <trkpt lat="43.0001" lon="-79"><time>2026-07-12T12:00:10Z</time></trkpt>
+                    <trkpt lat="43.0002" lon="-79"><time>2026-07-12T12:00:20Z</time><speed>3.5</speed></trkpt>
+                  </trkseg></trk>
+                </gpx>
+                """);
+
+            var points = await new GpxTrackService().ReadAsync(path);
+
+            Assert.Null(points[0].SpeedMetersPerSecond);
+            Assert.InRange(points[1].SpeedMetersPerSecond!.Value, 1.10, 1.12);
+            Assert.Equal(3.5, points[2].SpeedMetersPerSecond!.Value);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Sample_preserves_unknown_speed_and_acceleration_instead_of_substituting_zero()
+    {
+        var start = DateTimeOffset.Parse("2026-07-12T12:00:00Z");
+        var points = new[]
+        {
+            new TrackPoint(start, 43, -79),
+            new TrackPoint(start.AddSeconds(10), 43.0001, -79, SpeedMetersPerSecond: 5)
+        };
+
+        var service = new GpxTrackService();
+
+        var atUnknownPoint = service.SampleAt(points, start);
+        var betweenUnknownAndKnownPoints = service.SampleAt(points, start.AddSeconds(5));
+        var atKnownPoint = service.SampleAt(points, start.AddSeconds(10));
+
+        Assert.NotNull(atUnknownPoint);
+        Assert.Null(atUnknownPoint.SpeedMetersPerSecond);
+        Assert.Null(atUnknownPoint.AccelerationMetersPerSecondSquared);
+        Assert.NotNull(betweenUnknownAndKnownPoints);
+        Assert.Null(betweenUnknownAndKnownPoints.SpeedMetersPerSecond);
+        Assert.Null(betweenUnknownAndKnownPoints.AccelerationMetersPerSecondSquared);
+        Assert.NotNull(atKnownPoint);
+        Assert.Equal(5, atKnownPoint.SpeedMetersPerSecond!.Value);
+        Assert.Null(atKnownPoint.AccelerationMetersPerSecondSquared);
     }
 
     [Fact]
@@ -115,6 +170,6 @@ public sealed class GpxTrackServiceTests
         Assert.NotNull(sample);
         Assert.Equal(start.AddHours(4).AddMilliseconds(-500), sample.Time);
         Assert.InRange(sample.Latitude, 43.014399, 43.014401);
-        Assert.InRange(sample.SpeedMetersPerSecond, 6.4398, 6.4401);
+        Assert.InRange(sample.SpeedMetersPerSecond!.Value, 6.4398, 6.4401);
     }
 }

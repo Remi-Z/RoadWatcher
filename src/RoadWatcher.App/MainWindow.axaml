@@ -382,6 +382,8 @@
                                          GpxCoverageEndSeconds="{Binding GpxCoverageEndSeconds}"
                                          GpxAnchors="{Binding GpxTimelineAnchors}"
                                          GpxSpeedSegments="{Binding GpxTimelineSpeedSegments}"
+                                         GpxSpeedSamples="{Binding GpxTimelineSpeedSamples}"
+                                         GpxPresentationOffsetSeconds="{Binding GpxTimelineSpeedPresentationOffsetSeconds}"
                                          GpxStops="{Binding GpxTimelineStops}"
                                          HasSelectedIncident="{Binding HasSelectedIncident}"
                                          SelectedIncidentStartSeconds="{Binding SelectedIncidentStartSeconds}"
@@ -394,12 +396,13 @@
             <StackPanel Orientation="Horizontal"
                         Spacing="10"
                         IsVisible="{Binding HasGpx}"
-                        ToolTip.Tip="Fixed GPX speed bands in km/h • a stop requires ≤1 km/h for at least 3 seconds">
-              <TextBlock Classes="muted" FontSize="9" Text="Speed" />
-              <TextBlock Foreground="#56B4E9" FontSize="9" Text="━ &lt;10" />
-              <TextBlock Foreground="#14C9C3" FontSize="9" Text="━ 10–20" />
-              <TextBlock Foreground="#FFAD18" FontSize="9" Text="━ 20–30" />
-              <TextBlock Foreground="#FF6B57" FontSize="9" Text="━ ≥30" />
+                        ToolTip.Tip="Fixed GPX speed scale in km/h: red at 0–1, then orange/yellow/green through 50+ • a stop requires ≤1 km/h for at least 3 seconds">
+              <TextBlock Classes="muted" FontSize="9" Text="Speed (km/h)" />
+              <TextBlock Foreground="#D94A4A" FontSize="9" Text="━ 0–1" />
+              <TextBlock Foreground="#F28E3A" FontSize="9" Text="━ 10" />
+              <TextBlock Foreground="#F1C84B" FontSize="9" Text="━ 20" />
+              <TextBlock Foreground="#8ACB57" FontSize="9" Text="━ 30" />
+              <TextBlock Foreground="#24A75D" FontSize="9" Text="━ 50+" />
               <TextBlock Foreground="#D85CFF" FontSize="9" Text="● stop" />
             </StackPanel>
             <TextBlock Classes="muted" FontSize="9" Text="◇ incident" />
