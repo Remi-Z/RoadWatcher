@@ -8,7 +8,14 @@ public sealed class FfmpegReviewClipGenerator : IReviewClipGenerator
 {
     private const string SetupInstructions = "Install FFmpeg 8.x, place ffmpeg on PATH, or set ROADWATCHER_FFMPEG to the ffmpeg executable path, then export again.";
 
-    private readonly string _executable = Environment.GetEnvironmentVariable("ROADWATCHER_FFMPEG") ?? "ffmpeg";
+    private readonly IFfmpegJobQueue _jobs;
+    private readonly string _executable;
+
+    public FfmpegReviewClipGenerator(IFfmpegJobQueue? jobs = null, string? executable = null)
+    {
+        _jobs = jobs ?? FfmpegJobQueueRegistry.Shared;
+        _executable = executable ?? Environment.GetEnvironmentVariable("ROADWATCHER_FFMPEG") ?? "ffmpeg";
+    }
 
     public async Task<ExternalToolAvailability> GetAvailabilityAsync(CancellationToken cancellationToken = default)
     {
@@ -59,13 +66,18 @@ public sealed class FfmpegReviewClipGenerator : IReviewClipGenerator
             throw new ArgumentOutOfRangeException(nameof(request), "A review clip must have a positive source duration.");
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(request.DestinationPath))!);
+        var sourcePath = Path.GetFullPath(request.SourcePath);
+        var destinationPath = Path.GetFullPath(request.DestinationPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        var temporaryPath = Path.Combine(
+            Path.GetDirectoryName(destinationPath)!,
+            $".{Path.GetFileNameWithoutExtension(destinationPath)}-{Guid.NewGuid():N}.partial.mp4");
         var arguments = new[]
         {
             "-hide_banner",
             "-loglevel", "error",
             "-ss", FormatTime(request.SourceStart),
-            "-i", Path.GetFullPath(request.SourcePath),
+            "-i", sourcePath,
             "-t", FormatTime(duration),
             "-map", "0:v:0",
             "-map", "0:a?",
@@ -75,42 +87,46 @@ public sealed class FfmpegReviewClipGenerator : IReviewClipGenerator
             "-pix_fmt", "yuv420p",
             "-c:a", "aac",
             "-movflags", "+faststart",
-            "-y", Path.GetFullPath(request.DestinationPath)
+            "-y", temporaryPath
         };
 
-        var startInfo = CreateStartInfo();
-        foreach (var argument in arguments)
+        try
         {
-            startInfo.ArgumentList.Add(argument);
-        }
+            var result = await _jobs.EnqueueAsync(
+                new FfmpegJobRequest(
+                    FfmpegJobOperation.ReviewClip,
+                    sourcePath,
+                    destinationPath,
+                    "Export review clip",
+                    arguments,
+                    duration,
+                    _executable),
+                cancellationToken);
+            if (result.ExitCode != 0 || !File.Exists(temporaryPath) || new FileInfo(temporaryPath).Length == 0)
+            {
+                throw new InvalidOperationException($"FFmpeg review clip generation failed: {result.StandardError.Trim()}");
+            }
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("FFmpeg could not be started.");
-        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
-        var error = await errorTask;
-        if (process.ExitCode != 0)
+            File.Move(temporaryPath, destinationPath, overwrite: true);
+            var availability = await GetAvailabilityAsync(cancellationToken);
+            return new DerivedReviewClip(
+                destinationPath,
+                "FFmpeg",
+                availability.Version ?? "unknown",
+                BuildCommand(_executable, arguments),
+                request.SourceMediaId,
+                request.ProjectStart,
+                request.ProjectEnd,
+                request.SourceStart,
+                request.SourceEnd);
+        }
+        finally
         {
-            throw new InvalidOperationException(
-                $"FFmpeg exited with code {process.ExitCode}: {error.Trim()}");
+            if (File.Exists(temporaryPath))
+            {
+                TryDeleteTemporary(temporaryPath);
+            }
         }
-
-        if (!File.Exists(request.DestinationPath))
-        {
-            throw new InvalidOperationException("FFmpeg reported success but did not create the review clip.");
-        }
-
-        var availability = await GetAvailabilityAsync(cancellationToken);
-        return new DerivedReviewClip(
-            request.DestinationPath,
-            "FFmpeg",
-            availability.Version ?? "unknown",
-            BuildCommand(_executable, arguments),
-            request.SourceMediaId,
-            request.ProjectStart,
-            request.ProjectEnd,
-            request.SourceStart,
-            request.SourceEnd);
     }
 
     private ProcessStartInfo CreateStartInfo() => new()
@@ -134,4 +150,10 @@ public sealed class FfmpegReviewClipGenerator : IReviewClipGenerator
         value.Any(char.IsWhiteSpace) || value.Contains('"')
             ? $"\"{value.Replace("\"", "\\\"")}\""
             : value;
+
+    private static void TryDeleteTemporary(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+    }
 }

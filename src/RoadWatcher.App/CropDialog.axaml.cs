@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using RoadWatcher.Core;
+using Serilog;
 using SkiaSharp;
 
 namespace RoadWatcher.App;
@@ -35,8 +36,17 @@ public sealed partial class CropDialog : Window
             return;
         }
 
-        _bitmap = new Bitmap(_sourcePath);
-        SourceImage.Source = _bitmap;
+        try
+        {
+            _bitmap?.Dispose();
+            _bitmap = new Bitmap(_sourcePath);
+            SourceImage.Source = _bitmap;
+        }
+        catch (Exception exception)
+        {
+            Log.Error(exception, "Could not load source frame for crop dialog");
+            StatusText.Text = "The captured frame could not be opened. Close this dialog and capture another frame.";
+        }
     }
 
     private void OnPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
@@ -105,28 +115,56 @@ public sealed partial class CropDialog : Window
             return;
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(_destinationPath)
-            ?? throw new InvalidOperationException("Crop destination directory is missing."));
-        using var source = SKBitmap.Decode(_sourcePath)
-            ?? throw new InvalidDataException("The captured frame could not be decoded.");
-        using var crop = new SKBitmap(cropBounds.Width, cropBounds.Height);
-        using (var canvas = new SKCanvas(crop))
+        string? temporaryPath = null;
+        try
         {
-            canvas.DrawBitmap(
-                source,
-                new SKRectI(
-                    cropBounds.X,
-                    cropBounds.Y,
-                    cropBounds.X + cropBounds.Width,
-                    cropBounds.Y + cropBounds.Height),
-                new SKRect(0, 0, cropBounds.Width, cropBounds.Height));
-        }
+            var directory = Path.GetDirectoryName(_destinationPath)
+                ?? throw new InvalidOperationException("Crop destination directory is missing.");
+            Directory.CreateDirectory(directory);
+            temporaryPath = Path.Combine(directory, $".{Path.GetFileName(_destinationPath)}-{Guid.NewGuid():N}.partial");
+            using var source = SKBitmap.Decode(_sourcePath)
+                ?? throw new InvalidDataException("The captured frame could not be decoded.");
+            using var crop = new SKBitmap(cropBounds.Width, cropBounds.Height);
+            using (var canvas = new SKCanvas(crop))
+            {
+                canvas.DrawBitmap(
+                    source,
+                    new SKRectI(
+                        cropBounds.X,
+                        cropBounds.Y,
+                        cropBounds.X + cropBounds.Width,
+                        cropBounds.Y + cropBounds.Height),
+                    new SKRect(0, 0, cropBounds.Width, cropBounds.Height));
+            }
 
-        using var image = SKImage.FromBitmap(crop);
-        using var data = image.Encode(SKEncodedImageFormat.Png, 95);
-        using var stream = File.Create(_destinationPath);
-        data.SaveTo(stream);
-        Close(true);
+            using var image = SKImage.FromBitmap(crop);
+            using var data = image.Encode(SKEncodedImageFormat.Png, 95);
+            using (var stream = File.Create(temporaryPath))
+            {
+                data.SaveTo(stream);
+            }
+            File.Move(temporaryPath, _destinationPath, overwrite: true);
+            Close(true);
+        }
+        catch (Exception exception)
+        {
+            Log.Error(exception, "Could not save selected evidence crop");
+            StatusText.Text = "The crop could not be saved. Adjust the selection or try another frame.";
+        }
+        finally
+        {
+            if (temporaryPath is not null && File.Exists(temporaryPath))
+            {
+                try
+                {
+                    File.Delete(temporaryPath);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    Log.Warning(exception, "Could not remove partial evidence crop");
+                }
+            }
+        }
     }
 
     private void OnCancelClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs eventArgs) => Close(false);

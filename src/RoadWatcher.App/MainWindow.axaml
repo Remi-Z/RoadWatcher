@@ -58,12 +58,28 @@
           </Button>
           <Button Classes="nav"
                   Command="{Binding PrepareProxiesCommand}"
-                  IsEnabled="{Binding HasLoadedMedia}"
+                  IsEnabled="{Binding CanPrepareProxies}"
                   ToolTip.Tip="Use supplied .LRV previews or generate bounded FFmpeg review proxies"
                   AutomationProperties.Name="Prepare review previews">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <materialIcons:MaterialIcon Kind="MovieOutline" Width="20" Height="20" />
               <TextBlock VerticalAlignment="Center" Text="Previews" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav"
+                  Command="{Binding ToggleJobsDrawerCommand}"
+                  ToolTip.Tip="Open FFmpeg jobs">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="ProgressWrench" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Jobs" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav"
+                  Command="{Binding OpenSettingsCommand}"
+                  ToolTip.Tip="App settings and local service status">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="CogOutline" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Settings" />
             </StackPanel>
           </Button>
         </StackPanel>
@@ -128,7 +144,10 @@
             </StackPanel>
             <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="7">
               <materialIcons:MaterialIcon Kind="MapMarkerOutline" Width="17" Height="17" />
-              <TextBlock VerticalAlignment="Center" Text="{Binding LocationText}" />
+              <StackPanel Spacing="0">
+                <TextBlock FontWeight="SemiBold" Text="{Binding RoadLocationText}" />
+                <TextBlock Classes="muted" FontFamily="Consolas" FontSize="9" Text="{Binding CoordinateText}" />
+              </StackPanel>
             </StackPanel>
           </Grid>
         </Border>
@@ -279,6 +298,27 @@
         <Border Grid.Row="1" Margin="10,0" CornerRadius="6" ClipToBounds="True" Background="#0B222B">
           <Grid>
             <mapsui:MapControl x:Name="ContextMap" />
+            <Border x:Name="RoadContextMapPopup"
+                    Width="242"
+                    Margin="10"
+                    Padding="8"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Background="#0A1C23"
+                    BorderBrush="{StaticResource PanelBorder}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    IsVisible="False">
+              <StackPanel Spacing="4">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock x:Name="RoadContextMapPopupTitle" FontSize="10" FontWeight="SemiBold" TextWrapping="Wrap" />
+                  <Button Grid.Column="1" Classes="icon" Click="OnRoadContextMapPopupClosed" ToolTip.Tip="Close road context details">
+                    <materialIcons:MaterialIcon Kind="Close" Width="16" Height="16" />
+                  </Button>
+                </Grid>
+                <TextBlock x:Name="RoadContextMapPopupDetail" Classes="muted" FontSize="9" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
             <Border x:Name="GpxStopPreviewCard"
                     Width="250"
                     Margin="10"
@@ -361,6 +401,38 @@
               </Flyout>
             </Button.Flyout>
           </Button>
+          <Border Padding="9" Background="#0D2630" BorderBrush="#21414A" BorderThickness="1" CornerRadius="5">
+            <StackPanel Spacing="6">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Road context" />
+                <Button Grid.Column="1"
+                        Padding="8,3"
+                        Command="{Binding LoadRoadContextCommand}"
+                        IsEnabled="{Binding CanLoadRoadContext}"
+                        Content="Load / refresh"
+                        ToolTip.Tip="Fetch advisory road context for the aligned GPX route"
+                        AutomationProperties.Name="Load road context" />
+              </Grid>
+              <TextBlock Classes="muted"
+                         FontSize="9"
+                         TextWrapping="Wrap"
+                         Text="Reference only • verify video, signage, and local bylaws." />
+              <WrapPanel ItemWidth="102" ItemHeight="23">
+                <CheckBox IsChecked="{Binding ShowRoadControls}" Content="Stop controls" AutomationProperties.Name="Show road stop controls" />
+                <CheckBox IsChecked="{Binding ShowTrafficSignals}" Content="Signals" AutomationProperties.Name="Show traffic signals" />
+                <CheckBox IsChecked="{Binding ShowCyclingFacilities}" Content="Bike facilities" AutomationProperties.Name="Show bike facilities" />
+                <CheckBox IsChecked="{Binding ShowParkingRestrictions}" Content="No parking" AutomationProperties.Name="Show no-parking restrictions" />
+                <CheckBox IsChecked="{Binding ShowTrafficDirection}" Content="Direction" AutomationProperties.Name="Show traffic direction" />
+                <CheckBox IsChecked="{Binding ShowTemporaryRestrictions}" Content="Dated closures" AutomationProperties.Name="Show dated road restrictions" />
+              </WrapPanel>
+              <TextBlock Classes="muted" FontSize="9" TextWrapping="Wrap" Text="{Binding RoadContextStatus}" />
+              <CheckBox IsChecked="{Binding IncludeRoadContextInExport}"
+                        IsEnabled="{Binding HasRoadContext}"
+                        FontSize="9"
+                        Content="Include non-evidence snapshot in export"
+                        AutomationProperties.Name="Include road context snapshot in export" />
+            </StackPanel>
+          </Border>
           <TextBlock FontWeight="SemiBold" Text="Overlay Layers" />
           <CheckBox IsChecked="{Binding IsTelemetryOverlayVisible}"
                     IsEnabled="{Binding HasLoadedMedia}"
@@ -560,6 +632,159 @@
             <TextBlock Foreground="{StaticResource AccentAmber}" FontSize="9" Text="▰ selected" />
           </StackPanel>
           <TextBlock Grid.Column="1" Classes="muted" FontSize="10" Text="{Binding StatusText}" />
+        </Grid>
+      </Grid>
+    </Border>
+
+    <!-- Global FFmpeg process drawer. It is deliberately outside the workbench
+         panes so job state stays available while media controls are busy. -->
+    <Border Grid.Row="0"
+            Grid.RowSpan="4"
+            Grid.Column="1"
+            Grid.ColumnSpan="5"
+            Width="372"
+            HorizontalAlignment="Right"
+            Background="#F20B222B"
+            BorderBrush="{StaticResource PanelBorder}"
+            BorderThickness="1,0,0,0"
+            IsVisible="{Binding IsJobsDrawerOpen}">
+      <Grid RowDefinitions="53,Auto,*,Auto">
+        <Grid Margin="14,0" ColumnDefinitions="*,Auto,8,Auto">
+          <StackPanel VerticalAlignment="Center" Spacing="2">
+            <TextBlock FontSize="13" FontWeight="SemiBold" Text="FFmpeg jobs" />
+            <TextBlock Classes="muted" FontSize="10" Text="Two encoders run globally; queued work starts automatically." />
+          </StackPanel>
+          <Button Grid.Column="1" VerticalAlignment="Center" Command="{Binding CancelAllFfmpegJobsCommand}" Content="Cancel all" />
+          <Button Grid.Column="3" Classes="icon" VerticalAlignment="Center" Command="{Binding ToggleJobsDrawerCommand}">
+            <materialIcons:MaterialIcon Kind="Close" Width="18" Height="18" />
+          </Button>
+        </Grid>
+        <Grid Grid.Row="1" Margin="14,0,14,10" ColumnDefinitions="*,Auto">
+          <TextBlock Classes="muted" Text="{Binding ActiveFfmpegJobCount, StringFormat={}{0} running}" />
+          <TextBlock Grid.Column="1" Classes="muted" Text="{Binding QueuedFfmpegJobCount, StringFormat={}{0} queued}" />
+        </Grid>
+        <ScrollViewer Grid.Row="2" Margin="14,0">
+          <ItemsControl ItemsSource="{Binding FfmpegJobsSnapshot}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Margin="0,0,0,8" Padding="10" Background="#C6081A22" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="4">
+                  <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2">
+                      <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                      <TextBlock Classes="muted" FontSize="10" Text="{Binding SourceName}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Right" Spacing="4">
+                      <TextBlock Classes="muted" FontSize="10" Text="{Binding State}" />
+                      <Button Padding="6,2"
+                              Command="{Binding DataContext.CancelFfmpegJobCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding}"
+                              Content="Cancel" />
+                    </StackPanel>
+                    <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Margin="0,8,0,0" Minimum="0" Maximum="1" Value="{Binding Progress}" />
+                    <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="0,5,0,0" Classes="muted" FontSize="9" Text="{Binding Error}" TextWrapping="Wrap" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+        <TextBlock Grid.Row="3" Margin="14,10,14,14" Classes="muted" FontSize="9" TextWrapping="Wrap" Text="Cancelled work deletes its temporary derivative. Canonical evidence files are never replaced." />
+      </Grid>
+    </Border>
+
+    <!-- App-local Settings page. It deliberately sits outside ProjectDocument
+         and never affects canonical evidence or an export manifest. -->
+    <Border Grid.Row="0"
+            Grid.RowSpan="4"
+            Grid.Column="1"
+            Grid.ColumnSpan="5"
+            Background="#F2081A22"
+            IsVisible="{Binding IsSettingsPageOpen}">
+      <Grid ColumnDefinitions="248,*">
+        <Border Background="#0B222B" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,1,0">
+          <StackPanel Margin="20" Spacing="9">
+            <materialIcons:MaterialIcon Kind="CogOutline" Width="28" Height="28" Foreground="{StaticResource AccentTeal}" />
+            <TextBlock FontSize="16" FontWeight="SemiBold" Text="Settings" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="These preferences stay on this computer and are never added to a RoadWatcher project." />
+          </StackPanel>
+        </Border>
+        <Grid Grid.Column="1" RowDefinitions="54,*">
+          <Grid Margin="20,0" ColumnDefinitions="*,Auto">
+            <StackPanel VerticalAlignment="Center" Spacing="2">
+              <TextBlock FontSize="14" FontWeight="SemiBold" Text="Application status &amp; preferences" />
+              <TextBlock Classes="muted" FontSize="10" Text="Local configuration only" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="icon" VerticalAlignment="Center" Command="{Binding CloseSettingsCommand}" ToolTip.Tip="Close Settings">
+              <materialIcons:MaterialIcon Kind="Close" Width="20" Height="20" />
+            </Button>
+          </Grid>
+          <ScrollViewer Grid.Row="1" Margin="20,0,20,20">
+            <StackPanel Spacing="16">
+              <Border Classes="panel" Padding="14">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="160,*" RowSpacing="8">
+                  <TextBlock FontWeight="SemiBold" Text="Status" />
+                  <TextBlock Grid.Row="1" Classes="muted" Text="Version" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AppVersionText}" />
+                  <TextBlock Grid.Row="2" Classes="muted" Text="Project" />
+                  <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SettingsProjectState}" />
+                  <TextBlock Grid.Row="3" Classes="muted" Text="VLC" />
+                  <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SettingsVlcStatus}" />
+                  <TextBlock Grid.Row="4" Classes="muted" Text="FFmpeg / Tesseract" />
+                  <StackPanel Grid.Row="4" Grid.Column="1" Spacing="2">
+                    <TextBlock Text="{Binding SettingsFfmpegStatus}" />
+                    <TextBlock Classes="muted" FontSize="10" Text="{Binding SettingsTesseractStatus}" />
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <Border Classes="panel" Padding="14">
+                <StackPanel Spacing="10">
+                  <TextBlock FontWeight="SemiBold" Text="Logging" />
+                  <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="8">
+                    <TextBlock VerticalAlignment="Center" Classes="muted" Text="Minimum level" />
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding SettingsLogLevels}" SelectedItem="{Binding SettingsLogLevel, Mode=TwoWay}" />
+                    <TextBlock Grid.Row="1" VerticalAlignment="Top" Classes="muted" Text="Local rolling log" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="muted" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Text="{Binding SettingsLogPath}" />
+                  </Grid>
+                  <TextBlock Classes="muted" FontSize="10" Text="Warning is the default. Fourteen daily files are retained; normal logs omit raw GPX and video content." TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+
+              <Border Classes="panel" Padding="14">
+                <StackPanel Spacing="10">
+                  <TextBlock FontWeight="SemiBold" Text="FFmpeg" />
+                  <CheckBox IsChecked="{Binding UseManualFfmpegPath, Mode=TwoWay}" Content="Use a manually selected executable" />
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBox Text="{Binding SettingsFfmpegPath, Mode=TwoWay}" IsEnabled="{Binding UseManualFfmpegPath}" Watermark="ffmpeg or full executable path" />
+                    <Button Grid.Column="1" Command="{Binding TestFfmpegCommand}" Content="Test" />
+                  </Grid>
+                  <TextBlock Classes="muted" FontSize="10" Text="The configured path applies to newly submitted jobs after saving." />
+                </StackPanel>
+              </Border>
+
+              <Border Classes="panel" Padding="14">
+                <StackPanel Spacing="10">
+                  <TextBlock FontWeight="SemiBold" Text="Map and caches" />
+                  <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="8">
+                    <TextBlock VerticalAlignment="Center" Classes="muted" Text="Preferred map style" />
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding SettingsMapStyles}" SelectedItem="{Binding SettingsMapStyle, Mode=TwoWay}" />
+                    <TextBlock Grid.Row="1" VerticalAlignment="Top" Classes="muted" Text="Cache usage" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="muted" TextWrapping="Wrap" Text="{Binding SettingsCacheStatus}" />
+                  </Grid>
+                  <WrapPanel ItemWidth="136" ItemHeight="32">
+                    <Button Margin="0,0,8,8" Command="{Binding ClearThumbnailCacheCommand}" Content="Clear thumbnails" />
+                    <Button Margin="0,0,8,8" Command="{Binding ClearProxyCacheCommand}" Content="Clear proxies" />
+                    <Button Margin="0,0,8,8" Command="{Binding ClearMapCacheCommand}" Content="Clear map tiles" />
+                  </WrapPanel>
+                </StackPanel>
+              </Border>
+
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Saving preferences does not modify the open evidence project." />
+                <Button Grid.Column="1" Classes="primary" Command="{Binding SaveSettingsCommand}" Content="Save settings" />
+              </Grid>
+            </StackPanel>
+          </ScrollViewer>
         </Grid>
       </Grid>
     </Border>

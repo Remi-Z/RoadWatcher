@@ -4,7 +4,7 @@ Last updated: 2026-07-16
 
 ## Current milestone
 
-M08 — Timeline, map, and playback review UX: implementation has begun with the visual synchronization workspace; M07 representative-footage and signed-installer release gates remain external.
+M09 — Ontario road-context readability and app hardening: implementation and automated verification are complete (170 tests). The requested interactive visual capture remains pending because this Codex session cannot access a visible Windows desktop window handle. M08's separate visual-acceptance capture remains pending; M07 representative-footage and signed-installer release gates remain external.
 
 ## Completed
 
@@ -59,6 +59,20 @@ M08 — Timeline, map, and playback review UX: implementation has begun with the
 - The GPX synchronization flyout now exposes the trusted raw video-metadata clock and lets a reviewer plot one explicit-offset time as separate transient Camera and GPX guides. It reports their signed project positions and live `GPX − camera` delta during sync preview, rejects offset-less input, expands only the visual workspace for out-of-range guides, and never seeks or persists through this comparison. Isolated Release build passed with zero warnings and the shared full suite passed 149/149.
 - Supplied action-camera `.LRV` files are now review-only companions rather than timeline clips. Unambiguous filename/duration matches persist separately (under `sources/previews` when copied), play before a cached FFmpeg proxy, and always give way to the original source for capture; incompatible/ambiguous candidates fall back safely. Isolated Release build passed with zero warnings and the shared full suite passed 159/159.
 - Marking mode now freezes an original-source frame and exposes a drag box directly over an Avalonia canvas, avoiding native-video overlay conflicts. A completed selection produces an unsaved incident draft with frame/crop provenance bound to that frozen source/project time; cancel restores playback and discards the unattached frame. Shared crop mapping now handles letterboxing, reversed drags, clipping, and minimum selections in both marking mode and the crop dialog. Isolated Release build passed with zero warnings and the shared full suite passed 164/164.
+
+## M09 progress
+
+- Reworked Road context into a readable map-only overlay: cached Material symbols are high-contrast, same-category point features cluster inside a 28-DIP screen radius (up to 250 progressively coarsened clusters/category), and tapping a marker/cluster opens an in-map provenance popover. Restriction and bicycle geometry remain below GPX and the live marker.
+- Added hidden road-reference features and snapshot-only road HUD resolution. Ontario Road Network `FULL_STREET_NAME` is preferred within 25 m; named OSM ways are the global fallback; a nearby intersecting road yields `Road A & Road B` without playback-time HTTP.
+- Replaced broad parking hints with explicit no-parking/no-stopping geometry. Community OSM fallbacks remain advisory, unsupported timed conditions are omitted, and parsed recurring schedules are evaluated against synchronized GPX time. Cycling filters exclude sharrows, shoulders, paths, and other vehicle-occupiable facilities.
+- The Ontario-first source mix is Ontario Road Network names, OpenStreetMap/Overpass (global baseline), Ontario 511 Events and Construction (dated provincial context), and City of Toronto Traffic Signal/Cycling Network ArcGIS layers when a route intersects Toronto. The generic ArcGIS adapter keeps additional municipal/global composition outside the evidence model.
+- Provider data is bounded to a 75 m GPX corridor, retains source/status/attribution metadata, and is fetched only by the explicit action—never during playback, seeking, or cached-project restore. Current dated-feed records require explicit validity windows and only show at an applicable synchronized GPX time.
+- Context snapshots are immutable, project-local, SHA-256-verified files with only a compact reference in `project.json`. Optional export is disabled by default and, when chosen, manifests/calls the snapshot reference-only rather than evidence.
+- Added local app hardening: Serilog defaults to Warning/Error in 14 rolling daily files; crop, optional OCR/colour, hover preview, GPX preview, and timeline UI continuations now report recoverable failures. Saved crops retain their provenance even when optional suggestions fail.
+- Proxy, thumbnail, and export-clip FFmpeg work now shares a two-worker global queue, uses progress output/temp-file promotion, supports individual/cancel-all Jobs drawer actions, and leaves canonical export payloads intact when a derived clip is cancelled.
+- Added a local-only Settings page for version/project/tool status, job counts, cache sizes, log path/level, FFmpeg path/test, cache clearing, and preferred map style. These values never enter an evidence project or export.
+- Isolated Release build passed with 0 warnings/errors. The full Release suite passed 170/170, including schedule visibility, road/intersection resolution, cycling exclusions, source-preferred visual deduplication, and cluster dissolution alongside snapshot/schema-v1 coverage.
+- Visual acceptance remains pending a 1440 × 1024 interactive desktop capture. The isolated Release app launched but exposed no window handle in this Codex session, so a window-scoped capture was impossible; only that isolated process was closed. See `docs/milestones/M09-road-context/README.md` for the exact required state.
 
 ## M07 closure record
 

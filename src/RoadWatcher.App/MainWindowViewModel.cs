@@ -10,6 +10,7 @@ using RoadWatcher.App.Controls;
 using RoadWatcher.App.Services;
 using RoadWatcher.Core;
 using RoadWatcher.Infrastructure;
+using Serilog;
 
 namespace RoadWatcher.App;
 
@@ -21,15 +22,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly JsonProjectStore _projectStore = new();
     private readonly ProjectLifecycleService _projectLifecycle;
     private readonly ProjectSourceCopyService _sourceCopyService = new();
-    private readonly IMediaThumbnailGenerator _thumbnailGenerator = new FfmpegMediaThumbnailGenerator();
+    private readonly IFfmpegJobQueue _ffmpegJobs;
+    private IMediaThumbnailGenerator _thumbnailGenerator;
     private readonly MediaThumbnailCache _thumbnailCache = new();
-    private readonly IMediaProxyGenerator _proxyGenerator = new FfmpegMediaProxyGenerator();
+    private IMediaProxyGenerator _proxyGenerator;
     private readonly MediaProxyCache _proxyCache = new();
     private readonly Dictionary<Guid, string> _availableProxyPaths = [];
     private readonly Dictionary<Guid, string> _availableSuppliedLrvPaths = [];
     private readonly TesseractPlateRecognizer _plateRecognizer = new();
     private readonly DominantVehicleColorEstimator _colourEstimator = new();
     private readonly SemaphoreSlim _projectMutationGate = new(1, 1);
+    private readonly RoadContextSnapshotStore _roadContextSnapshotStore;
     private ProjectDocument _project = new();
     private readonly List<EvidenceAsset> _pendingAttachments = [];
     private readonly SemaphoreSlim _mediaTransitionLock = new(1, 1);
@@ -66,6 +69,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private SyncAnchor[] _gpxTimelineSpeedPresentationAnchors = [];
     private readonly Stack<TimelineUndoEntry> _timelineUndo = [];
     private readonly Stack<TimelineUndoEntry> _timelineRedo = [];
+    private RoadContextSnapshot? _roadContextSnapshot;
+    private string? _lastRoadContextPresentationKey;
+
+    private const int MaximumRoadContextRoutePoints = 1_000;
+    private static readonly RoadContextBounds OntarioCoverageBounds = new(41.5, -95.5, 56.9, -74.0);
+    private static readonly RoadContextBounds TorontoCoverageBounds = new(43.55, -79.68, 43.90, -79.05);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PlayIcon))]
@@ -107,6 +116,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(ShowTelemetryOverlay))]
     [NotifyPropertyChangedFor(nameof(ShowPlaybackSurface))]
     [NotifyPropertyChangedFor(nameof(CanUsePlaybackControls))]
+    [NotifyPropertyChangedFor(nameof(CanPrepareProxies))]
     private bool _hasLoadedMedia;
 
     [ObservableProperty]
@@ -179,6 +189,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOpenProject))]
     [NotifyPropertyChangedFor(nameof(ProjectStateText))]
+    [NotifyPropertyChangedFor(nameof(CanLoadRoadContext))]
     private string? _projectDirectory;
 
     [ObservableProperty]
@@ -189,6 +200,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private string _timelineSummaryText = "No project timeline";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanLoadRoadContext))]
     private bool _hasGpx;
 
     [ObservableProperty]
@@ -260,6 +272,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _isTelemetryOverlayVisible = true;
 
     [ObservableProperty]
+    private bool _hasIncidentDraft;
+
+    [ObservableProperty]
     private bool _isMarkingModeEnabled;
 
     [ObservableProperty]
@@ -268,7 +283,38 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _isMarkingFrameActive;
 
     [ObservableProperty]
-    private bool _hasIncidentDraft;
+    [NotifyPropertyChangedFor(nameof(CanLoadRoadContext))]
+    private bool _isRoadContextLoading;
+
+    [ObservableProperty]
+    private bool _showRoadControls = true;
+
+    [ObservableProperty]
+    private bool _showTrafficSignals = true;
+
+    [ObservableProperty]
+    private bool _showCyclingFacilities = true;
+
+    [ObservableProperty]
+    private bool _showParkingRestrictions = true;
+
+    [ObservableProperty]
+    private bool _showTrafficDirection = true;
+
+    [ObservableProperty]
+    private bool _showTemporaryRestrictions = true;
+
+    [ObservableProperty]
+    private bool _includeRoadContextInExport;
+
+    [ObservableProperty]
+    private string _roadContextStatus = "Load road context for advisory map layers.";
+
+    [ObservableProperty]
+    private string _nearestRoadContextText = "No road context loaded";
+
+    [ObservableProperty]
+    private string _roadLocationText = "No road context loaded";
 
     [ObservableProperty]
     private string _sourceTimeText = "Source —";
@@ -297,9 +343,52 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string[] _timelineRulerLabels = ["00:00:00", "00:00:00", "00:00:00", "00:00:00", "00:00:00"];
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActiveFfmpegJobCount))]
+    [NotifyPropertyChangedFor(nameof(QueuedFfmpegJobCount))]
+    private IReadOnlyList<FfmpegJobSnapshot> _ffmpegJobsSnapshot = [];
+
+    [ObservableProperty]
+    private bool _isJobsDrawerOpen;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanPrepareProxies))]
+    private bool _isPreparingProxies;
+
+    [ObservableProperty]
+    private bool _isSettingsPageOpen;
+
+    [ObservableProperty]
+    private string _settingsLogLevel = RoadWatcherLogLevel.Warning.ToString();
+
+    [ObservableProperty]
+    private bool _useManualFfmpegPath;
+
+    [ObservableProperty]
+    private string _settingsFfmpegPath = string.Empty;
+
+    [ObservableProperty]
+    private string _settingsMapStyle = ContextMapStyle.Night.ToString();
+
+    [ObservableProperty]
+    private string _settingsFfmpegStatus = "Not checked";
+
+    [ObservableProperty]
+    private string _settingsTesseractStatus = "Not checked";
+
+    [ObservableProperty]
+    private string _settingsCacheStatus = "No project cache";
+
     public MainWindowViewModel()
     {
+        _ffmpegJobs = new FfmpegJobQueue();
+        _ffmpegJobs.JobsChanged += OnFfmpegJobsChanged;
+        RefreshFfmpegJobs();
+        _thumbnailGenerator = new FfmpegMediaThumbnailGenerator(_ffmpegJobs);
+        _proxyGenerator = new FfmpegMediaProxyGenerator(_ffmpegJobs);
+        LoadSettingsPresentation();
         _projectLifecycle = new ProjectLifecycleService(_projectStore);
+        _roadContextSnapshotStore = new RoadContextSnapshotStore(_projectStore);
         _mediaEngine = new LibVlcMediaEngine();
         _mediaEngine.PositionChanged += (_, position) => Dispatcher.UIThread.Post(() =>
         {
@@ -376,6 +465,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool ShowTelemetryOverlay => HasLoadedMedia && IsTelemetryOverlayVisible;
     public bool ShowPlaybackSurface => HasLoadedMedia && !IsMarkingFrameActive;
     public bool CanUsePlaybackControls => HasLoadedMedia && !IsMarkingFrameActive;
+    public bool CanPrepareProxies => HasLoadedMedia && !IsPreparingProxies;
+    public int ActiveFfmpegJobCount => FfmpegJobsSnapshot.Count(job => job.State == FfmpegJobState.Running);
+    public int QueuedFfmpegJobCount => FfmpegJobsSnapshot.Count(job => job.State == FfmpegJobState.Queued);
+    public string[] SettingsLogLevels => Enum.GetNames<RoadWatcherLogLevel>();
+    public string[] SettingsMapStyles => Enum.GetNames<ContextMapStyle>();
+    public string AppVersionText => RoadWatcherRuntime.AppVersion;
+    public string SettingsProjectState => ProjectStateText;
+    public string SettingsVlcStatus => "Available";
+    public string SettingsLogPath => RoadWatcherRuntime.LogPathHint;
+
+    public event Action<ContextMapStyle>? PreferredMapStyleChanged;
     public bool HasOpenProject => ProjectDirectory is not null;
     public string ProjectStateText => HasOpenProject ? "Project open" : "No project open";
     public MediaPlayer MediaPlayer => _mediaEngine.MediaPlayer;
@@ -387,12 +487,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool HasGpxSynchronizationPreview => _gpxSynchronizationPreview?.HasChanges == true;
     public bool IsGpxSynchronizationEditingEnabled => !IsGpxSynchronizationPersisting;
     public Guid? ActiveGpxSourceId => GetActiveGpxSource()?.Id;
+    public bool HasRoadContext => _roadContextSnapshot is not null;
+    public bool CanLoadRoadContext => HasOpenProject && HasGpx && !IsRoadContextLoading;
     public string[] Provinces { get; } = ["ON", "QC", "BC", "AB", "MB", "SK", "NB", "NS", "PE", "NL", "NT", "NU", "YT", "Other"];
     public Confidence[] ConfidenceLevels { get; } = Enum.GetValues<Confidence>();
 
     public event EventHandler<IReadOnlyList<TrackPoint>>? GpxTrackChanged;
     public event EventHandler<TelemetrySample>? TelemetrySampleChanged;
     public event EventHandler? TelemetryCleared;
+    public event EventHandler<RoadContextMapPresentation>? RoadContextChanged;
 
     public async Task CreateProjectAsync(
         string projectDirectory,
@@ -471,6 +574,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         ImportedMedia = [];
         GpxPoints = [];
         GpxTrackChanged?.Invoke(this, []);
+        ClearRoadContextSnapshot("Road context clears when the project closes.");
         _gpxTimelineMapper = null;
         _locationResolver = null;
         HasGpx = false;
@@ -571,6 +675,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         ResetExactTimelineGuide(clearTimestampText: true);
         UpdateCameraClockReferenceText();
         ProjectDirectory = Path.GetFullPath(projectDirectory);
+        ClearRoadContextSnapshot("Loading cached road context…");
         _locationResolver = new NominatimLocationResolver(
             Path.Combine(ProjectDirectory, "cache", "geocoding.json"));
         ProjectTitle = project.Title;
@@ -666,6 +771,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             UpdateTimelineVisualWorkspace();
             GpxTrackChanged?.Invoke(this, []);
         }
+
+        await RestoreRoadContextSnapshotAsync(cancellationToken);
     }
 
     public async Task ImportRideAsync(
@@ -1637,14 +1744,23 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanPrepareProxies))]
     private async Task PrepareProxiesAsync()
     {
-        if (ProjectDirectory is null || ImportedMedia.Count == 0)
+        if (IsPreparingProxies)
         {
-            StatusText = "Open a project with available media before preparing proxies.";
             return;
         }
+
+        IsPreparingProxies = true;
+        IsJobsDrawerOpen = true;
+        try
+        {
+            if (ProjectDirectory is null || ImportedMedia.Count == 0)
+            {
+                StatusText = "Open a project with available media before preparing proxies.";
+                return;
+            }
 
         RefreshAvailableReviewPreviewPaths();
         var sourcesNeedingProxy = ImportedMedia
@@ -1686,7 +1802,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 else
                 {
                     await _proxyGenerator.GenerateAsync(
-                        new MediaProxyRequest(source.Path, destination, source.Id));
+                        new MediaProxyRequest(source.Path, destination, source.Id, SourceDuration: source.Duration));
                     generated++;
                 }
                 File.SetLastAccessTimeUtc(destination, DateTime.UtcNow);
@@ -1711,6 +1827,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         StatusText = failed == 0
             ? $"{ready} review preview(s) ready • {_availableSuppliedLrvPaths.Count} supplied LRV, {generated} generated, {reused} reused • source-direct capture preserved"
             : $"{ready} review preview(s) ready • {_availableSuppliedLrvPaths.Count} supplied LRV, {failed} failed • source playback remains available";
+        }
+        finally
+        {
+            IsPreparingProxies = false;
+        }
     }
 
     private void RefreshAvailableReviewPreviewPaths()
@@ -2194,6 +2315,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         SetGpxSynchronizationPreview(null);
+        _project = _project with { RoadContext = null };
+        ClearRoadContextSnapshot("GPX changed • refresh road context for the active route.");
         var selectedFile = new FileInfo(path);
         var copy = copyToProject
             ? await _sourceCopyService.CopyAsync(path, ProjectDirectory, ProjectSourceKind.Gpx, cancellationToken)
@@ -2232,6 +2355,168 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         StatusText = $"GPX aligned • {points.Count} points • offset +00:00.000";
     }
+
+    [RelayCommand]
+    private async Task LoadRoadContextAsync()
+    {
+        if (ProjectDirectory is null || GetActiveGpxSource() is not { } gpx || gpx.Points.Count < 2)
+        {
+            RoadContextStatus = "Import an aligned GPX track before loading road context.";
+            return;
+        }
+
+        RoadContextQuery query;
+        try
+        {
+            query = BuildRoadContextQuery(gpx);
+        }
+        catch (Exception exception) when (exception is ArgumentException or ArgumentOutOfRangeException)
+        {
+            RoadContextStatus = $"Road context could not use this GPX route: {exception.Message}";
+            return;
+        }
+
+        var requestedProjectDirectory = ProjectDirectory;
+        var requestedGpxId = gpx.Id;
+        IsRoadContextLoading = true;
+        RoadContextStatus = "Loading advisory road context…";
+        StatusText = "Loading advisory road context for the active GPX route…";
+        try
+        {
+            // This explicit action is the only place these HTTP providers are called.
+            // Playback and timeline scrubbing consume only the saved snapshot.
+            var snapshot = await new RoadContextLoadService(CreateRoadContextProviders(query))
+                .LoadAsync(query);
+
+            using var mutation = await TryBeginProjectMutationAsync("saving road context");
+            if (mutation is null)
+            {
+                RoadContextStatus = "Road context loaded but was not saved because another project update is in progress.";
+                return;
+            }
+
+            if (ProjectDirectory is null ||
+                !ProjectDirectory.Equals(requestedProjectDirectory, StringComparison.OrdinalIgnoreCase) ||
+                GetActiveGpxSource()?.Id != requestedGpxId)
+            {
+                RoadContextStatus = "Road context load was discarded because the active project or GPX changed.";
+                return;
+            }
+
+            RoadContextStatus = "Saving immutable road-context snapshot…";
+            _project = await _roadContextSnapshotStore.SaveAsync(
+                _project,
+                snapshot,
+                ProjectDirectory,
+                refreshAfter: DateTimeOffset.UtcNow.AddHours(12));
+            if (_project.RoadContext is { SnapshotId: var storedSnapshotId } && storedSnapshotId != snapshot.SnapshotId)
+            {
+                snapshot = snapshot with { SnapshotId = storedSnapshotId };
+            }
+
+            SetRoadContextSnapshot(snapshot);
+            var unavailableProviders = snapshot.Providers.Count(report =>
+                report.Status is RoadContextProviderStatus.Unavailable or RoadContextProviderStatus.Failed);
+            var partialProviders = snapshot.Providers.Count(report => report.Status == RoadContextProviderStatus.Partial);
+            var sourceSummary = string.Join(
+                " • ",
+                snapshot.Providers.Select(report =>
+                    $"{report.Provider}: {report.Status.ToString().ToLowerInvariant()} ({report.FeatureCount})"));
+            RoadContextStatus = $"Cached {snapshot.Features.Count} advisory feature(s) • {sourceSummary}";
+            StatusText = $"Road context cached • {snapshot.Features.Count} advisory feature(s)" +
+                (unavailableProviders > 0 || partialProviders > 0
+                    ? $" • {unavailableProviders + partialProviders} source(s) incomplete"
+                    : string.Empty);
+        }
+        catch (OperationCanceledException)
+        {
+            RoadContextStatus = "Road-context load canceled.";
+        }
+        catch (Exception exception)
+        {
+            RoadContextStatus = $"Road-context load failed: {exception.Message}";
+            StatusText = "Road-context load failed; existing cached context was kept.";
+        }
+        finally
+        {
+            IsRoadContextLoading = false;
+        }
+    }
+
+    private static RoadContextQuery BuildRoadContextQuery(GpxSource gpx)
+    {
+        var route = RoadContextRouteSampler.Sample(gpx.Points, MaximumRoadContextRoutePoints);
+        return new RoadContextQuery(
+            gpx.Id,
+            route,
+            gpx.Points.Min(point => point.RecordedAt),
+            gpx.Points.Max(point => point.RecordedAt));
+    }
+
+    private static IReadOnlyList<IRoadContextProvider> CreateRoadContextProviders(RoadContextQuery query)
+    {
+        var providers = new List<IRoadContextProvider>
+        {
+            // Global baseline: community-mapped context is always marked with its source and
+            // does not claim legal or complete coverage.
+            new OverpassRoadContextProvider()
+        };
+        var bounds = query.GetBounds();
+        if (!Intersects(bounds, OntarioCoverageBounds))
+        {
+            return providers;
+        }
+
+        providers.Add(new Ontario511RoadContextProvider());
+        providers.Add(new ArcGisRoadContextProvider(
+            "Ontario Road Network",
+            [
+                new ArcGisRoadContextLayer(
+                    "Ontario road names",
+                    new Uri("https://services1.arcgis.com/TJH5KDher0W13Kgo/arcgis/rest/services/Ontario_Road_Network_Composite_Service_GeoHub_View_EN/FeatureServer/5"),
+                    RoadContextCategory.RoadReference,
+                    "Ontario Road Network (ORN) Composite - Segment",
+                    "Contains information from Ontario Road Network",
+                    RoadContextAuthority.Provincial,
+                    "OBJECTID",
+                    titleField: "FULL_STREET_NAME",
+                    directionField: "DIRECTION_OF_TRAFFIC_FLOW",
+                    publishedAtField: "EFFECTIVE_DATETIME",
+                    licence: "Open Government Licence – Ontario" )
+            ]));
+        if (Intersects(bounds, TorontoCoverageBounds))
+        {
+            providers.Add(new ArcGisRoadContextProvider(
+                "City of Toronto Open Data",
+                [
+                    new ArcGisRoadContextLayer(
+                        "Traffic signals",
+                        new Uri("https://gis.toronto.ca/arcgis/rest/services/cot_geospatial2/FeatureServer/9"),
+                        RoadContextCategory.TrafficSignal,
+                        "Toronto Traffic Signal",
+                        "© City of Toronto",
+                        RoadContextAuthority.Municipal,
+                        "OBJECTID",
+                        titleField: "MAIN_STREET",
+                        descriptionField: "ADDITIONAL_INFO"),
+                    new ArcGisRoadContextLayer(
+                        "Cycling facilities",
+                        new Uri("https://gis.toronto.ca/arcgis/rest/services/cot_geospatial2/FeatureServer/49"),
+                        RoadContextCategory.CyclingFacility,
+                        "Toronto Cycling Network",
+                        "© City of Toronto",
+                        RoadContextAuthority.Municipal,
+                        "OBJECTID",
+                        featureFilter: RoadContextCyclingFacilityPolicy.IsEligible)
+                ]));
+        }
+
+        return providers;
+    }
+
+    private static bool Intersects(RoadContextBounds first, RoadContextBounds second) =>
+        first.South <= second.North && first.North >= second.South &&
+        first.West <= second.East && first.East >= second.West;
 
     [RelayCommand]
     private async Task ApplyGpxOffsetAsync()
@@ -2882,6 +3167,160 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             .ToString("yyyy-MM-dd HH:mm:ss.fff zzz", CultureInfo.InvariantCulture);
     }
 
+    private async Task RestoreRoadContextSnapshotAsync(CancellationToken cancellationToken)
+    {
+        SetRoadContextSnapshot(null);
+        if (ProjectDirectory is null || _project.RoadContext is null)
+        {
+            RoadContextStatus = "Load road context for advisory map layers.";
+            return;
+        }
+
+        try
+        {
+            var loaded = await _roadContextSnapshotStore.LoadAsync(
+                ProjectDirectory,
+                _project.RoadContext,
+                cancellationToken);
+            if (loaded.Snapshot is null)
+            {
+                RoadContextStatus = $"Road context unavailable • {loaded.Validation.Error}";
+                return;
+            }
+
+            var activeGpx = GetActiveGpxSource();
+            if (activeGpx is null || loaded.Snapshot.Query.GpxSourceId != activeGpx.Id)
+            {
+                RoadContextStatus = "Cached road context belongs to a different GPX source • refresh to replace it.";
+                return;
+            }
+
+            SetRoadContextSnapshot(loaded.Snapshot);
+            var stale = _project.RoadContext.RefreshAfter is { } refreshAfter && refreshAfter <= DateTimeOffset.UtcNow;
+            RoadContextStatus = $"Cached {loaded.Snapshot.Features.Count} feature(s) • fetched {loaded.Snapshot.FetchedAt.ToLocalTime():g}" +
+                (stale ? " • refresh recommended" : string.Empty);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            RoadContextStatus = $"Road context could not be restored: {exception.Message}";
+        }
+    }
+
+    private void SetRoadContextSnapshot(RoadContextSnapshot? snapshot)
+    {
+        _roadContextSnapshot = snapshot;
+        _lastRoadContextPresentationKey = null;
+        OnPropertyChanged(nameof(HasRoadContext));
+        RefreshRoadContextPresentation(_currentTelemetrySample);
+    }
+
+    private void ClearRoadContextSnapshot(string status)
+    {
+        _roadContextSnapshot = null;
+        _lastRoadContextPresentationKey = null;
+        OnPropertyChanged(nameof(HasRoadContext));
+        NearestRoadContextText = "No road context loaded";
+        RoadContextStatus = status;
+        RoadContextChanged?.Invoke(this, new RoadContextMapPresentation([], null));
+    }
+
+    private void RefreshRoadContextPresentation(TelemetrySample? sample)
+    {
+        if (_roadContextSnapshot is null)
+        {
+            NearestRoadContextText = "No road context loaded";
+            RoadLocationText = sample is null ? "No road context loaded" : CoordinateText;
+            return;
+        }
+
+        var features = _roadContextSnapshot.Features
+            .Where(IsRoadContextCategoryVisible)
+            .Where(feature => RoadContextTemporalVisibility.IsApplicableAt(feature, sample?.Time))
+            .OrderBy(feature => feature.Category)
+            .ThenBy(feature => feature.Title, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(feature => feature.Id, StringComparer.Ordinal)
+            .ToArray();
+        var nearest = FindNearestRoadContext(features, sample);
+        var roadLocation = sample is null
+            ? null
+            : RoadContextRoadLocator.Resolve(
+                _roadContextSnapshot.Features,
+                new GeoCoordinate(sample.Latitude, sample.Longitude));
+        RoadLocationText = roadLocation?.DisplayName ?? CoordinateText;
+        if (sample is not null)
+        {
+            LocationText = RoadLocationText;
+        }
+        if (nearest is { } result)
+        {
+            var verification = result.Feature.IsUnverified ? " • unverified mapped hint" : string.Empty;
+            var source = result.Feature.Source.Authority switch
+            {
+                RoadContextAuthority.Municipal => "municipal source",
+                RoadContextAuthority.Provincial => "provincial source",
+                RoadContextAuthority.CommunityMapped => "community-mapped",
+                _ => "source recorded"
+            };
+            NearestRoadContextText = $"Nearby: {result.Feature.Title} • {result.DistanceMetres:0} m • {source}{verification}";
+        }
+        else
+        {
+            NearestRoadContextText = sample is null
+                ? "Road context loaded • seek to an aligned GPS sample for nearby details."
+                : "No mapped road context is nearby at this playhead.";
+        }
+
+        var selectedId = nearest?.Feature.Id;
+        var key = string.Join('|', features.Select(feature => feature.Id)) + ";" + selectedId;
+        if (string.Equals(key, _lastRoadContextPresentationKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastRoadContextPresentationKey = key;
+        RoadContextChanged?.Invoke(this, new RoadContextMapPresentation(features, selectedId));
+    }
+
+    private bool IsRoadContextCategoryVisible(RoadContextFeature feature) => feature.Category switch
+    {
+        RoadContextCategory.StopControl => ShowRoadControls,
+        RoadContextCategory.TrafficSignal or RoadContextCategory.Crossing => ShowTrafficSignals,
+        RoadContextCategory.CyclingFacility => ShowCyclingFacilities,
+        RoadContextCategory.ParkingRestriction => ShowParkingRestrictions,
+        RoadContextCategory.TrafficDirection or RoadContextCategory.TurnRestriction => ShowTrafficDirection,
+        RoadContextCategory.TemporaryRestriction => ShowTemporaryRestrictions,
+        _ => false
+    };
+
+    private static NearestRoadContext? FindNearestRoadContext(
+        IReadOnlyList<RoadContextFeature> features,
+        TelemetrySample? sample)
+    {
+        if (sample is null || features.Count == 0)
+        {
+            return null;
+        }
+
+        var location = new GeoCoordinate(sample.Latitude, sample.Longitude);
+        var nearest = features
+            .Select(feature => new NearestRoadContext(
+                feature,
+                RoadContextSpatial.DistanceToGeometryMetres(location, feature.Geometry)))
+            .OrderBy(candidate => candidate.DistanceMetres)
+            .FirstOrDefault();
+        return nearest is null || nearest.DistanceMetres > 175 ? null : nearest;
+    }
+
+    partial void OnShowRoadControlsChanged(bool value) => RefreshRoadContextPresentation(_currentTelemetrySample);
+    partial void OnShowTrafficSignalsChanged(bool value) => RefreshRoadContextPresentation(_currentTelemetrySample);
+    partial void OnShowCyclingFacilitiesChanged(bool value) => RefreshRoadContextPresentation(_currentTelemetrySample);
+    partial void OnShowParkingRestrictionsChanged(bool value) => RefreshRoadContextPresentation(_currentTelemetrySample);
+    partial void OnShowTrafficDirectionChanged(bool value) => RefreshRoadContextPresentation(_currentTelemetrySample);
+    partial void OnShowTemporaryRestrictionsChanged(bool value) => RefreshRoadContextPresentation(_currentTelemetrySample);
+
     private void UpdateTelemetry(double projectSeconds)
     {
         if (_gpxTimelineMapper is null || GpxPoints.Count == 0)
@@ -2915,9 +3354,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             : "—";
         TelemetryClockText = sample.Time.ToLocalTime().ToString("HH:mm:ss");
         CoordinateText = $"{sample.Latitude:F5}, {sample.Longitude:F5}".Replace('-', '−');
-        LocationText = CoordinateText;
+        LocationText = RoadLocationText = CoordinateText;
         TelemetrySampleChanged?.Invoke(this, sample);
         _currentTelemetrySample = sample;
+        RefreshRoadContextPresentation(sample);
     }
 
     private void ClearTelemetryPresentation(string locationText)
@@ -2928,7 +3368,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         TelemetryClockText = "—";
         CoordinateText = "—";
         LocationText = locationText;
+        RoadLocationText = locationText;
         TelemetryCleared?.Invoke(this, EventArgs.Empty);
+        RefreshRoadContextPresentation(null);
     }
 
     [RelayCommand]
@@ -3261,10 +3703,18 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             ProjectDirectory,
             "exports",
             $"evidence-{DateTimeOffset.Now:yyyyMMdd-HHmmss}");
-        var exporter = new EvidencePackageExporter(ProjectDirectory);
-        var result = await exporter.ExportAsync(_project, exportDirectory);
+        var exporter = new EvidencePackageExporter(
+            ProjectDirectory,
+            new FfmpegReviewClipGenerator(_ffmpegJobs));
+        var result = await exporter.ExportAsync(
+            _project,
+            exportDirectory,
+            options: new EvidenceExportOptions(IncludeRoadContextInExport));
         LastExportPath = result.PackageDirectory;
-        StatusText = $"Evidence package exported • {result.Files.Count} files • SHA-256 manifest ready";
+        StatusText = $"Evidence package exported • {result.Files.Count} files • SHA-256 manifest ready" +
+            (IncludeRoadContextInExport && _project.RoadContext is not null
+                ? " • road context requested as reference data"
+                : string.Empty);
     }
 
     [RelayCommand]
@@ -3514,8 +3964,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             ProjectTime: captured.TimelinePosition.ProjectTime));
         AttachmentCount = _pendingAttachments.Count;
 
-        var plateTask = _plateRecognizer.RecognizeAsync(cropPath);
-        var colourTask = _colourEstimator.EstimateAsync(cropPath);
+        // The crop is already attached with its source-time/hash provenance.
+        // OCR and colour are optional convenience analyzers: never let either
+        // failure discard valid saved evidence or escape an async UI handler.
+        var plateTask = TryRecognizePlateAsync(cropPath);
+        var colourTask = TryEstimateColourAsync(cropPath);
         await Task.WhenAll(plateTask, colourTask);
         var plate = await plateTask;
         var colour = await colourTask;
@@ -3541,6 +3994,32 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 ? $"Crop saved • colour suggested: {VehicleColor} • Tesseract unavailable/no match"
                 : $"Suggestions: {PlateNumber} / {VehicleColor} • confirm before save";
         StatusText = RecognitionStatus;
+    }
+
+    private async Task<Suggestion<string>?> TryRecognizePlateAsync(string cropPath)
+    {
+        try
+        {
+            return await _plateRecognizer.RecognizeAsync(cropPath);
+        }
+        catch (Exception exception)
+        {
+            Log.Warning(exception, "Optional OCR suggestion failed after a crop was saved");
+            return null;
+        }
+    }
+
+    private async Task<Suggestion<string>?> TryEstimateColourAsync(string cropPath)
+    {
+        try
+        {
+            return await _colourEstimator.EstimateAsync(cropPath);
+        }
+        catch (Exception exception)
+        {
+            Log.Warning(exception, "Optional colour suggestion failed after a crop was saved");
+            return null;
+        }
     }
 
     private TelemetrySample? GetTelemetrySampleAtProjectTime(TimeSpan projectTime)
@@ -3719,9 +4198,248 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private static string? NullIfWhiteSpace(string value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    private sealed record NearestRoadContext(
+        RoadContextFeature Feature,
+        double DistanceMetres);
+
+    [RelayCommand]
+    private void CancelFfmpegJob(FfmpegJobSnapshot? job)
+    {
+        if (job is null || job.State is not (FfmpegJobState.Queued or FfmpegJobState.Running))
+        {
+            return;
+        }
+
+        _ffmpegJobs.Cancel(job.Id);
+        StatusText = $"Cancelling {job.Operation.ToString().ToLowerInvariant()} for {job.SourceName}…";
+    }
+
+    [RelayCommand]
+    private void CancelAllFfmpegJobs()
+    {
+        _ffmpegJobs.CancelAll();
+        StatusText = "Cancelling active FFmpeg work…";
+    }
+
+    [RelayCommand]
+    private void ToggleJobsDrawer() => IsJobsDrawerOpen = !IsJobsDrawerOpen;
+
+    [RelayCommand]
+    private async Task OpenSettingsAsync()
+    {
+        IsSettingsPageOpen = true;
+        RefreshSettingsCacheStatus();
+        await RefreshSettingsToolStatusAsync();
+    }
+
+    [RelayCommand]
+    private void CloseSettings() => IsSettingsPageOpen = false;
+
+    [RelayCommand]
+    private void SaveSettings()
+    {
+        if (!Enum.TryParse<RoadWatcherLogLevel>(SettingsLogLevel, ignoreCase: true, out var logLevel))
+        {
+            StatusText = "Choose a valid log level.";
+            return;
+        }
+        if (!Enum.TryParse<ContextMapStyle>(SettingsMapStyle, ignoreCase: true, out var mapStyle))
+        {
+            StatusText = "Choose a valid map style.";
+            return;
+        }
+
+        var executable = UseManualFfmpegPath && !string.IsNullOrWhiteSpace(SettingsFfmpegPath)
+            ? SettingsFfmpegPath.Trim()
+            : null;
+        try
+        {
+            RoadWatcherRuntime.SaveSettings(new RoadWatcherSettings
+            {
+                LogLevel = logLevel,
+                UseManualFfmpegPath = executable is not null,
+                FfmpegExecutablePath = executable,
+                PreferredMapStyle = mapStyle
+            });
+            _proxyAvailability = null;
+            _thumbnailAvailability = null;
+            _thumbnailGenerator = new FfmpegMediaThumbnailGenerator(_ffmpegJobs, ResolveSettingsFfmpegExecutable());
+            _proxyGenerator = new FfmpegMediaProxyGenerator(_ffmpegJobs, ResolveSettingsFfmpegExecutable());
+            PreferredMapStyleChanged?.Invoke(mapStyle);
+            StatusText = "App settings saved locally; project evidence was not changed.";
+        }
+        catch (Exception exception)
+        {
+            Log.Error(exception, "Could not save app-local settings");
+            StatusText = "Settings could not be saved; see the app log.";
+        }
+    }
+
+    public void UpdatePreferredMapStyle(ContextMapStyle style)
+    {
+        SettingsMapStyle = style.ToString();
+        SaveSettings();
+    }
+
+    [RelayCommand]
+    private async Task TestFfmpegAsync()
+    {
+        SettingsFfmpegStatus = "Checking…";
+        try
+        {
+            var availability = await new FfmpegReviewClipGenerator(_ffmpegJobs, ResolveSettingsFfmpegExecutable())
+                .GetAvailabilityAsync();
+            SettingsFfmpegStatus = availability.IsAvailable
+                ? $"Available • {availability.Version}"
+                : "Unavailable • configure an FFmpeg executable or PATH";
+        }
+        catch (Exception exception)
+        {
+            Log.Warning(exception, "FFmpeg settings test failed");
+            SettingsFfmpegStatus = "Unavailable • see the app log";
+        }
+    }
+
+    [RelayCommand]
+    private void ClearThumbnailCache() => ClearProjectCache("thumbnails", "Thumbnail cache cleared.");
+
+    [RelayCommand]
+    private void ClearProxyCache() => ClearProjectCache("proxies", "Proxy cache cleared.");
+
+    [RelayCommand]
+    private void ClearMapCache()
+    {
+        var path = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RoadWatcher",
+            "map-tiles");
+        ClearCacheDirectory(path, path, "Map tile cache cleared.");
+    }
+
+    private async Task RefreshSettingsToolStatusAsync()
+    {
+        SettingsFfmpegStatus = "Checking…";
+        SettingsTesseractStatus = "Checking…";
+        try
+        {
+            var ffmpegTask = new FfmpegReviewClipGenerator(_ffmpegJobs, ResolveSettingsFfmpegExecutable())
+                .GetAvailabilityAsync();
+            var tesseractTask = _plateRecognizer.GetAvailabilityAsync();
+            await Task.WhenAll(ffmpegTask, tesseractTask);
+            SettingsFfmpegStatus = ffmpegTask.Result.IsAvailable
+                ? $"Available • {ffmpegTask.Result.Version}"
+                : "Unavailable • configure an FFmpeg executable or PATH";
+            SettingsTesseractStatus = tesseractTask.Result.IsAvailable
+                ? $"Available • {tesseractTask.Result.Version}"
+                : "Unavailable • OCR suggestions remain optional";
+        }
+        catch (Exception exception)
+        {
+            Log.Warning(exception, "Settings tool status check failed");
+            SettingsFfmpegStatus = "Check failed • see the app log";
+            SettingsTesseractStatus = "Check failed • OCR suggestions remain optional";
+        }
+    }
+
+    private void LoadSettingsPresentation()
+    {
+        var settings = RoadWatcherRuntime.Settings;
+        SettingsLogLevel = settings.LogLevel.ToString();
+        UseManualFfmpegPath = settings.UseManualFfmpegPath;
+        SettingsFfmpegPath = settings.FfmpegExecutablePath ?? string.Empty;
+        SettingsMapStyle = settings.PreferredMapStyle.ToString();
+    }
+
+    private string ResolveSettingsFfmpegExecutable() =>
+        UseManualFfmpegPath && !string.IsNullOrWhiteSpace(SettingsFfmpegPath)
+            ? SettingsFfmpegPath.Trim()
+            : Environment.GetEnvironmentVariable("ROADWATCHER_FFMPEG") ?? "ffmpeg";
+
+    private void ClearProjectCache(string childDirectory, string successMessage)
+    {
+        if (ProjectDirectory is null)
+        {
+            StatusText = "Open a project before clearing its derivative cache.";
+            return;
+        }
+
+        var root = Path.GetFullPath(Path.Combine(ProjectDirectory, "cache"));
+        ClearCacheDirectory(Path.Combine(root, childDirectory), root, successMessage);
+    }
+
+    private void ClearCacheDirectory(string directory, string allowedRoot, string successMessage)
+    {
+        try
+        {
+            var root = Path.GetFullPath(allowedRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var target = Path.GetFullPath(directory);
+            if (!string.Equals(target, root, StringComparison.OrdinalIgnoreCase) &&
+                !target.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Refused to clear a cache path outside RoadWatcher storage.");
+            }
+
+            if (Directory.Exists(target))
+            {
+                Directory.Delete(target, recursive: true);
+            }
+            Directory.CreateDirectory(target);
+            RefreshSettingsCacheStatus();
+            StatusText = successMessage;
+        }
+        catch (Exception exception)
+        {
+            Log.Error(exception, "Could not clear RoadWatcher cache {CacheDirectory}", Path.GetFileName(directory));
+            StatusText = "Cache could not be cleared; see the app log.";
+        }
+    }
+
+    private void RefreshSettingsCacheStatus()
+    {
+        var thumbnailBytes = ProjectDirectory is null ? 0 : DirectorySize(Path.Combine(ProjectDirectory, "cache", "thumbnails"));
+        var proxyBytes = ProjectDirectory is null ? 0 : DirectorySize(Path.Combine(ProjectDirectory, "cache", "proxies"));
+        var mapBytes = DirectorySize(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RoadWatcher",
+            "map-tiles"));
+        SettingsCacheStatus = $"Thumbnails {FormatBytes(thumbnailBytes)} • proxies {FormatBytes(proxyBytes)} • maps {FormatBytes(mapBytes)}";
+    }
+
+    private static long DirectorySize(string directory)
+    {
+        try
+        {
+            return Directory.Exists(directory)
+                ? new DirectoryInfo(directory).EnumerateFiles("*", SearchOption.AllDirectories).Sum(file => file.Length)
+                : 0;
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
+    }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024d:0.#} KB",
+        < 1024 * 1024 * 1024 => $"{bytes / 1024d / 1024d:0.#} MB",
+        _ => $"{bytes / 1024d / 1024d / 1024d:0.##} GB"
+    };
+
+    private void OnFfmpegJobsChanged(object? sender, EventArgs eventArgs) =>
+        Dispatcher.UIThread.Post(RefreshFfmpegJobs);
+
+    private void RefreshFfmpegJobs()
+    {
+        FfmpegJobsSnapshot = _ffmpegJobs.Jobs;
+    }
+
     public void Dispose()
     {
         _timer.Stop();
+        _ffmpegJobs.JobsChanged -= OnFfmpegJobsChanged;
+        _ffmpegJobs.Dispose();
         _mediaEngine.Dispose();
     }
 }

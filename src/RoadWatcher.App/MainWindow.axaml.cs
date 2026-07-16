@@ -19,6 +19,7 @@ using Mapsui.UI.Avalonia;
 using NetTopologySuite.Geometries;
 using RoadWatcher.App.Controls;
 using RoadWatcher.Core;
+using Serilog;
 using SkiaSharp;
 using AvaloniaImage = Avalonia.Controls.Image;
 using Brush = Mapsui.Styles.Brush;
@@ -39,6 +40,15 @@ public sealed partial class MainWindow : Window
     private MemoryLayer? _positionLayer;
     private IReadOnlyList<GpxContinuousSpeedSegment> _mapRouteSegments = [];
     private (int TravelledSegmentCount, bool HasPosition)? _mapRouteProgressKey;
+    private MemoryLayer? _roadControlLayer;
+    private MemoryLayer? _trafficSignalLayer;
+    private MemoryLayer? _cyclingFacilityLayer;
+    private MemoryLayer? _parkingHintLayer;
+    private MemoryLayer? _trafficDirectionLayer;
+    private MemoryLayer? _temporaryRestrictionLayer;
+    private MemoryLayer? _selectedRoadContextLayer;
+    private readonly RoadContextMapIconCache _roadContextIcons = new();
+    private RoadContextMapPresentation? _roadContextPresentation;
     private CancellationTokenSource? _timelinePreviewCancellation;
     private CancellationTokenSource? _playerProgressPreviewCancellation;
     private Bitmap? _playerProgressPreviewBitmap;
@@ -63,6 +73,8 @@ public sealed partial class MainWindow : Window
         viewModel.GpxTrackChanged += (_, points) => Dispatcher.UIThread.Post(() => UpdateMapRoute(points));
         viewModel.TelemetrySampleChanged += (_, sample) => Dispatcher.UIThread.Post(() => UpdateMapPosition(sample));
         viewModel.TelemetryCleared += (_, _) => Dispatcher.UIThread.Post(ClearMapPosition);
+        viewModel.RoadContextChanged += (_, presentation) => Dispatcher.UIThread.Post(() => UpdateRoadContext(presentation));
+        viewModel.PreferredMapStyleChanged += style => Dispatcher.UIThread.Post(() => ApplyPreferredMapStyle(style));
         DataContext = viewModel;
         var timeline = this.FindControl<VirtualTimelineControl>("TimelineSurface");
         if (timeline is not null)
@@ -256,27 +268,34 @@ public sealed partial class MainWindow : Window
         {
             return;
         }
-
-        var sourcePath = viewModel.LastCapturedFramePath ?? await viewModel.CaptureFrameToProjectAsync();
-        if (string.IsNullOrWhiteSpace(sourcePath))
+        try
         {
-            return;
+            var sourcePath = viewModel.LastCapturedFramePath ?? await viewModel.CaptureFrameToProjectAsync();
+            if (string.IsNullOrWhiteSpace(sourcePath))
+            {
+                return;
+            }
+
+            if (viewModel.ProjectDirectory is null)
+            {
+                viewModel.StatusText = "Create or open a project before adding evidence.";
+                return;
+            }
+
+            var destination = Path.Combine(
+                viewModel.ProjectDirectory,
+                "assets",
+                $"crop-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmssfff}.png");
+            var dialog = new CropDialog(sourcePath, destination);
+            if (await dialog.ShowDialog<bool>(this))
+            {
+                await viewModel.AddCropAndRecognizeAsync(destination);
+            }
         }
-
-        if (viewModel.ProjectDirectory is null)
+        catch (Exception exception)
         {
-            viewModel.StatusText = "Create or open a project before adding evidence.";
-            return;
-        }
-
-        var destination = Path.Combine(
-            viewModel.ProjectDirectory,
-            "assets",
-            $"crop-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmssfff}.png");
-        var dialog = new CropDialog(sourcePath, destination);
-        if (await dialog.ShowDialog<bool>(this))
-        {
-            await viewModel.AddCropAndRecognizeAsync(destination);
+            Log.Error(exception, "Crop workflow failed");
+            viewModel.StatusText = "Crop could not be completed. Your existing evidence remains available; see the app log.";
         }
     }
 
@@ -331,6 +350,11 @@ public sealed partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             // Turning marking mode off intentionally cancels a pending capture.
+        }
+        catch (Exception exception)
+        {
+            ReportAsyncUiFailure(viewModel, "marking-frame capture", exception);
+            viewModel.IsMarkingModeEnabled = false;
         }
         finally
         {
@@ -440,14 +464,22 @@ public sealed partial class MainWindow : Window
         {
             WriteCrop(captured.AbsolutePath, destination, cropBounds);
         }
-        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        catch (Exception exception)
         {
-            viewModel.StatusText = $"Marked crop could not be written: {exception.Message}";
+            ReportAsyncUiFailure(viewModel, "marked crop save", exception);
             return;
         }
 
-        if (!await viewModel.CompleteMarkingIncidentAsync(captured, destination))
+        try
         {
+            if (!await viewModel.CompleteMarkingIncidentAsync(captured, destination))
+            {
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            ReportAsyncUiFailure(viewModel, "marked crop analysis", exception);
             return;
         }
 
@@ -569,6 +601,15 @@ public sealed partial class MainWindow : Window
         {
             // Pointer movement and exit intentionally cancel stale preview work.
         }
+        catch (Exception exception)
+        {
+            Log.Warning(exception, "Timeline progress preview failed");
+            if (ReferenceEquals(_playerProgressPreviewCancellation, cancellation) &&
+                this.FindControl<TextBlock>("PlayerProgressPreviewStatus") is { } status)
+            {
+                status.Text = "Preview unavailable; playback remains available.";
+            }
+        }
         finally
         {
             if (ReferenceEquals(_playerProgressPreviewCancellation, cancellation))
@@ -601,8 +642,9 @@ public sealed partial class MainWindow : Window
                 image.Source = _playerProgressPreviewBitmap;
                 image.IsVisible = true;
             }
-            catch
+            catch (Exception exception)
             {
+                Log.Warning(exception, "Cached timeline preview image could not be opened");
                 // The status below remains useful when a cached image cannot be opened.
             }
         }
@@ -630,6 +672,15 @@ public sealed partial class MainWindow : Window
         _playerProgressPreviewBitmap = null;
     }
 
+    private static void ReportAsyncUiFailure(
+        MainWindowViewModel viewModel,
+        string operation,
+        Exception exception)
+    {
+        Log.Error(exception, "Recoverable UI operation failed: {Operation}", operation);
+        viewModel.StatusText = $"{operation} failed safely; retry when ready. See the app log for details.";
+    }
+
     private void OnMapTapped(object? sender, MapEventArgs eventArgs)
     {
         if (eventArgs.GestureType != GestureType.SingleTap || _stopLayer is null)
@@ -637,20 +688,90 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var mapInfo = eventArgs.GetMapInfo([_stopLayer]);
+        var layers = new ILayer?[]
+        {
+            _stopLayer,
+            _roadControlLayer,
+            _trafficSignalLayer,
+            _cyclingFacilityLayer,
+            _parkingHintLayer,
+            _trafficDirectionLayer,
+            _temporaryRestrictionLayer
+        }.OfType<ILayer>().ToArray();
+        var mapInfo = eventArgs.GetMapInfo(layers);
         var target = mapInfo.MapInfoRecords
             .Select(record => record.Feature.Data)
             .OfType<GpxStopPreviewTarget>()
             .FirstOrDefault();
-        if (target is null)
+        if (target is not null)
+        {
+            // Only consume the gesture when a stop feature was selected. Normal
+            // pan/zoom/tap behavior remains available everywhere else on the map.
+            eventArgs.Handled = true;
+            RequestGpxStopPreview(target);
+            return;
+        }
+
+        var cluster = mapInfo.MapInfoRecords
+            .Select(record => record.Feature.Data)
+            .OfType<RoadContextMapCluster>()
+            .FirstOrDefault();
+        if (cluster is not null)
+        {
+            eventArgs.Handled = true;
+            ShowRoadContextMapPopup(cluster.Features);
+            return;
+        }
+
+        var feature = mapInfo.MapInfoRecords
+            .Select(record => record.Feature.Data)
+            .OfType<RoadContextFeature>()
+            .FirstOrDefault();
+        if (feature is not null)
+        {
+            eventArgs.Handled = true;
+            ShowRoadContextMapPopup([feature]);
+        }
+    }
+
+    private void ShowRoadContextMapPopup(IReadOnlyList<RoadContextFeature> features)
+    {
+        if (features.Count == 0 || this.FindControl<Border>("RoadContextMapPopup") is not { } popup)
         {
             return;
         }
 
-        // Only consume the gesture when a stop feature was selected. Normal
-        // pan/zoom/tap behavior remains available everywhere else on the map.
-        eventArgs.Handled = true;
-        RequestGpxStopPreview(target);
+        var first = features[0];
+        if (this.FindControl<TextBlock>("RoadContextMapPopupTitle") is { } title)
+        {
+            title.Text = features.Count == 1 ? first.Title : $"{first.Title} × {features.Count}";
+        }
+        if (this.FindControl<TextBlock>("RoadContextMapPopupDetail") is { } detail)
+        {
+            detail.Text = string.Join(
+                " • ",
+                new[]
+                {
+                    first.Side,
+                    first.Schedule is null ? null : FormatSchedule(first.Schedule),
+                    first.IsUnverified ? "Community-mapped advisory" : first.Source.Authority.ToString(),
+                    first.Source.Provider
+                }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        }
+        popup.IsVisible = true;
+    }
+
+    private static string FormatSchedule(RoadContextSchedule schedule) =>
+        schedule.StartsAt is null || schedule.EndsAt is null
+            ? string.Join('/', schedule.Days.Select(day => day.ToString()[..2]))
+            : $"{string.Join('/', schedule.Days.Select(day => day.ToString()[..2]))} {schedule.StartsAt:HH\\:mm}–{schedule.EndsAt:HH\\:mm}";
+
+    private void OnRoadContextMapPopupClosed(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (this.FindControl<Border>("RoadContextMapPopup") is { } popup)
+        {
+            popup.IsVisible = false;
+        }
     }
 
     private async void RequestGpxStopPreview(GpxStopPreviewTarget target)
@@ -682,6 +803,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            Log.Warning(exception, "GPX stop preview failed");
             if (ReferenceEquals(_gpxStopPreviewCancellation, cancellation) &&
                 this.FindControl<TextBlock>("GpxStopPreviewStatus") is { } status)
             {
@@ -716,6 +838,10 @@ public sealed partial class MainWindow : Window
         try
         {
             await viewModel.JumpToGpxStopAsync(preview.Target);
+        }
+        catch (Exception exception)
+        {
+            ReportAsyncUiFailure(viewModel, "GPX stop jump", exception);
         }
         finally
         {
@@ -771,8 +897,9 @@ public sealed partial class MainWindow : Window
                 image.Source = _gpxStopPreviewBitmap;
                 image.IsVisible = true;
             }
-            catch
+            catch (Exception exception)
             {
+                Log.Warning(exception, "Cached GPX stop image could not be opened");
                 // The card keeps its exact time and no-frame status if the cache is unreadable.
             }
         }
@@ -816,8 +943,15 @@ public sealed partial class MainWindow : Window
     {
         if (sender is VirtualTimelineControl timeline && DataContext is MainWindowViewModel viewModel)
         {
-            await viewModel.EnsureTimelineThumbnailAsync(eventArgs.Block);
-            timeline.SetClipHoverPreview(eventArgs.Block);
+            try
+            {
+                await viewModel.EnsureTimelineThumbnailAsync(eventArgs.Block);
+                timeline.SetClipHoverPreview(eventArgs.Block);
+            }
+            catch (Exception exception)
+            {
+                ReportAsyncUiFailure(viewModel, "timeline clip preview", exception);
+            }
         }
     }
 
@@ -875,6 +1009,10 @@ public sealed partial class MainWindow : Window
         catch (OperationCanceledException)
         {
         }
+        catch (Exception exception)
+        {
+            ReportAsyncUiFailure(viewModel, "timeline scrub preview", exception);
+        }
     }
 
     private async void OnTimelineScrubCommitted(object? sender, TimelineScrubEventArgs eventArgs)
@@ -888,6 +1026,10 @@ public sealed partial class MainWindow : Window
         try
         {
             await viewModel.CommitTimelineScrubAsync(eventArgs.ProjectSeconds);
+        }
+        catch (Exception exception)
+        {
+            ReportAsyncUiFailure(viewModel, "timeline scrub", exception);
         }
         finally
         {
@@ -908,7 +1050,14 @@ public sealed partial class MainWindow : Window
     {
         if (DataContext is MainWindowViewModel viewModel)
         {
-            await viewModel.JogTimelineAsync(eventArgs.ProjectDeltaSeconds);
+            try
+            {
+                await viewModel.JogTimelineAsync(eventArgs.ProjectDeltaSeconds);
+            }
+            catch (Exception exception)
+            {
+                ReportAsyncUiFailure(viewModel, "timeline jog", exception);
+            }
         }
     }
 
@@ -932,11 +1081,18 @@ public sealed partial class MainWindow : Window
     {
         if (DataContext is MainWindowViewModel viewModel)
         {
-            await viewModel.ApplyTimelineClipEditAsync(
-                eventArgs.MediaSourceId,
-                eventArgs.Mode,
-                eventArgs.TargetIndex,
-                eventArgs.ProjectStart);
+            try
+            {
+                await viewModel.ApplyTimelineClipEditAsync(
+                    eventArgs.MediaSourceId,
+                    eventArgs.Mode,
+                    eventArgs.TargetIndex,
+                    eventArgs.ProjectStart);
+            }
+            catch (Exception exception)
+            {
+                ReportAsyncUiFailure(viewModel, "timeline clip edit", exception);
+            }
         }
     }
 
@@ -964,11 +1120,18 @@ public sealed partial class MainWindow : Window
     {
         if (DataContext is MainWindowViewModel viewModel)
         {
-            await viewModel.ApplyTimelineGpxAnchorEditAsync(
-                eventArgs.AnchorIndex,
-                eventArgs.GpxSourceId,
-                eventArgs.GpxTime,
-                eventArgs.ProjectTime);
+            try
+            {
+                await viewModel.ApplyTimelineGpxAnchorEditAsync(
+                    eventArgs.AnchorIndex,
+                    eventArgs.GpxSourceId,
+                    eventArgs.GpxTime,
+                    eventArgs.ProjectTime);
+            }
+            catch (Exception exception)
+            {
+                ReportAsyncUiFailure(viewModel, "GPX anchor edit", exception);
+            }
         }
     }
 
@@ -1022,9 +1185,16 @@ public sealed partial class MainWindow : Window
     {
         if (DataContext is MainWindowViewModel viewModel)
         {
-            await viewModel.ApplyTimelineGpxRouteEditAsync(
-                eventArgs.GpxSourceId,
-                eventArgs.ProjectTimeDelta);
+            try
+            {
+                await viewModel.ApplyTimelineGpxRouteEditAsync(
+                    eventArgs.GpxSourceId,
+                    eventArgs.ProjectTimeDelta);
+            }
+            catch (Exception exception)
+            {
+                ReportAsyncUiFailure(viewModel, "GPX route edit", exception);
+            }
         }
     }
 
@@ -1058,6 +1228,26 @@ public sealed partial class MainWindow : Window
         }
 
         ReplaceBaseMapLayer(style);
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.UpdatePreferredMapStyle(style);
+        }
+    }
+
+    private void ApplyPreferredMapStyle(ContextMapStyle style)
+    {
+        if (this.FindControl<ComboBox>("MapStyleSelector") is { } selector)
+        {
+            var requested = selector.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag as string, style.ToString(), StringComparison.OrdinalIgnoreCase));
+            if (requested is not null && !ReferenceEquals(selector.SelectedItem, requested))
+            {
+                selector.SelectedItem = requested;
+            }
+        }
+
+        ReplaceBaseMapLayer(style, updateStatus: false);
     }
 
     private void ReplaceBaseMapLayer(ContextMapStyle style, bool updateStatus = true)
@@ -1103,7 +1293,25 @@ public sealed partial class MainWindow : Window
             attribution: attribution);
         var map = new Map();
         map.Tapped += OnMapTapped;
+        map.Navigator.ViewportChanged += (_, _) => RenderRoadContextPresentation();
         map.Layers.Add(new TileLayer(tileSource));
+
+        // Road Context is intentionally placed below the recorded route and live rider marker.
+        // It remains orientation-only, so evidence geometry is always visually dominant.
+        _cyclingFacilityLayer = new MemoryLayer("Road context cycling facilities") { Features = [] };
+        _parkingHintLayer = new MemoryLayer("Road context parking hints") { Features = [] };
+        _trafficDirectionLayer = new MemoryLayer("Road context traffic direction") { Features = [] };
+        _temporaryRestrictionLayer = new MemoryLayer("Road context temporary restrictions") { Features = [] };
+        _roadControlLayer = new MemoryLayer("Road context stop controls") { Features = [] };
+        _trafficSignalLayer = new MemoryLayer("Road context signals and crossings") { Features = [] };
+        _selectedRoadContextLayer = new MemoryLayer("Selected road context") { Features = [] };
+        map.Layers.Add(_cyclingFacilityLayer);
+        map.Layers.Add(_parkingHintLayer);
+        map.Layers.Add(_trafficDirectionLayer);
+        map.Layers.Add(_temporaryRestrictionLayer);
+        map.Layers.Add(_roadControlLayer);
+        map.Layers.Add(_trafficSignalLayer);
+        map.Layers.Add(_selectedRoadContextLayer);
 
         _futureRouteLayer = new MemoryLayer("GPX route (upcoming)")
         {
@@ -1122,6 +1330,8 @@ public sealed partial class MainWindow : Window
             {
                 Fill = new Brush(Color.FromString(GpxSpeedPalette.Stop)),
                 Outline = new Pen(Color.White, 2),
+                // Mapsui's default vector symbol is 32 DIP. Keep a visible
+                // hit target without letting stops obscure the route.
                 SymbolScale = 0.625
             }
         };
@@ -1144,7 +1354,11 @@ public sealed partial class MainWindow : Window
         map.Navigator.CenterOnAndZoomTo(centre, map.Navigator.Resolutions[16]);
         mapControl.Map = map;
         _map = map;
-        ReplaceBaseMapLayer(ContextMapStyle.Night, updateStatus: false);
+        var preferred = DataContext is MainWindowViewModel viewModel &&
+                        Enum.TryParse<ContextMapStyle>(viewModel.SettingsMapStyle, ignoreCase: true, out var selectedStyle)
+            ? selectedStyle
+            : ContextMapStyle.Night;
+        ApplyPreferredMapStyle(preferred);
     }
 
     private static TileLayer CreateBaseMapLayer(ContextMapStyle style)
@@ -1287,6 +1501,82 @@ public sealed partial class MainWindow : Window
         _mapRouteProgressKey = key;
     }
 
+    private void UpdateRoadContext(RoadContextMapPresentation presentation)
+    {
+        _roadContextPresentation = presentation;
+        RenderRoadContextPresentation();
+    }
+
+    private void RenderRoadContextPresentation()
+    {
+        if (_map is null ||
+            _roadControlLayer is null ||
+            _trafficSignalLayer is null ||
+            _cyclingFacilityLayer is null ||
+            _parkingHintLayer is null ||
+            _trafficDirectionLayer is null ||
+            _temporaryRestrictionLayer is null ||
+            _selectedRoadContextLayer is null)
+        {
+            return;
+        }
+
+        var presentation = _roadContextPresentation;
+        if (presentation is null)
+        {
+            return;
+        }
+
+        var features = presentation.Features;
+        var clusters = RoadContextMapClusterer.Create(features, _map.Navigator.Viewport.Resolution);
+        _roadControlLayer.Features = CreateRoadContextLayerFeatures(
+            features, clusters, feature => feature.Category == RoadContextCategory.StopControl, "#E85D5D", 3, false).ToArray();
+        _trafficSignalLayer.Features = CreateRoadContextLayerFeatures(
+            features, clusters, feature => feature.Category is RoadContextCategory.TrafficSignal or RoadContextCategory.Crossing, "#FFBE3D", 3, false).ToArray();
+        _cyclingFacilityLayer.Features = CreateRoadContextLayerFeatures(
+            features, clusters, feature => feature.Category == RoadContextCategory.CyclingFacility, "#30C1C8", 3, false).ToArray();
+        _parkingHintLayer.Features = CreateRoadContextLayerFeatures(
+            features, clusters, feature => feature.Category == RoadContextCategory.ParkingRestriction, "#F15B7E", 3, true).ToArray();
+        _trafficDirectionLayer.Features = CreateRoadContextLayerFeatures(
+            features, clusters, feature => feature.Category is RoadContextCategory.TrafficDirection or RoadContextCategory.TurnRestriction, "#5BA7F7", 2, true).ToArray();
+        _temporaryRestrictionLayer.Features = CreateRoadContextLayerFeatures(
+            features, clusters, feature => feature.Category == RoadContextCategory.TemporaryRestriction, "#F28E3A", 3, true).ToArray();
+        _selectedRoadContextLayer.Features = string.IsNullOrWhiteSpace(presentation.SelectedFeatureId)
+            ? []
+            : features
+                .Where(feature => feature.Id == presentation.SelectedFeatureId)
+                .Select(feature => CreateRoadContextFeature(feature, "#FFFFFF", 5, dashed: false))
+                .ToArray();
+
+        _roadControlLayer.DataHasChanged();
+        _trafficSignalLayer.DataHasChanged();
+        _cyclingFacilityLayer.DataHasChanged();
+        _parkingHintLayer.DataHasChanged();
+        _trafficDirectionLayer.DataHasChanged();
+        _temporaryRestrictionLayer.DataHasChanged();
+        _selectedRoadContextLayer.DataHasChanged();
+        _map.RefreshGraphics();
+    }
+
+    private IEnumerable<IFeature> CreateRoadContextLayerFeatures(
+        IReadOnlyList<RoadContextFeature> features,
+        IReadOnlyList<RoadContextMapCluster> clusters,
+        Func<RoadContextFeature, bool> includes,
+        string color,
+        double lineWidth,
+        bool dashed)
+    {
+        foreach (var feature in features.Where(includes).Where(feature => feature.Geometry.Kind != RoadContextGeometryKind.Point))
+        {
+            yield return CreateRoadContextFeature(feature, color, lineWidth, dashed);
+        }
+
+        foreach (var cluster in clusters.Where(cluster => includes(cluster.Features[0])))
+        {
+            yield return CreateRoadContextClusterFeature(cluster, color);
+        }
+    }
+
     private static Coordinate Project(double longitude, double latitude)
     {
         var projected = SphericalMercator.FromLonLat(longitude, latitude);
@@ -1314,6 +1604,101 @@ public sealed partial class MainWindow : Window
         return feature;
     }
 
+    private static IFeature CreateRoadContextFeature(
+        RoadContextFeature roadContext,
+        string color,
+        double lineWidth,
+        bool dashed)
+    {
+        var coordinates = roadContext.Geometry.Coordinates
+            .Select(coordinate => Project(coordinate.Longitude, coordinate.Latitude))
+            .ToArray();
+        var styleColor = Color.FromString(color);
+        if (roadContext.Geometry.Kind == RoadContextGeometryKind.Point)
+        {
+            var point = coordinates[0];
+            var feature = new PointFeature(point.X, point.Y);
+            feature.Styles.Add(new SymbolStyle
+            {
+                Fill = new Brush(styleColor),
+                Outline = new Pen(Color.White, 1.5),
+                SymbolScale = 1.1
+            });
+            return feature;
+        }
+
+        Geometry geometry = roadContext.Geometry.Kind == RoadContextGeometryKind.Polygon
+            ? CreatePolygon(coordinates)
+            : new LineString(coordinates);
+        var pen = new Pen(styleColor, lineWidth);
+        if (dashed)
+        {
+            pen.PenStyle = PenStyle.Dash;
+        }
+
+        var featureWithGeometry = new GeometryFeature { Geometry = geometry, Data = roadContext };
+        featureWithGeometry.Styles.Add(new VectorStyle
+        {
+            Line = pen,
+            Fill = null
+        });
+        return featureWithGeometry;
+    }
+
+    private IFeature CreateRoadContextClusterFeature(RoadContextMapCluster cluster, string color)
+    {
+        var projected = SphericalMercator.FromLonLat(cluster.Coordinate.Longitude, cluster.Coordinate.Latitude);
+        var feature = new PointFeature(projected.x, projected.y) { Data = cluster };
+        feature.Styles.Add(new SymbolStyle
+        {
+            SymbolType = SymbolType.Ellipse,
+            Fill = new Brush(Color.FromString("#0B222B")),
+            Outline = new Pen(Color.White, 1.25),
+            SymbolScale = cluster.Count > 1 ? 0.69 : 0.57
+        });
+        feature.Styles.Add(new ImageStyle
+        {
+            Image = _roadContextIcons.Get(IconFor(cluster.Category), color),
+            SymbolScale = cluster.Count > 1 ? 0.56 : 0.46
+        });
+        if (cluster.Count > 1)
+        {
+            feature.Styles.Add(new LabelStyle
+            {
+                Text = cluster.Count.ToString(),
+                ForeColor = Color.White,
+                BackColor = new Brush(Color.FromString("#0B222B")),
+                BorderColor = Color.White,
+                BorderThickness = 1,
+                CornerRounding = 8,
+                Offset = new Offset(10, -10)
+            });
+        }
+        return feature;
+    }
+
+    private static RoadContextIcon IconFor(RoadContextCategory category) => category switch
+    {
+        RoadContextCategory.StopControl => RoadContextIcon.Stop,
+        RoadContextCategory.TrafficSignal => RoadContextIcon.Signal,
+        RoadContextCategory.Crossing => RoadContextIcon.Crossing,
+        RoadContextCategory.CyclingFacility => RoadContextIcon.Bike,
+        RoadContextCategory.ParkingRestriction => RoadContextIcon.NoParking,
+        RoadContextCategory.TrafficDirection or RoadContextCategory.TurnRestriction => RoadContextIcon.Direction,
+        _ => RoadContextIcon.Closure
+    };
+
+    private static Polygon CreatePolygon(IReadOnlyList<Coordinate> coordinates)
+    {
+        var ring = coordinates.ToList();
+        if (!SameCoordinate(ring[0], ring[^1]))
+        {
+            ring.Add(ring[0]);
+        }
+
+        return new Polygon(new LinearRing([.. ring]));
+    }
+
     private static IReadOnlyList<IFeature> CreateContinuousRouteFeatures(
         IReadOnlyList<GpxContinuousSpeedSegment> segments,
         int maximumFeatureCount = GpxRouteRenderPlanner.DefaultMaximumFeatureCount)
@@ -1327,4 +1712,7 @@ public sealed partial class MainWindow : Window
             .Select(chunk => (IFeature)CreateRouteFeature(chunk.Runs, chunk.Color))
             .ToArray();
     }
+
+    private static bool SameCoordinate(Coordinate first, Coordinate second) =>
+        first.X == second.X && first.Y == second.Y;
 }

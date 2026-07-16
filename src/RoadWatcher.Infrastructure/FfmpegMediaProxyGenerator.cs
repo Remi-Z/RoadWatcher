@@ -1,12 +1,19 @@
-using System.Diagnostics;
 using RoadWatcher.Core;
 
 namespace RoadWatcher.Infrastructure;
 
 public sealed class FfmpegMediaProxyGenerator : IMediaProxyGenerator
 {
-    private readonly FfmpegReviewClipGenerator _availabilityProbe = new();
-    private readonly string _executable = Environment.GetEnvironmentVariable("ROADWATCHER_FFMPEG") ?? "ffmpeg";
+    private readonly FfmpegReviewClipGenerator _availabilityProbe;
+    private readonly IFfmpegJobQueue _jobs;
+    private readonly string _executable;
+
+    public FfmpegMediaProxyGenerator(IFfmpegJobQueue? jobs = null, string? executable = null)
+    {
+        _jobs = jobs ?? FfmpegJobQueueRegistry.Shared;
+        _executable = executable ?? Environment.GetEnvironmentVariable("ROADWATCHER_FFMPEG") ?? "ffmpeg";
+        _availabilityProbe = new FfmpegReviewClipGenerator(_jobs, _executable);
+    }
 
     public Task<ExternalToolAvailability> GetAvailabilityAsync(CancellationToken cancellationToken = default) =>
         _availabilityProbe.GetAvailabilityAsync(cancellationToken);
@@ -43,42 +50,22 @@ public sealed class FfmpegMediaProxyGenerator : IMediaProxyGenerator
             "-movflags", "+faststart",
             "-y", temporaryPath
         };
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = _executable,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
 
         try
         {
-            using var process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("FFmpeg could not be started.");
-            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            try
+            var result = await _jobs.EnqueueAsync(
+                new FfmpegJobRequest(
+                    FfmpegJobOperation.Proxy,
+                    sourcePath,
+                    destinationPath,
+                    "Create proxy",
+                    arguments,
+                    request.SourceDuration,
+                    _executable),
+                cancellationToken);
+            if (result.ExitCode != 0 || !File.Exists(temporaryPath) || new FileInfo(temporaryPath).Length == 0)
             {
-                await process.WaitForExitAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                    await process.WaitForExitAsync(CancellationToken.None);
-                }
-                throw;
-            }
-
-            var error = await errorTask;
-            if (process.ExitCode != 0 || !File.Exists(temporaryPath) || new FileInfo(temporaryPath).Length == 0)
-            {
-                throw new InvalidOperationException(
-                    $"FFmpeg proxy generation failed with code {process.ExitCode}: {error.Trim()}");
+                throw new InvalidOperationException($"FFmpeg proxy generation failed: {result.StandardError.Trim()}");
             }
 
             File.Move(temporaryPath, destinationPath, overwrite: true);
@@ -94,11 +81,17 @@ public sealed class FfmpegMediaProxyGenerator : IMediaProxyGenerator
         {
             if (File.Exists(temporaryPath))
             {
-                File.Delete(temporaryPath);
+                TryDeleteTemporary(temporaryPath);
             }
         }
     }
 
     private static string QuoteArgument(string argument) =>
         argument.Any(char.IsWhiteSpace) ? $"\"{argument.Replace("\"", "\\\"")}\"" : argument;
+
+    private static void TryDeleteTemporary(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+    }
 }

@@ -11,6 +11,7 @@ Pin versions centrally and upgrade intentionally. The application composes matur
 | Map | Mapsui.Avalonia | 5.1.0 | Mature Avalonia 11 map control; supports OpenStreetMap tiles and overlays without conflicting native text dependencies. |
 | Reverse geocoding | OpenStreetMap Nominatim HTTP API | public API v1 | User-triggered address suggestions without credentials; project-local cache, process-wide throttling, attribution, and endpoint override enforce the provider policy. |
 | Icons | Material.Icons.Avalonia | 2.4.1 | Maintained vector icon library compatible with Avalonia 11; avoids handmade glyphs. |
+| Application logging | Serilog + Serilog.Sinks.File | 4.2.0 / 6.0.0 | Mature structured logging with a local 14-day rolling file; defaults to Warning without writing source media/GPX content. |
 | JSON | System.Text.Json | platform | Built-in, fast, versioned project serialization. |
 | Media derivatives | FFmpeg | 8.x external tool | H.264/AAC incident review clips, bounded H.264 playback proxies, and lazy timeline thumbnails. |
 | OCR | Tesseract | 5.x external tool | Local-first plate suggestion behind an adapter. |

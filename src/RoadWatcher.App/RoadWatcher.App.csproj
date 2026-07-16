@@ -20,6 +20,8 @@
     <PackageReference Include="Mapsui.Nts" />
     <PackageReference Include="Material.Icons.Avalonia" />
     <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.File" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\docs\PACKAGING.md" Link="PACKAGING.md" CopyToPublishDirectory="PreserveNewest" />

@@ -2,5 +2,6 @@
   <ItemGroup>
     <ProjectReference Include="..\RoadWatcher.Core\RoadWatcher.Core.csproj" />
     <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="Serilog" />
   </ItemGroup>
 </Project>
