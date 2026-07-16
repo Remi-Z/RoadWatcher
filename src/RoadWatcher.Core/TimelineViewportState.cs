@@ -36,6 +36,23 @@ public readonly record struct TimelineViewportState(
         return Normalize(this with { ViewportWidth = width });
     }
 
+    /// <summary>
+    /// Replaces the visual timeline domain while preserving the current zoom level and
+    /// visible position wherever that position remains valid. This is used while a live
+    /// synchronization preview expands into the intentionally blank workspace before or
+    /// after the evidence timeline; it must not snap the pointer back to a fit view.
+    /// </summary>
+    public TimelineViewportState WithDomain(double durationSeconds, double minimumSeconds = 0)
+    {
+        var duration = Math.Max(0.001, durationSeconds);
+        var minimum = double.IsFinite(minimumSeconds) ? minimumSeconds : 0;
+        return Normalize(this with
+        {
+            DurationSeconds = duration,
+            MinimumSeconds = minimum
+        });
+    }
+
     public TimelineViewportState ZoomAt(
         double scale,
         double anchorPixel,

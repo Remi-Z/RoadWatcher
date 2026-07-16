@@ -23,11 +23,20 @@ Implement the synchronized-review improvements requested for the virtual timelin
 - Candidate project times may be negative so the later visual workspace integration can align pre-video GPX without fabricating playable media. Cancel restores the untouched original snapshot; commit returns a defensive immutable replacement set for atomic persistence.
 - The session intentionally caps anchors at two because the current mapper is a one/two-anchor mapper; it cannot silently accept a third anchor that would be ignored.
 
+## Slice 4 — live GPX synchronization preview
+
+- Drag either numbered GPX anchor or the visible GPX route body on the virtual timeline. Anchor moves alter one candidate anchor; route-body dragging applies one common project-time shift to the complete source-scoped candidate, preserving an existing two-anchor drift correction.
+- Every drag preview is non-destructive and throttled to 30 Hz. It remaps the coverage interval, speed/stop overlays, current GPX clock, telemetry values, and map position immediately; release is the only point that atomically persists `timeline.syncAnchors`. Escape, the flyout Cancel button, and closing the flyout restore the untouched original anchors.
+- Numeric input is now labelled **Whole-route shift (seconds)** to match its drift-preserving behavior. It previews as typed, then Apply persists the candidate. Synchronization controls are disabled while persistence is completing, and all durable project mutations share a nonblocking gate so a close/open/import/edit cannot race a pending candidate save.
+- The visual workspace recomputes for every candidate. `TimelineViewportState.WithDomain` preserves active GPX-drag zoom and viewport position as the blank pre/post-media workspace expands, while non-drag numeric previews fit the new domain. No playable/evidence bounds are changed.
+- When a candidate maps the playhead outside GPX coverage, the live map marker and all telemetry presentation values clear rather than showing a clamped endpoint. GPX speed/stop analysis is cached by source, so only time mapping is repeated during a drag.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed with 0 warnings and 0 errors.
-- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core.
+- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, and 73/73 after the live-preview integration.
 - The primary viewport test covers a -15 to +75 second visual range, pointer mapping, and pan clamping after zoom.
+- The added viewport-domain test verifies that a drag-time workspace expansion preserves the current zoom and visible offset rather than resetting to Fit.
 - Metadata parser fallbacks, trusted-gap layout, later-import collision/manual-layout protection, confidence selection, timeline edit preservation, JSON round-trip, and schema-v1 optional-field compatibility are unit tested. A local `ffprobe` read is bounded to five seconds and failure remains advisory.
 - GPX candidate-session tests cover negative project time, whole-route translation, isolated anchor moves, source/order validation, two-anchor limit, cancel, and defensive snapshots.
 

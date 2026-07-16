@@ -19,6 +19,7 @@ public sealed class VirtualTimelineControl : Control
     private const double PreviewWidth = 160;
     private const double PreviewHeight = 90;
     private static readonly long PreviewIntervalTicks = Stopwatch.Frequency * 150 / 1000;
+    private static readonly long GpxDragPreviewIntervalTicks = Stopwatch.Frequency / 30;
 
     public static readonly StyledProperty<double> DurationSecondsProperty =
         AvaloniaProperty.Register<VirtualTimelineControl, double>(nameof(DurationSeconds), 1);
@@ -95,6 +96,14 @@ public sealed class VirtualTimelineControl : Control
     private bool _gpxDragActivated;
     private bool _dragGpxValid;
     private double _gpxDragPointerOffsetSeconds;
+    private long _lastGpxAnchorPreviewRequest;
+    private IReadOnlyList<GpxAnchorViewModel>? _dragGpxRouteAnchors;
+    private bool _isGpxRouteDragging;
+    private bool _gpxRouteDragActivated;
+    private Point _gpxRouteDragStartPoint;
+    private double _gpxRouteDragPointerStartSeconds;
+    private double _dragGpxRouteDeltaSeconds;
+    private long _lastGpxRoutePreviewRequest;
     private TimelineBlockViewModel? _hoverBlock;
 
     static VirtualTimelineControl()
@@ -225,9 +234,14 @@ public sealed class VirtualTimelineControl : Control
     public event EventHandler? ClipDragStarted;
     public event EventHandler<TimelineClipEditEventArgs>? ClipEditCommitted;
     public event EventHandler? ClipEditCanceled;
-    public event EventHandler? GpxAnchorDragStarted;
+    public event EventHandler<TimelineGpxAnchorEditEventArgs>? GpxAnchorDragStarted;
+    public event EventHandler<TimelineGpxAnchorEditEventArgs>? GpxAnchorDragPreviewed;
     public event EventHandler<TimelineGpxAnchorEditEventArgs>? GpxAnchorEditCommitted;
     public event EventHandler? GpxAnchorEditCanceled;
+    public event EventHandler<TimelineGpxRouteDragEventArgs>? GpxRouteDragStarted;
+    public event EventHandler<TimelineGpxRouteDragEventArgs>? GpxRouteDragPreviewed;
+    public event EventHandler<TimelineGpxRouteDragEventArgs>? GpxRouteDragCommitted;
+    public event EventHandler<TimelineGpxRouteDragEventArgs>? GpxRouteDragCanceled;
     public event EventHandler<TimelineClipPreviewEventArgs>? ClipPreviewRequested;
 
     public void Fit()
@@ -317,8 +331,19 @@ public sealed class VirtualTimelineControl : Control
         base.OnPropertyChanged(change);
         if (change.Property == DurationSecondsProperty || change.Property == MinimumSecondsProperty)
         {
-            _viewport = TimelineViewportState.Fit(DurationSeconds, GetTimeAreaWidth(), MinimumSeconds);
-            _isFit = true;
+            if (_isGpxAnchorDragging || _isGpxRouteDragging)
+            {
+                // A synchronization preview can deliberately grow the blank visual workspace
+                // beyond the evidence timeline. Preserve the active drag's zoom/pointer
+                // relationship instead of snapping back to a fit view on every preview frame.
+                _viewport = _viewport.WithDomain(DurationSeconds, MinimumSeconds);
+                _isFit = false;
+            }
+            else
+            {
+                _viewport = TimelineViewportState.Fit(DurationSeconds, GetTimeAreaWidth(), MinimumSeconds);
+                _isFit = true;
+            }
         }
     }
 
@@ -361,17 +386,26 @@ public sealed class VirtualTimelineControl : Control
         }
 
         var gpxLaneTop = RulerHeight + LaneHeight;
-        if (point.Y >= gpxLaneTop && point.Y < gpxLaneTop + LaneHeight && GpxAnchors is not null)
+        if (point.Y >= gpxLaneTop && point.Y < gpxLaneTop + LaneHeight && HasGpx)
         {
-            var anchor = GpxAnchors
-                .Where(candidate => Math.Abs(
-                    point.X - GetGpxAnchorX(candidate.ProjectTime.TotalSeconds)) <= 10)
-                .OrderBy(candidate => Math.Abs(
-                    point.X - GetGpxAnchorX(candidate.ProjectTime.TotalSeconds)))
-                .FirstOrDefault();
-            if (anchor is not null)
+            if (GpxAnchors is { Count: > 0 })
             {
-                BeginGpxAnchorDrag(e, anchor);
+                var anchor = GpxAnchors
+                    .Where(candidate => Math.Abs(
+                        point.X - GetGpxAnchorX(candidate.ProjectTime.TotalSeconds)) <= 10)
+                    .OrderBy(candidate => Math.Abs(
+                        point.X - GetGpxAnchorX(candidate.ProjectTime.TotalSeconds)))
+                    .FirstOrDefault();
+                if (anchor is not null)
+                {
+                    BeginGpxAnchorDrag(e, anchor);
+                    return;
+                }
+            }
+
+            if (IsGpxRouteBodyHit(point))
+            {
+                BeginGpxRouteDrag(e, point);
                 return;
             }
         }
@@ -398,7 +432,11 @@ public sealed class VirtualTimelineControl : Control
         base.OnPointerMoved(e);
         if (!_isScrubbing)
         {
-            if (_isGpxAnchorDragging)
+            if (_isGpxRouteDragging)
+            {
+                UpdateGpxRouteDrag(e);
+            }
+            else if (_isGpxAnchorDragging)
             {
                 UpdateGpxAnchorDrag(e);
             }
@@ -430,7 +468,11 @@ public sealed class VirtualTimelineControl : Control
         base.OnPointerReleased(e);
         if (!_isScrubbing)
         {
-            if (_isGpxAnchorDragging)
+            if (_isGpxRouteDragging)
+            {
+                CompleteGpxRouteDrag(e);
+            }
+            else if (_isGpxAnchorDragging)
             {
                 CompleteGpxAnchorDrag(e);
             }
@@ -493,19 +535,26 @@ public sealed class VirtualTimelineControl : Control
             CancelGpxAnchorDrag();
             e.Handled = true;
         }
+        else if (e.Key == Key.Escape && _isGpxRouteDragging)
+        {
+            CancelGpxRouteDrag();
+            e.Handled = true;
+        }
         else if ((e.Key == Key.Left || e.Key == Key.Right) &&
                  TryGetKeyboardGpxAnchor(e.KeyModifiers, out var anchor))
         {
             var direction = e.Key == Key.Left ? -1 : 1;
             var increment = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 1 : 0.1;
-            var proposed = Math.Clamp(
-                anchor.ProjectTime.TotalSeconds + direction * increment,
-                0,
-                DurationSeconds);
+            var proposed = ClampToVisualTimeline(
+                anchor.ProjectTime.TotalSeconds + direction * increment);
             if (IsGpxAnchorPositionValid(anchor.Index, proposed) &&
                 Math.Abs(proposed - anchor.ProjectTime.TotalSeconds) > 0.0000001)
             {
-                GpxAnchorDragStarted?.Invoke(this, EventArgs.Empty);
+                GpxAnchorDragStarted?.Invoke(this, new TimelineGpxAnchorEditEventArgs(
+                    anchor.Index,
+                    anchor.GpxSourceId,
+                    anchor.GpxTime,
+                    anchor.ProjectTime));
                 GpxAnchorEditCommitted?.Invoke(this, new TimelineGpxAnchorEditEventArgs(
                     anchor.Index,
                     anchor.GpxSourceId,
@@ -886,6 +935,7 @@ public sealed class VirtualTimelineControl : Control
         _dragGpxProjectSeconds = anchor.ProjectTime.TotalSeconds;
         _gpxDragStartPoint = e.GetPosition(this);
         _gpxDragPointerOffsetSeconds = GetTimeAt(_gpxDragStartPoint.X) - anchor.ProjectTime.TotalSeconds;
+        _lastGpxAnchorPreviewRequest = 0;
         _dragPointer = e.Pointer;
         e.Pointer.Capture(this);
         e.Handled = true;
@@ -909,7 +959,11 @@ public sealed class VirtualTimelineControl : Control
             }
 
             _gpxDragActivated = true;
-            GpxAnchorDragStarted?.Invoke(this, EventArgs.Empty);
+            GpxAnchorDragStarted?.Invoke(this, new TimelineGpxAnchorEditEventArgs(
+                _dragGpxAnchor.Index,
+                _dragGpxAnchor.GpxSourceId,
+                _dragGpxAnchor.GpxTime,
+                _dragGpxAnchor.ProjectTime));
         }
 
         if (point.X < HeaderWidth + 24)
@@ -921,11 +975,10 @@ public sealed class VirtualTimelineControl : Control
             _viewport = _viewport.PanByPixels(12);
         }
 
-        _dragGpxProjectSeconds = Math.Clamp(
-            GetTimeAt(point.X) - _gpxDragPointerOffsetSeconds,
-            0,
-            DurationSeconds);
+        _dragGpxProjectSeconds = ClampToVisualTimeline(
+            GetTimeAt(point.X) - _gpxDragPointerOffsetSeconds);
         _dragGpxValid = IsGpxAnchorPositionValid(_dragGpxAnchor.Index, _dragGpxProjectSeconds);
+        RequestGpxAnchorDragPreview(force: false);
         e.Handled = true;
         InvalidateVisual();
     }
@@ -935,6 +988,12 @@ public sealed class VirtualTimelineControl : Control
         var anchor = _dragGpxAnchor;
         var activated = _gpxDragActivated;
         var valid = _dragGpxValid;
+        if (activated && valid && anchor is not null)
+        {
+            // The final map preview must reflect the exact value being committed even when
+            // the final pointer move fell inside the 30 Hz throttling interval.
+            RequestGpxAnchorDragPreview(force: true);
+        }
         _isGpxAnchorDragging = false;
         _gpxDragActivated = false;
         _dragGpxAnchor = null;
@@ -958,13 +1017,261 @@ public sealed class VirtualTimelineControl : Control
 
     private void CancelGpxAnchorDrag()
     {
+        var activated = _gpxDragActivated;
         _isGpxAnchorDragging = false;
         _gpxDragActivated = false;
         _dragGpxAnchor = null;
+        _lastGpxAnchorPreviewRequest = 0;
         _dragPointer?.Capture(null);
         _dragPointer = null;
-        GpxAnchorEditCanceled?.Invoke(this, EventArgs.Empty);
+        if (activated)
+        {
+            GpxAnchorEditCanceled?.Invoke(this, EventArgs.Empty);
+        }
         InvalidateVisual();
+    }
+
+    private void BeginGpxRouteDrag(PointerPressedEventArgs e, Point point)
+    {
+        if (GpxAnchors is not { Count: > 0 } anchors)
+        {
+            return;
+        }
+
+        // The current timeline displays one active GPX source. Keeping this snapshot source
+        // scoped makes the event safe to pass directly to a synchronization preview session.
+        var gpxSourceId = anchors[0].GpxSourceId;
+        var routeAnchors = anchors
+            .Where(anchor => anchor.GpxSourceId == gpxSourceId)
+            .OrderBy(anchor => anchor.Index)
+            .ToArray();
+        if (routeAnchors.Length == 0)
+        {
+            return;
+        }
+
+        Focus();
+        ClearClipHover();
+        _selectedGpxAnchorIndex = null;
+        _dragGpxRouteAnchors = Array.AsReadOnly(routeAnchors);
+        _isGpxRouteDragging = true;
+        _gpxRouteDragActivated = false;
+        _gpxRouteDragStartPoint = point;
+        _gpxRouteDragPointerStartSeconds = GetTimeAt(point.X);
+        _dragGpxRouteDeltaSeconds = 0;
+        _lastGpxRoutePreviewRequest = 0;
+        _dragPointer = e.Pointer;
+        e.Pointer.Capture(this);
+        e.Handled = true;
+        InvalidateVisual();
+    }
+
+    private void UpdateGpxRouteDrag(PointerEventArgs e)
+    {
+        if (_dragGpxRouteAnchors is not { Count: > 0 })
+        {
+            return;
+        }
+
+        var point = e.GetPosition(this);
+        if (!_gpxRouteDragActivated)
+        {
+            var distance = point - _gpxRouteDragStartPoint;
+            if (Math.Abs(distance.X) < 4 && Math.Abs(distance.Y) < 4)
+            {
+                return;
+            }
+
+            _gpxRouteDragActivated = true;
+            if (CreateGpxRouteDragEventArgs() is { } started)
+            {
+                GpxRouteDragStarted?.Invoke(this, started);
+            }
+        }
+
+        if (point.X < HeaderWidth + 24)
+        {
+            _viewport = _viewport.PanByPixels(-12);
+        }
+        else if (point.X > Bounds.Width - 24)
+        {
+            _viewport = _viewport.PanByPixels(12);
+        }
+
+        _dragGpxRouteDeltaSeconds = ClampGpxRouteDragDelta(
+            GetTimeAt(point.X) - _gpxRouteDragPointerStartSeconds);
+        RequestGpxRouteDragPreview(force: false);
+        e.Handled = true;
+        InvalidateVisual();
+    }
+
+    private void CompleteGpxRouteDrag(PointerReleasedEventArgs e)
+    {
+        var activated = _gpxRouteDragActivated;
+        var committed = activated ? CreateGpxRouteDragEventArgs() : null;
+        if (committed is not null)
+        {
+            // Push the last candidate through even if the pointer release follows a recent
+            // throttled move, then make the persisted commit explicit.
+            RequestGpxRouteDragPreview(force: true);
+        }
+
+        _isGpxRouteDragging = false;
+        _gpxRouteDragActivated = false;
+        _dragGpxRouteAnchors = null;
+        _dragPointer = null;
+        e.Pointer.Capture(null);
+        if (committed is not null)
+        {
+            GpxRouteDragCommitted?.Invoke(this, committed);
+        }
+        e.Handled = true;
+        InvalidateVisual();
+    }
+
+    private void CancelGpxRouteDrag()
+    {
+        var canceled = _gpxRouteDragActivated
+            ? CreateGpxRouteDragEventArgs(projectTimeDelta: 0)
+            : null;
+        _isGpxRouteDragging = false;
+        _gpxRouteDragActivated = false;
+        _dragGpxRouteAnchors = null;
+        _dragGpxRouteDeltaSeconds = 0;
+        _lastGpxRoutePreviewRequest = 0;
+        _dragPointer?.Capture(null);
+        _dragPointer = null;
+        if (canceled is not null)
+        {
+            // Cancellation carries the original candidate values so subscribers can restore
+            // a live map preview without waiting for a persisted binding refresh.
+            GpxRouteDragCanceled?.Invoke(this, canceled);
+        }
+        InvalidateVisual();
+    }
+
+    private void RequestGpxAnchorDragPreview(bool force)
+    {
+        if (!_isGpxAnchorDragging ||
+            !_gpxDragActivated ||
+            !_dragGpxValid ||
+            _dragGpxAnchor is not { } anchor)
+        {
+            return;
+        }
+
+        var now = Stopwatch.GetTimestamp();
+        if (!force && now - _lastGpxAnchorPreviewRequest < GpxDragPreviewIntervalTicks)
+        {
+            return;
+        }
+
+        _lastGpxAnchorPreviewRequest = now;
+        GpxAnchorDragPreviewed?.Invoke(this, new TimelineGpxAnchorEditEventArgs(
+            anchor.Index,
+            anchor.GpxSourceId,
+            anchor.GpxTime,
+            TimeSpan.FromSeconds(_dragGpxProjectSeconds)));
+    }
+
+    private void RequestGpxRouteDragPreview(bool force)
+    {
+        if (!_isGpxRouteDragging || !_gpxRouteDragActivated)
+        {
+            return;
+        }
+
+        var now = Stopwatch.GetTimestamp();
+        if (!force && now - _lastGpxRoutePreviewRequest < GpxDragPreviewIntervalTicks)
+        {
+            return;
+        }
+
+        var preview = CreateGpxRouteDragEventArgs();
+        if (preview is null)
+        {
+            return;
+        }
+
+        _lastGpxRoutePreviewRequest = now;
+        GpxRouteDragPreviewed?.Invoke(this, preview);
+    }
+
+    private TimelineGpxRouteDragEventArgs? CreateGpxRouteDragEventArgs(double? projectTimeDelta = null)
+    {
+        if (_dragGpxRouteAnchors is not { Count: > 0 } anchors)
+        {
+            return null;
+        }
+
+        var delta = projectTimeDelta ?? _dragGpxRouteDeltaSeconds;
+        var candidates = anchors
+            .Select(anchor => new TimelineGpxRouteAnchorCandidate(
+                anchor.Index,
+                anchor.GpxSourceId,
+                anchor.GpxTime,
+                anchor.ProjectTime + TimeSpan.FromSeconds(delta)))
+            .ToArray();
+        return new TimelineGpxRouteDragEventArgs(
+            anchors[0].GpxSourceId,
+            TimeSpan.FromSeconds(delta),
+            candidates);
+    }
+
+    private bool IsGpxRouteBodyHit(Point point)
+    {
+        if (GpxAnchors is not { Count: > 0 })
+        {
+            return false;
+        }
+
+        var y = RulerHeight + LaneHeight + LaneHeight / 2;
+        if (Math.Abs(point.Y - y) > 11)
+        {
+            return false;
+        }
+
+        var coverageStart = HeaderWidth + _viewport.TimeToPixel(GpxCoverageStartSeconds);
+        var coverageEnd = HeaderWidth + _viewport.TimeToPixel(GpxCoverageEndSeconds);
+        var lineStart = Math.Max(HeaderWidth, Math.Min(coverageStart, coverageEnd));
+        var lineEnd = Math.Min(Bounds.Width, Math.Max(coverageStart, coverageEnd));
+        return lineEnd >= lineStart && point.X >= lineStart - 6 && point.X <= lineEnd + 6;
+    }
+
+    private double ClampGpxRouteDragDelta(double proposedDelta)
+    {
+        if (_dragGpxRouteAnchors is not { Count: > 0 } anchors)
+        {
+            return 0;
+        }
+
+        var (minimum, maximum) = GetVisualTimelineBounds();
+        var earliestAnchor = anchors.Min(anchor => anchor.ProjectTime.TotalSeconds);
+        var latestAnchor = anchors.Max(anchor => anchor.ProjectTime.TotalSeconds);
+        var minimumDelta = minimum - earliestAnchor;
+        var maximumDelta = maximum - latestAnchor;
+        if (minimumDelta > maximumDelta)
+        {
+            // A visual workspace is normally padded around the full route. If a caller ever
+            // supplies one narrower than the anchor span, keep the original mapping rather
+            // than preview an impossible anchor ordering.
+            return 0;
+        }
+
+        return Math.Clamp(proposedDelta, minimumDelta, maximumDelta);
+    }
+
+    private double ClampToVisualTimeline(double projectSeconds)
+    {
+        var (minimum, maximum) = GetVisualTimelineBounds();
+        return Math.Clamp(projectSeconds, minimum, maximum);
+    }
+
+    private (double Minimum, double Maximum) GetVisualTimelineBounds()
+    {
+        var minimum = double.IsFinite(MinimumSeconds) ? MinimumSeconds : 0;
+        var duration = double.IsFinite(DurationSeconds) ? Math.Max(0, DurationSeconds) : 0;
+        return (minimum, minimum + duration);
     }
 
     private bool IsGpxAnchorPositionValid(int anchorIndex, double projectSeconds)
@@ -1297,4 +1604,44 @@ public sealed class TimelineGpxAnchorEditEventArgs(
     public Guid GpxSourceId { get; } = gpxSourceId;
     public DateTimeOffset GpxTime { get; } = gpxTime;
     public TimeSpan ProjectTime { get; } = projectTime;
+}
+
+/// <summary>
+/// One source-scoped candidate anchor emitted while the GPX route body is translated.
+/// </summary>
+public sealed record TimelineGpxRouteAnchorCandidate(
+    int Index,
+    Guid GpxSourceId,
+    DateTimeOffset GpxTime,
+    TimeSpan ProjectTime);
+
+/// <summary>
+/// A complete, unpersisted GPX route translation candidate. Subscribers should use
+/// <see cref="CandidateAnchors"/> for live map/timeline feedback and persist only after the
+/// matching committed event.
+/// </summary>
+public sealed class TimelineGpxRouteDragEventArgs : EventArgs
+{
+    public TimelineGpxRouteDragEventArgs(
+        Guid gpxSourceId,
+        TimeSpan projectTimeDelta,
+        IReadOnlyList<TimelineGpxRouteAnchorCandidate> candidateAnchors)
+    {
+        ArgumentNullException.ThrowIfNull(candidateAnchors);
+        var anchors = candidateAnchors.ToArray();
+        if (anchors.Length == 0 || anchors.Any(anchor => anchor.GpxSourceId != gpxSourceId))
+        {
+            throw new ArgumentException(
+                "Route drag candidates must contain one or more anchors from the supplied GPX source.",
+                nameof(candidateAnchors));
+        }
+
+        GpxSourceId = gpxSourceId;
+        ProjectTimeDelta = projectTimeDelta;
+        CandidateAnchors = Array.AsReadOnly(anchors);
+    }
+
+    public Guid GpxSourceId { get; }
+    public TimeSpan ProjectTimeDelta { get; }
+    public IReadOnlyList<TimelineGpxRouteAnchorCandidate> CandidateAnchors { get; }
 }

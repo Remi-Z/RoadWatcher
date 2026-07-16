@@ -38,6 +38,7 @@ public sealed partial class MainWindow : Window
         var viewModel = new MainWindowViewModel();
         viewModel.GpxTrackChanged += (_, points) => Dispatcher.UIThread.Post(() => UpdateMapRoute(points));
         viewModel.TelemetrySampleChanged += (_, sample) => Dispatcher.UIThread.Post(() => UpdateMapPosition(sample));
+        viewModel.TelemetryCleared += (_, _) => Dispatcher.UIThread.Post(ClearMapPosition);
         DataContext = viewModel;
         var timeline = this.FindControl<VirtualTimelineControl>("TimelineSurface");
         if (timeline is not null)
@@ -51,8 +52,13 @@ public sealed partial class MainWindow : Window
             timeline.ClipEditCommitted += OnTimelineClipEditCommitted;
             timeline.ClipEditCanceled += OnTimelineClipEditCanceled;
             timeline.GpxAnchorDragStarted += OnTimelineGpxAnchorDragStarted;
+            timeline.GpxAnchorDragPreviewed += OnTimelineGpxAnchorDragPreviewed;
             timeline.GpxAnchorEditCommitted += OnTimelineGpxAnchorEditCommitted;
             timeline.GpxAnchorEditCanceled += OnTimelineGpxAnchorEditCanceled;
+            timeline.GpxRouteDragStarted += OnTimelineGpxRouteDragStarted;
+            timeline.GpxRouteDragPreviewed += OnTimelineGpxRouteDragPreviewed;
+            timeline.GpxRouteDragCommitted += OnTimelineGpxRouteDragCommitted;
+            timeline.GpxRouteDragCanceled += OnTimelineGpxRouteDragCanceled;
             timeline.ClipPreviewRequested += OnTimelineClipPreviewRequested;
         }
         InitializeMap();
@@ -376,11 +382,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnTimelineGpxAnchorDragStarted(object? sender, EventArgs eventArgs)
+    private void OnTimelineGpxAnchorDragStarted(
+        object? sender,
+        TimelineGpxAnchorEditEventArgs eventArgs)
     {
         if (DataContext is MainWindowViewModel viewModel)
         {
-            viewModel.BeginTimelineGpxAnchorEdit();
+            viewModel.BeginTimelineGpxAnchorEdit(eventArgs.GpxSourceId);
         }
     }
 
@@ -398,11 +406,77 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void OnTimelineGpxAnchorDragPreviewed(
+        object? sender,
+        TimelineGpxAnchorEditEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.PreviewTimelineGpxAnchorEdit(
+                eventArgs.AnchorIndex,
+                eventArgs.GpxSourceId,
+                eventArgs.GpxTime,
+                eventArgs.ProjectTime);
+        }
+    }
+
     private void OnTimelineGpxAnchorEditCanceled(object? sender, EventArgs eventArgs)
     {
         if (DataContext is MainWindowViewModel viewModel)
         {
             viewModel.CancelTimelineGpxAnchorEdit();
+        }
+    }
+
+    private void OnTimelineGpxRouteDragStarted(
+        object? sender,
+        TimelineGpxRouteDragEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.BeginTimelineGpxRouteEdit(eventArgs.GpxSourceId);
+        }
+    }
+
+    private void OnTimelineGpxRouteDragPreviewed(
+        object? sender,
+        TimelineGpxRouteDragEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.PreviewTimelineGpxRouteEdit(
+                eventArgs.GpxSourceId,
+                eventArgs.ProjectTimeDelta);
+        }
+    }
+
+    private async void OnTimelineGpxRouteDragCommitted(
+        object? sender,
+        TimelineGpxRouteDragEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            await viewModel.ApplyTimelineGpxRouteEditAsync(
+                eventArgs.GpxSourceId,
+                eventArgs.ProjectTimeDelta);
+        }
+    }
+
+    private void OnTimelineGpxRouteDragCanceled(
+        object? sender,
+        TimelineGpxRouteDragEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.CancelGpxSynchronizationPreview("GPX route drag canceled");
+        }
+    }
+
+    private void OnGpxSynchronizationFlyoutClosed(object? sender, EventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel && viewModel.HasGpxSynchronizationPreview)
+        {
+            viewModel.CancelGpxSynchronizationPreview("GPX synchronization preview canceled when the panel closed");
         }
     }
 
@@ -521,6 +595,18 @@ public sealed partial class MainWindow : Window
 
         var projected = SphericalMercator.FromLonLat(sample.Longitude, sample.Latitude);
         _positionLayer.Features = [new PointFeature(projected.x, projected.y)];
+        _positionLayer.DataHasChanged();
+        _map.RefreshGraphics();
+    }
+
+    private void ClearMapPosition()
+    {
+        if (_map is null || _positionLayer is null)
+        {
+            return;
+        }
+
+        _positionLayer.Features = [];
         _positionLayer.DataHasChanged();
         _map.RefreshGraphics();
     }

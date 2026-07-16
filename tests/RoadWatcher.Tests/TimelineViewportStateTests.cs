@@ -36,6 +36,22 @@ public sealed class TimelineViewportStateTests
     }
 
     [Fact]
+    public void With_domain_expands_a_live_workspace_without_resetting_the_current_zoom()
+    {
+        var viewport = TimelineViewportState
+            .Fit(durationSeconds: 90, viewportWidth: 900, minimumSeconds: -15)
+            .ZoomAt(scale: 4, anchorPixel: 450)
+            .PanByPixels(120);
+
+        var expanded = viewport.WithDomain(durationSeconds: 210, minimumSeconds: -75);
+
+        Assert.Equal(viewport.PixelsPerSecond, expanded.PixelsPerSecond, 6);
+        Assert.Equal(viewport.OffsetSeconds, expanded.OffsetSeconds, 6);
+        Assert.Equal(-75, expanded.MinimumSeconds, 6);
+        Assert.Equal(135, expanded.MaximumSeconds, 6);
+    }
+
+    [Fact]
     public void Cursor_centered_zoom_preserves_the_time_beneath_the_pointer()
     {
         var viewport = TimelineViewportState
