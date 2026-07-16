@@ -56,10 +56,16 @@ Implement the synchronized-review improvements requested for the virtual timelin
 - Playback handoff callbacks are version-gated. Position updates and end-of-clip signals from an outgoing decoder cannot overwrite the newly selected project segment or advance it spuriously during a transition.
 - The handoff guard is unit-tested for stale-completion and stale-end-callback cases. Native visual acceptance remains to be captured with the existing multi-clip/4K reviewer fixture; the active reviewer process was deliberately not interrupted.
 
+## Slice 9 — discrete 0.5×–5× playback-rate bar
+
+- The compact cycle button is replaced by a labelled, keyboard-accessible standard slider. It snaps to half-speed increments from 0.5× through 5× while retaining the current progress slider and capture controls.
+- One shared Core policy bounds and normalizes every requested rate, including non-finite values, so a future keyboard or assistive-technology path cannot send arbitrary rates to LibVLC.
+- If LibVLC rejects a selected speed, the UI restores the last accepted value and reports that result instead of leaving the bar out of sync with the active decoder.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed with 0 warnings and 0 errors.
-- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-handoff\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, 73/73 after the live-preview integration, 91/91 after the continuous-speed/unknown-telemetry slice, 101/101 after the wheel-navigation slice, 107/107 after live map-route progress, and 109/109 after the decoder-ready handoff. The alternate output path avoids a locked DLL in the active reviewer process.
+- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-handoff\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, 73/73 after the live-preview integration, 91/91 after the continuous-speed/unknown-telemetry slice, 101/101 after the wheel-navigation slice, 107/107 after live map-route progress, 109/109 after the decoder-ready handoff, and 120/120 after the playback-rate bar. The alternate output path avoids a locked DLL in the active reviewer process.
 - The primary viewport test covers a -15 to +75 second visual range, pointer mapping, and pan clamping after zoom.
 - The added viewport-domain test verifies that a drag-time workspace expansion preserves the current zoom and visible offset rather than resetting to Fit.
 - Metadata parser fallbacks, trusted-gap layout, later-import collision/manual-layout protection, confidence selection, timeline edit preservation, JSON round-trip, and schema-v1 optional-field compatibility are unit tested. A local `ffprobe` read is bounded to five seconds and failure remains advisory.

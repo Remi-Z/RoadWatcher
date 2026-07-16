@@ -16,7 +16,6 @@ namespace RoadWatcher.App;
 public partial class MainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly DispatcherTimer _timer;
-    private readonly double[] _rates = [0.5, 1, 1.5, 2];
     private readonly LibVlcMediaEngine _mediaEngine;
     private readonly GpxTrackService _gpxTrackService = new();
     private readonly JsonProjectStore _projectStore = new();
@@ -50,6 +49,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private double _incidentStartSeconds;
     private double _incidentEndSeconds;
     private bool _loadedMediaUsesProxy;
+    private bool _normalizingPlaybackRate;
+    private double _lastAppliedPlaybackRate = PlaybackRateScale.Default;
     private bool _timelineScrubWasPlaying;
     private bool _timelineClipEditWasPlaying;
     private bool _timelineGpxEditWasPlaying;
@@ -81,7 +82,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PlaybackRateText))]
-    private double _playbackRate = 1;
+    private double _playbackRate = PlaybackRateScale.Default;
 
     [ObservableProperty]
     private string _statusText = "Create or open a project to begin";
@@ -339,6 +340,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public string PlayIcon => IsPlaying ? "Pause" : "Play";
     public string PlayLabel => IsPlaying ? "Pause" : "Play";
     public string PlaybackRateText => $"{PlaybackRate:0.0}×";
+    public double MinimumPlaybackRate => PlaybackRateScale.Minimum;
+    public double MaximumPlaybackRate => PlaybackRateScale.Maximum;
+    public double PlaybackRateStep => PlaybackRateScale.Step;
     public string NotesCharacterCount => $"{Notes.Length} / 500";
     public string CurrentTimeText => TimeSpan.FromSeconds(CurrentSeconds).ToString(@"hh\:mm\:ss\.fff");
     public bool ShowEmptyState => !HasLoadedMedia;
@@ -1666,6 +1670,55 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         UpdateGpxAnchorClock(value);
     }
 
+    partial void OnPlaybackRateChanged(double value)
+    {
+        var normalized = PlaybackRateScale.Normalize(value);
+        if (!_normalizingPlaybackRate && normalized != value)
+        {
+            _normalizingPlaybackRate = true;
+            try
+            {
+                PlaybackRate = normalized;
+            }
+            finally
+            {
+                _normalizingPlaybackRate = false;
+            }
+        }
+
+        if (_normalizingPlaybackRate)
+        {
+            return;
+        }
+
+        if (_loadedMediaSourceId is null)
+        {
+            _lastAppliedPlaybackRate = normalized;
+            return;
+        }
+
+        try
+        {
+            _mediaEngine.SetPlaybackRate(normalized);
+            _lastAppliedPlaybackRate = normalized;
+            StatusText = $"Playback speed changed to {PlaybackRateText}";
+        }
+        catch (Exception exception)
+        {
+            _normalizingPlaybackRate = true;
+            try
+            {
+                PlaybackRate = _lastAppliedPlaybackRate;
+            }
+            finally
+            {
+                _normalizingPlaybackRate = false;
+            }
+
+            StatusText = $"Playback speed remains {_lastAppliedPlaybackRate:0.0}×: {exception.Message}";
+        }
+    }
+
     private async Task SeekProjectTimeAsync(
         TimeSpan projectTime,
         bool resumePlayback,
@@ -2427,18 +2480,6 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             StatusText = $"Crossing source gap at {CurrentTimeText} • {PlaybackRateText}";
         }
-    }
-
-    [RelayCommand]
-    private void CyclePlaybackRate()
-    {
-        var currentIndex = Array.IndexOf(_rates, PlaybackRate);
-        PlaybackRate = _rates[(currentIndex + 1) % _rates.Length];
-        if (_loadedMediaSourceId is not null)
-        {
-            _mediaEngine.SetPlaybackRate(PlaybackRate);
-        }
-        StatusText = $"Playback speed changed to {PlaybackRateText}";
     }
 
     [RelayCommand]

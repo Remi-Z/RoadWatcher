@@ -160,7 +160,17 @@
         <TextBlock Grid.Column="3" Margin="8,0,8,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding CurrentTimeText}" ToolTip.Tip="Project time" />
         <TextBlock Grid.Column="4" Margin="0,0,12,0" VerticalAlignment="Center" Classes="muted" FontFamily="Consolas" FontSize="9" Text="{Binding SourceTimeText}" />
         <Slider Grid.Column="5" Margin="0,0,14,0" Minimum="0" Maximum="{Binding MaximumSeconds}" Value="{Binding CurrentSeconds, Mode=TwoWay}" IsEnabled="{Binding HasLoadedMedia}" AutomationProperties.Name="Project timeline position" />
-        <Button Grid.Column="6" Classes="icon" Command="{Binding CyclePlaybackRateCommand}" IsEnabled="{Binding HasLoadedMedia}" Content="{Binding PlaybackRateText}" AutomationProperties.Name="Cycle playback speed" />
+        <Grid Grid.Column="6" Margin="0,0,8,0" VerticalAlignment="Center" ColumnDefinitions="Auto,108" IsEnabled="{Binding HasLoadedMedia}">
+          <TextBlock Margin="0,0,6,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding PlaybackRateText}" />
+          <Slider Grid.Column="1"
+                  Minimum="{Binding MinimumPlaybackRate}"
+                  Maximum="{Binding MaximumPlaybackRate}"
+                  TickFrequency="{Binding PlaybackRateStep}"
+                  IsSnapToTickEnabled="True"
+                  Value="{Binding PlaybackRate, Mode=TwoWay}"
+                  ToolTip.Tip="Playback speed from 0.5× to 5×"
+                  AutomationProperties.Name="Playback speed from 0.5× to 5×" />
+        </Grid>
         <Button Grid.Column="7" Classes="icon" Command="{Binding CaptureFrameCommand}" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="Capture screenshot" AutomationProperties.Name="Capture current frame">
           <materialIcons:MaterialIcon Kind="CameraOutline" Width="20" Height="20" />
         </Button>

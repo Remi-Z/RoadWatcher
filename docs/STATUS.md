@@ -52,6 +52,7 @@ M08 — Timeline, map, and playback review UX: implementation has begun with the
 - Timeline wheel navigation now keeps time and viewport intent separate: vertical scrolling jogs the video ±0.5 seconds per detent, Shift+scroll zooms at the pointer, and horizontal scrolling pans only the timeline. The gesture resolver is unit tested; Release build passed with zero warnings and the shared full suite passed 101/101.
 - Map review now distinguishes the opaque travelled GPX route from its 35%-opaque upcoming portion, using the same fixed speed gradient and live preview telemetry clock. Route plans remain bounded to 64 total features, while compact stops/current-location symbols no longer obscure the line. Release build passed with zero warnings and the shared full suite passed 107/107.
 - Clip handoff now starts a new LibVLC decoder before seeking, waits for the requested source frame, and gates outgoing decoder position/end callbacks. This prevents black output and zero-time resets when changing clips; isolated Release build passed with zero warnings and the shared full suite passed 109/109.
+- Playback speed is now a labelled 0.5×–5× standard slider instead of a cycle button. It snaps to half-speed increments through a shared Core policy and restores the last accepted rate if LibVLC rejects a selection; isolated Release build passed with zero warnings and the shared full suite passed 120/120.
 
 ## M07 closure record
 
