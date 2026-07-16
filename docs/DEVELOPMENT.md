@@ -28,7 +28,7 @@ dotnet run --project src/RoadWatcher.App
 
 ## Screenshot contract
 
-- Capture the running application at 1440 × 1024 with deterministic demo data.
+- Capture the running application at 1440 × 1024 with deterministic acceptance fixtures; never package those fixtures as default evidence state.
 - Store major milestone captures under `docs/milestones/<milestone>/`.
 - Each milestone README records viewport, data state, interactions checked, and known visual differences.
 
