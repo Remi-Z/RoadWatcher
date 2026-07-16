@@ -57,6 +57,32 @@ public sealed class GpxRouteRenderPlannerTests
         Assert.Equal(51, plan.Chunks.Sum(chunk => chunk.SegmentCount));
     }
 
+    [Fact]
+    public void Travelled_and_upcoming_route_plans_share_the_total_feature_budget()
+    {
+        const int segmentCount = 20_000;
+        var start = DateTimeOffset.Parse("2026-07-16T12:00:00Z");
+        var segments = Enumerable.Range(0, segmentCount)
+            .Select(index => CreateSegment(start, index, (index % 51) / 3.6))
+            .ToArray();
+
+        var progress = GpxRouteProgressPlanner.Create(
+            segments,
+            start.AddSeconds(segmentCount / 2d + 0.5));
+        var travelled = GpxRouteRenderPlanner.Create(
+            progress.TravelledSegments,
+            GpxRouteRenderPlanner.DefaultMaximumFeatureCount / 2);
+        var upcoming = GpxRouteRenderPlanner.Create(
+            progress.UpcomingSegments,
+            GpxRouteRenderPlanner.DefaultMaximumFeatureCount / 2);
+
+        Assert.True(progress.HasPosition);
+        Assert.True(travelled.FeatureCount <= 32);
+        Assert.True(upcoming.FeatureCount <= 32);
+        Assert.True(travelled.FeatureCount + upcoming.FeatureCount <=
+            GpxRouteRenderPlanner.DefaultMaximumFeatureCount);
+    }
+
     private static GpxContinuousSpeedSegment CreateSegment(
         DateTimeOffset start,
         int index,

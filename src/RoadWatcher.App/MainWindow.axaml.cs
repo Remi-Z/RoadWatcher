@@ -25,8 +25,11 @@ public sealed partial class MainWindow : Window
 {
     private Map? _map;
     private MemoryLayer? _routeLayer;
+    private MemoryLayer? _futureRouteLayer;
     private MemoryLayer? _stopLayer;
     private MemoryLayer? _positionLayer;
+    private IReadOnlyList<GpxContinuousSpeedSegment> _mapRouteSegments = [];
+    private (int TravelledSegmentCount, bool HasPosition)? _mapRouteProgressKey;
     private CancellationTokenSource? _timelinePreviewCancellation;
     public MainWindow() : this(null)
     {
@@ -509,7 +512,14 @@ public sealed partial class MainWindow : Window
         var map = new Map();
         map.Layers.Add(new TileLayer(tileSource));
 
-        _routeLayer = new MemoryLayer("GPX route") { Features = [] };
+        _futureRouteLayer = new MemoryLayer("GPX route (upcoming)")
+        {
+            Features = [],
+            Opacity = 0.35
+        };
+        map.Layers.Add(_futureRouteLayer);
+
+        _routeLayer = new MemoryLayer("GPX route (travelled)") { Features = [] };
         map.Layers.Add(_routeLayer);
 
         _stopLayer = new MemoryLayer("GPX stops")
@@ -519,7 +529,7 @@ public sealed partial class MainWindow : Window
             {
                 Fill = new Brush(Color.FromString(GpxSpeedPalette.Stop)),
                 Outline = new Pen(Color.White, 2),
-                SymbolScale = 1.6
+                SymbolScale = 0.625
             }
         };
         map.Layers.Add(_stopLayer);
@@ -533,7 +543,7 @@ public sealed partial class MainWindow : Window
             {
                 Fill = new Brush(Color.FromString("#FFAD18")),
                 Outline = new Pen(Color.White, 2),
-                SymbolScale = 1.2
+                SymbolScale = 0.44
             }
         };
         map.Layers.Add(_positionLayer);
@@ -545,14 +555,18 @@ public sealed partial class MainWindow : Window
 
     private void UpdateMapRoute(IReadOnlyList<TrackPoint> points)
     {
-        if (_map is null || _routeLayer is null || _stopLayer is null)
+        if (_map is null || _routeLayer is null || _futureRouteLayer is null || _stopLayer is null)
         {
             return;
         }
 
         if (points.Count < 2)
         {
+            _mapRouteSegments = [];
+            _mapRouteProgressKey = null;
             _routeLayer.Features = [];
+            _futureRouteLayer.Features = [];
+            _futureRouteLayer.Opacity = 1;
             _stopLayer.Features = [];
             if (_positionLayer is not null)
             {
@@ -560,13 +574,16 @@ public sealed partial class MainWindow : Window
                 _positionLayer.DataHasChanged();
             }
             _routeLayer.DataHasChanged();
+            _futureRouteLayer.DataHasChanged();
             _stopLayer.DataHasChanged();
             _map.RefreshGraphics();
             return;
         }
 
         var profile = GpxSpeedProfile.Analyze(points);
-        _routeLayer.Features = CreateContinuousRouteFeatures(profile.ContinuousSegments);
+        _mapRouteSegments = profile.ContinuousSegments;
+        _mapRouteProgressKey = null;
+        UpdateMapRouteProgress(null);
         _stopLayer.Features = profile.Stops
             .Select(stop =>
             {
@@ -574,7 +591,6 @@ public sealed partial class MainWindow : Window
                 return (IFeature)new PointFeature(coordinate.x, coordinate.y);
             })
             .ToArray();
-        _routeLayer.DataHasChanged();
         _stopLayer.DataHasChanged();
         var projectedPoints = points
             .Select(point => SphericalMercator.FromLonLat(point.Longitude, point.Latitude))
@@ -599,6 +615,7 @@ public sealed partial class MainWindow : Window
 
         var projected = SphericalMercator.FromLonLat(sample.Longitude, sample.Latitude);
         _positionLayer.Features = [new PointFeature(projected.x, projected.y)];
+        UpdateMapRouteProgress(sample.Time);
         _positionLayer.DataHasChanged();
         _map.RefreshGraphics();
     }
@@ -611,8 +628,34 @@ public sealed partial class MainWindow : Window
         }
 
         _positionLayer.Features = [];
+        UpdateMapRouteProgress(null);
         _positionLayer.DataHasChanged();
         _map.RefreshGraphics();
+    }
+
+    private void UpdateMapRouteProgress(DateTimeOffset? positionTime)
+    {
+        if (_routeLayer is null || _futureRouteLayer is null)
+        {
+            return;
+        }
+
+        var plan = GpxRouteProgressPlanner.Create(_mapRouteSegments, positionTime);
+        var key = (plan.TravelledSegmentCount, plan.HasPosition);
+        if (_mapRouteProgressKey == key)
+        {
+            return;
+        }
+
+        var featureBudget = plan.HasPosition
+            ? GpxRouteRenderPlanner.DefaultMaximumFeatureCount / 2
+            : GpxRouteRenderPlanner.DefaultMaximumFeatureCount;
+        _routeLayer.Features = CreateContinuousRouteFeatures(plan.TravelledSegments, featureBudget);
+        _futureRouteLayer.Features = CreateContinuousRouteFeatures(plan.UpcomingSegments, featureBudget);
+        _futureRouteLayer.Opacity = plan.HasPosition ? 0.35 : 1;
+        _routeLayer.DataHasChanged();
+        _futureRouteLayer.DataHasChanged();
+        _mapRouteProgressKey = key;
     }
 
     private static Coordinate Project(double longitude, double latitude)
@@ -643,12 +686,13 @@ public sealed partial class MainWindow : Window
     }
 
     private static IReadOnlyList<IFeature> CreateContinuousRouteFeatures(
-        IReadOnlyList<GpxContinuousSpeedSegment> segments)
+        IReadOnlyList<GpxContinuousSpeedSegment> segments,
+        int maximumFeatureCount = GpxRouteRenderPlanner.DefaultMaximumFeatureCount)
     {
         // A noisy track can alternate speed colour at every source sample. Grouping all
         // disconnected runs of a colour into a multi-line feature makes the route's Mapsui
         // workload strictly bounded without inventing joins between non-adjacent places.
-        var plan = GpxRouteRenderPlanner.Create(segments);
+        var plan = GpxRouteRenderPlanner.Create(segments, maximumFeatureCount);
         return plan.Chunks
             .Where(chunk => chunk.Runs.Any(run => run.Points.Count >= 2))
             .Select(chunk => (IFeature)CreateRouteFeature(chunk.Runs, chunk.Color))

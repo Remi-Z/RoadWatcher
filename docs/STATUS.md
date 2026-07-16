@@ -50,6 +50,7 @@ M08 — Timeline, map, and playback review UX: implementation has begun with the
 - The timeline GPX row has a dedicated 28-DIP speed graph above the route. Dense tracks render a per-screen-pixel min/max envelope, preserving short speed spikes while bounding draw calls; direct whole-route/numeric synchronization previews reuse the cached presentation through a lightweight candidate offset instead of remapping every point at 30 Hz.
 - The map now uses the same averaged speed metric and a strict 64-feature render plan. Disconnected same-colour runs become multi-line geometry, so a noisy long route cannot create an unbounded number of Mapsui features. Release build passed with zero warnings and the complete suite passed 91/91.
 - Timeline wheel navigation now keeps time and viewport intent separate: vertical scrolling jogs the video ±0.5 seconds per detent, Shift+scroll zooms at the pointer, and horizontal scrolling pans only the timeline. The gesture resolver is unit tested; Release build passed with zero warnings and the shared full suite passed 101/101.
+- Map review now distinguishes the opaque travelled GPX route from its 35%-opaque upcoming portion, using the same fixed speed gradient and live preview telemetry clock. Route plans remain bounded to 64 total features, while compact stops/current-location symbols no longer obscure the line. Release build passed with zero warnings and the shared full suite passed 107/107.
 
 ## M07 closure record
 

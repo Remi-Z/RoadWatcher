@@ -44,10 +44,16 @@ Implement the synchronized-review improvements requested for the virtual timelin
 - Shift+wheel remains cursor-anchored zoom. Horizontal scroll is now exclusively a timeline viewport pan, so it never changes the playhead or video progress.
 - The gesture policy is pure and unit-tested outside Avalonia for vertical jog, Shift zoom, horizontal pan, and invalid input. The timeline tooltip now states the three gestures directly.
 
+## Slice 7 — live GPX route progress on the map
+
+- The map now renders the travelled route at full opacity and the upcoming route at 35% opacity, using the same fixed red-to-green speed gradient in both layers. The split is calculated from the synchronized GPX clock, so route/anchor drag and numeric sync previews move it live before persistence.
+- A pure, binary-search GPX route-progress planner splits the active segment at its interpolated coordinate, including correct before/after-coverage and exact-sample behaviour. The map only rebuilds its bounded route features when the active GPX segment changes.
+- The two map route layers share the existing 64-feature ceiling: while a position is available each receives at most 32 features; when GPX is out of coverage the single visible route keeps the full 64-feature budget. Compact 20-DIP stop and 14-DIP current-location symbols no longer obscure the route.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed with 0 warnings and 0 errors.
-- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, 73/73 after the live-preview integration, 91/91 after the continuous-speed/unknown-telemetry slice, and 101/101 after the wheel-navigation slice.
+- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, 73/73 after the live-preview integration, 91/91 after the continuous-speed/unknown-telemetry slice, 101/101 after the wheel-navigation slice, and 107/107 after live map-route progress.
 - The primary viewport test covers a -15 to +75 second visual range, pointer mapping, and pan clamping after zoom.
 - The added viewport-domain test verifies that a drag-time workspace expansion preserves the current zoom and visible offset rather than resetting to Fit.
 - Metadata parser fallbacks, trusted-gap layout, later-import collision/manual-layout protection, confidence selection, timeline edit preservation, JSON round-trip, and schema-v1 optional-field compatibility are unit tested. A local `ffprobe` read is bounded to five seconds and failure remains advisory.
