@@ -159,7 +159,26 @@
         </Button>
         <TextBlock Grid.Column="3" Margin="8,0,8,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding CurrentTimeText}" ToolTip.Tip="Project time" />
         <TextBlock Grid.Column="4" Margin="0,0,12,0" VerticalAlignment="Center" Classes="muted" FontFamily="Consolas" FontSize="9" Text="{Binding SourceTimeText}" />
-        <Slider Grid.Column="5" Margin="0,0,14,0" Minimum="0" Maximum="{Binding MaximumSeconds}" Value="{Binding CurrentSeconds, Mode=TwoWay}" IsEnabled="{Binding HasLoadedMedia}" AutomationProperties.Name="Project timeline position" />
+        <Slider x:Name="PlayerProgressSlider"
+                Grid.Column="5"
+                Margin="0,0,14,0"
+                Minimum="0"
+                Maximum="{Binding MaximumSeconds}"
+                Value="{Binding CurrentSeconds, Mode=TwoWay}"
+                IsEnabled="{Binding HasLoadedMedia}"
+                PointerEntered="OnPlayerProgressPointerEntered"
+                PointerMoved="OnPlayerProgressPointerMoved"
+                PointerExited="OnPlayerProgressPointerExited"
+                ToolTip.Tip="Hover briefly for a frame preview; drag to seek"
+                AutomationProperties.Name="Project timeline position" />
+        <Popup x:Name="PlayerProgressPreviewPopup" Placement="Top" IsLightDismissEnabled="False">
+          <Border Padding="6" Background="#0A1C23" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="4" IsHitTestVisible="False">
+            <StackPanel Spacing="4">
+              <Image x:Name="PlayerProgressPreviewImage" Width="192" Height="108" Stretch="Uniform" IsVisible="False" />
+              <TextBlock x:Name="PlayerProgressPreviewStatus" MaxWidth="220" FontSize="9" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+        </Popup>
         <Grid Grid.Column="6" Margin="0,0,8,0" VerticalAlignment="Center" ColumnDefinitions="Auto,108" IsEnabled="{Binding HasLoadedMedia}">
           <TextBlock Margin="0,0,6,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding PlaybackRateText}" />
           <Slider Grid.Column="1"

@@ -736,9 +736,28 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         double projectSeconds,
         CancellationToken cancellationToken = default)
     {
-        var projectTime = TimeSpan.FromSeconds(Math.Clamp(projectSeconds, 0, MaximumSeconds));
+        var projectTime = TimeSpan.FromSeconds(NormalizeProjectSeconds(projectSeconds));
         UpdateTelemetry(projectTime.TotalSeconds);
         UpdateGpxAnchorClock(projectTime.TotalSeconds);
+        return await GetTimelineThumbnailPreviewAsync(projectTime.TotalSeconds, cancellationToken);
+    }
+
+    /// <summary>
+    /// Resolves a cached or generated preview frame without changing the
+    /// playhead, telemetry, GPX synchronization presentation, or playback.
+    /// </summary>
+    public Task<TimelineScrubPreview> GetTimelineThumbnailPreviewAsync(
+        double projectSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        var projectTime = TimeSpan.FromSeconds(NormalizeProjectSeconds(projectSeconds));
+        return GetTimelineThumbnailPreviewCoreAsync(projectTime, cancellationToken);
+    }
+
+    private async Task<TimelineScrubPreview> GetTimelineThumbnailPreviewCoreAsync(
+        TimeSpan projectTime,
+        CancellationToken cancellationToken)
+    {
         var position = _virtualTimeline.Resolve(projectTime);
         if (position is null)
         {
@@ -3023,6 +3042,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             SelectedIncidentEndSeconds = 0;
         }
     }
+
+    private double NormalizeProjectSeconds(double projectSeconds) =>
+        double.IsFinite(projectSeconds)
+            ? Math.Clamp(projectSeconds, 0, MaximumSeconds)
+            : 0;
 
     private static string FormatTimelineTime(TimeSpan value) =>
         value.ToString(value.TotalHours >= 1 ? @"hh\:mm\:ss\.fff" : @"mm\:ss\.fff");

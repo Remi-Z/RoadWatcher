@@ -54,6 +54,7 @@ M08 — Timeline, map, and playback review UX: implementation has begun with the
 - Clip handoff now starts a new LibVLC decoder before seeking, waits for the requested source frame, and gates outgoing decoder position/end callbacks. This prevents black output and zero-time resets when changing clips; isolated Release build passed with zero warnings and the shared full suite passed 109/109.
 - Playback speed is now a labelled 0.5×–5× standard slider instead of a cycle button. It snaps to half-speed increments through a shared Core policy and restores the last accepted rate if LibVLC rejects a selection; isolated Release build passed with zero warnings and the shared full suite passed 120/120.
 - Context-map styling now offers Night, Day, Satellite, and OSM modes. It swaps only the attributed, locally cached basemap while retaining the viewport and every GPX/road-context overlay; isolated Release build passed with zero warnings and the shared full suite passed 126/126.
+- Hovering over the player progress bar now waits 175 ms, then presents a cached/generated frame and exact project/source status without moving playback, telemetry, GPX synchronization, or the map. Gaps and unavailable images remain explicit no-frame states; the pointer mapper is unit-tested. Isolated Release build passed with zero warnings and the shared full suite passed 135/135.
 
 ## M07 closure record
 

@@ -1,5 +1,8 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using BruTile;
@@ -15,6 +18,7 @@ using Mapsui.UI.Avalonia;
 using NetTopologySuite.Geometries;
 using RoadWatcher.App.Controls;
 using RoadWatcher.Core;
+using AvaloniaImage = Avalonia.Controls.Image;
 using Brush = Mapsui.Styles.Brush;
 using Color = Mapsui.Styles.Color;
 using Pen = Mapsui.Styles.Pen;
@@ -31,6 +35,10 @@ public sealed partial class MainWindow : Window
     private IReadOnlyList<GpxContinuousSpeedSegment> _mapRouteSegments = [];
     private (int TravelledSegmentCount, bool HasPosition)? _mapRouteProgressKey;
     private CancellationTokenSource? _timelinePreviewCancellation;
+    private CancellationTokenSource? _playerProgressPreviewCancellation;
+    private Bitmap? _playerProgressPreviewBitmap;
+
+    private const int PlayerProgressPreviewDelayMilliseconds = 175;
     public MainWindow() : this(null)
     {
     }
@@ -68,6 +76,7 @@ public sealed partial class MainWindow : Window
         InitializeMap();
         Closed += (_, _) =>
         {
+            CancelPlayerProgressPreview();
             _timelinePreviewCancellation?.Cancel();
             _timelinePreviewCancellation?.Dispose();
             (DataContext as IDisposable)?.Dispose();
@@ -254,6 +263,111 @@ public sealed partial class MainWindow : Window
         {
             await viewModel.AddCropAndRecognizeAsync(destination);
         }
+    }
+
+    private void OnPlayerProgressPointerEntered(object? sender, PointerEventArgs eventArgs) =>
+        RequestPlayerProgressPreview(sender, eventArgs);
+
+    private void OnPlayerProgressPointerMoved(object? sender, PointerEventArgs eventArgs) =>
+        RequestPlayerProgressPreview(sender, eventArgs);
+
+    private void OnPlayerProgressPointerExited(object? sender, PointerEventArgs eventArgs) =>
+        CancelPlayerProgressPreview();
+
+    private async void RequestPlayerProgressPreview(object? sender, PointerEventArgs eventArgs)
+    {
+        if (sender is not Slider slider ||
+            !slider.IsEnabled ||
+            DataContext is not MainWindowViewModel viewModel ||
+            !TimelinePreviewPointerMapper.TryResolveProjectSeconds(
+                eventArgs.GetPosition(slider).X,
+                slider.Bounds.Width,
+                slider.Minimum,
+                slider.Maximum,
+                out var projectSeconds))
+        {
+            CancelPlayerProgressPreview();
+            return;
+        }
+
+        CancelPlayerProgressPreview();
+        var cancellation = new CancellationTokenSource();
+        _playerProgressPreviewCancellation = cancellation;
+        try
+        {
+            await Task.Delay(PlayerProgressPreviewDelayMilliseconds, cancellation.Token);
+            var preview = await viewModel.GetTimelineThumbnailPreviewAsync(projectSeconds, cancellation.Token);
+            if (cancellation.IsCancellationRequested ||
+                !ReferenceEquals(_playerProgressPreviewCancellation, cancellation))
+            {
+                return;
+            }
+
+            ShowPlayerProgressPreview(slider, preview);
+        }
+        catch (OperationCanceledException)
+        {
+            // Pointer movement and exit intentionally cancel stale preview work.
+        }
+        finally
+        {
+            if (ReferenceEquals(_playerProgressPreviewCancellation, cancellation))
+            {
+                _playerProgressPreviewCancellation = null;
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private void ShowPlayerProgressPreview(Slider slider, TimelineScrubPreview preview)
+    {
+        var popup = this.FindControl<Popup>("PlayerProgressPreviewPopup");
+        var image = this.FindControl<AvaloniaImage>("PlayerProgressPreviewImage");
+        var status = this.FindControl<TextBlock>("PlayerProgressPreviewStatus");
+        if (popup is null || image is null || status is null)
+        {
+            return;
+        }
+
+        _playerProgressPreviewBitmap?.Dispose();
+        _playerProgressPreviewBitmap = null;
+        image.Source = null;
+        image.IsVisible = false;
+        if (!string.IsNullOrWhiteSpace(preview.ImagePath) && File.Exists(preview.ImagePath))
+        {
+            try
+            {
+                _playerProgressPreviewBitmap = new Bitmap(preview.ImagePath);
+                image.Source = _playerProgressPreviewBitmap;
+                image.IsVisible = true;
+            }
+            catch
+            {
+                // The status below remains useful when a cached image cannot be opened.
+            }
+        }
+
+        var projectTime = TimeSpan.FromSeconds(Math.Max(0, preview.ProjectSeconds));
+        status.Text = $"{projectTime:hh\\:mm\\:ss\\.fff} • {preview.Status}";
+        popup.PlacementTarget = slider;
+        popup.IsOpen = true;
+    }
+
+    private void CancelPlayerProgressPreview()
+    {
+        _playerProgressPreviewCancellation?.Cancel();
+        _playerProgressPreviewCancellation?.Dispose();
+        _playerProgressPreviewCancellation = null;
+
+        this.FindControl<Popup>("PlayerProgressPreviewPopup")?.IsOpen = false;
+        if (this.FindControl<AvaloniaImage>("PlayerProgressPreviewImage") is { } image)
+        {
+            image.Source = null;
+            image.IsVisible = false;
+        }
+        this.FindControl<TextBlock>("PlayerProgressPreviewStatus")?.Text = string.Empty;
+        _playerProgressPreviewBitmap?.Dispose();
+        _playerProgressPreviewBitmap = null;
     }
 
     private async void OnTimelineClipPreviewRequested(
