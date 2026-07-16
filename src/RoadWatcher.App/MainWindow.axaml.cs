@@ -14,6 +14,7 @@ using Mapsui.Styles;
 using Mapsui.Tiling.Layers;
 using Mapsui.UI.Avalonia;
 using NetTopologySuite.Geometries;
+using RoadWatcher.App.Controls;
 using RoadWatcher.Core;
 using Brush = Mapsui.Styles.Brush;
 using Color = Mapsui.Styles.Color;
@@ -26,6 +27,7 @@ public sealed partial class MainWindow : Window
     private Map? _map;
     private MemoryLayer? _routeLayer;
     private MemoryLayer? _positionLayer;
+    private CancellationTokenSource? _timelinePreviewCancellation;
     public MainWindow() : this(null)
     {
     }
@@ -37,8 +39,22 @@ public sealed partial class MainWindow : Window
         viewModel.GpxTrackChanged += (_, points) => Dispatcher.UIThread.Post(() => UpdateMapRoute(points));
         viewModel.TelemetrySampleChanged += (_, sample) => Dispatcher.UIThread.Post(() => UpdateMapPosition(sample));
         DataContext = viewModel;
+        var timeline = this.FindControl<VirtualTimelineControl>("TimelineSurface");
+        if (timeline is not null)
+        {
+            timeline.ScrubStarted += OnTimelineScrubStarted;
+            timeline.ScrubPreviewRequested += OnTimelineScrubPreviewRequested;
+            timeline.ScrubCommitted += OnTimelineScrubCommitted;
+            timeline.ScrubCanceled += OnTimelineScrubCanceled;
+            timeline.IncidentInvoked += OnTimelineIncidentInvoked;
+        }
         InitializeMap();
-        Closed += (_, _) => (DataContext as IDisposable)?.Dispose();
+        Closed += (_, _) =>
+        {
+            _timelinePreviewCancellation?.Cancel();
+            _timelinePreviewCancellation?.Dispose();
+            (DataContext as IDisposable)?.Dispose();
+        };
         if (!string.IsNullOrWhiteSpace(startupProjectDirectory))
         {
             _ = OpenStartupProjectAsync(viewModel, startupProjectDirectory);
@@ -229,6 +245,81 @@ public sealed partial class MainWindow : Window
             DataContext is MainWindowViewModel viewModel)
         {
             await viewModel.EnsureTimelineThumbnailAsync(block);
+        }
+    }
+
+    private void OnTimelineFitClicked(object? sender, RoutedEventArgs eventArgs) =>
+        this.FindControl<VirtualTimelineControl>("TimelineSurface")?.Fit();
+
+    private void OnTimelineZoomOutClicked(object? sender, RoutedEventArgs eventArgs) =>
+        this.FindControl<VirtualTimelineControl>("TimelineSurface")?.ZoomOut();
+
+    private void OnTimelineZoomInClicked(object? sender, RoutedEventArgs eventArgs) =>
+        this.FindControl<VirtualTimelineControl>("TimelineSurface")?.ZoomIn();
+
+    private void OnTimelineScrubStarted(object? sender, EventArgs eventArgs)
+    {
+        _timelinePreviewCancellation?.Cancel();
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.BeginTimelineScrub();
+        }
+    }
+
+    private async void OnTimelineScrubPreviewRequested(object? sender, TimelineScrubEventArgs eventArgs)
+    {
+        if (sender is not VirtualTimelineControl timeline || DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        _timelinePreviewCancellation?.Cancel();
+        _timelinePreviewCancellation?.Dispose();
+        _timelinePreviewCancellation = new CancellationTokenSource();
+        try
+        {
+            var preview = await viewModel.GetTimelineScrubPreviewAsync(
+                eventArgs.ProjectSeconds,
+                _timelinePreviewCancellation.Token);
+            timeline.SetScrubPreview(preview.ProjectSeconds, preview.ImagePath, preview.Status);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async void OnTimelineScrubCommitted(object? sender, TimelineScrubEventArgs eventArgs)
+    {
+        _timelinePreviewCancellation?.Cancel();
+        if (sender is not VirtualTimelineControl timeline || DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            await viewModel.CommitTimelineScrubAsync(eventArgs.ProjectSeconds);
+        }
+        finally
+        {
+            timeline.ClearScrubPreview();
+        }
+    }
+
+    private void OnTimelineScrubCanceled(object? sender, EventArgs eventArgs)
+    {
+        _timelinePreviewCancellation?.Cancel();
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.CancelTimelineScrub();
+        }
+    }
+
+    private void OnTimelineIncidentInvoked(object? sender, TimelineIncidentEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.SelectIncidentCommand.Execute(eventArgs.IncidentId);
         }
     }
 

@@ -370,137 +370,30 @@
 
     <!-- Timeline -->
     <Border Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Classes="panel">
-      <Grid RowDefinitions="42,22,34,34,34,34,29,*">
-        <Grid Margin="14,0" ColumnDefinitions="*,Auto">
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="26">
+      <Grid RowDefinitions="42,*,29">
+        <Grid Margin="14,0" ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
             <TextBlock FontWeight="SemiBold" Text="Timeline" />
-            <TextBlock Text="Fit  ▾" />
+            <Button Padding="8,4" Click="OnTimelineFitClicked" Content="Fit" ToolTip.Tip="Fit the complete ride" AutomationProperties.Name="Fit complete timeline" />
+            <Button Padding="8,4" Click="OnTimelineZoomOutClicked" Content="−" ToolTip.Tip="Zoom out" AutomationProperties.Name="Zoom timeline out" />
+            <Button Padding="8,4" Click="OnTimelineZoomInClicked" Content="+" ToolTip.Tip="Zoom in" AutomationProperties.Name="Zoom timeline in" />
           </StackPanel>
-          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="muted" Text="{Binding TimelineSummaryText}" />
+          <TextBlock Grid.Column="1" Margin="16,0" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="Shift+wheel zoom • wheel pan • drag the amber playback head" />
+          <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="muted" Text="{Binding TimelineSummaryText}" />
         </Grid>
-        <Grid Grid.Row="1" ColumnDefinitions="92,*">
-          <Border BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,1,0" />
-          <Grid Grid.Column="1" ColumnDefinitions="*,*,*,*,*" Margin="12,0">
-            <TextBlock HorizontalAlignment="Left" Classes="muted" FontSize="10" Text="{Binding TimelineRulerLabels[0]}" />
-            <TextBlock Grid.Column="1" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding TimelineRulerLabels[1]}" />
-            <TextBlock Grid.Column="2" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding TimelineRulerLabels[2]}" />
-            <TextBlock Grid.Column="3" HorizontalAlignment="Center" Classes="muted" FontSize="10" Text="{Binding TimelineRulerLabels[3]}" />
-            <TextBlock Grid.Column="4" HorizontalAlignment="Right" Classes="muted" FontSize="10" Text="{Binding TimelineRulerLabels[4]}" />
-          </Grid>
-        </Grid>
+        <controls:VirtualTimelineControl x:Name="TimelineSurface"
+                                         Grid.Row="1"
+                                         DurationSeconds="{Binding MaximumSeconds}"
+                                         PositionSeconds="{Binding CurrentSeconds}"
+                                         Blocks="{Binding TimelineBlocks}"
+                                         Incidents="{Binding IncidentMarkers}"
+                                         HasGpx="{Binding HasGpx}"
+                                         HasSelectedIncident="{Binding HasSelectedIncident}"
+                                         SelectedIncidentStartSeconds="{Binding SelectedIncidentStartSeconds}"
+                                         SelectedIncidentEndSeconds="{Binding SelectedIncidentEndSeconds}"
+                                         AutomationProperties.Name="Interactive project timeline" />
 
-        <Border Grid.Row="2" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
-          <Grid ColumnDefinitions="92,*">
-            <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="Video (front)" />
-            <ScrollViewer Grid.Column="1" Margin="6,4" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-              <ItemsControl ItemsSource="{Binding TimelineBlocks}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" Spacing="5" />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Width="{Binding Width}"
-                            MinWidth="60"
-                            Padding="8,2"
-                            Background="{Binding Background}"
-                            BorderBrush="{Binding BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="2"
-                            PointerEntered="OnTimelineBlockPointerEntered">
-                      <ToolTip.Tip>
-                        <StackPanel Width="240" Spacing="6">
-                          <Image MaxWidth="240"
-                                 MaxHeight="150"
-                                 Stretch="Uniform"
-                                 Source="{Binding ThumbnailPath}"
-                                 IsVisible="{Binding HasThumbnail}" />
-                          <TextBlock FontWeight="SemiBold" Text="{Binding Label}" />
-                          <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="{Binding ThumbnailStatus}" />
-                        </StackPanel>
-                      </ToolTip.Tip>
-                      <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding Label}" />
-                        <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="{Binding Detail}" />
-                      </Grid>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
-          </Grid>
-        </Border>
-
-        <Border Grid.Row="3" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
-          <Grid ColumnDefinitions="92,*">
-            <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="Video (rear)" />
-            <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="No rear track imported" />
-          </Grid>
-        </Border>
-
-        <Border Grid.Row="4" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
-          <Grid ColumnDefinitions="92,*">
-            <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="GPX (route)" />
-            <Grid Grid.Column="1" Margin="8,8">
-              <Border Height="2" VerticalAlignment="Center" Background="{StaticResource AccentTeal}" />
-              <Border HorizontalAlignment="Center" Width="68" Background="{StaticResource AppBackground}" />
-            </Grid>
-          </Grid>
-        </Border>
-
-        <Border Grid.Row="5" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
-          <Grid ColumnDefinitions="92,*">
-            <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="11" Text="Incidents" />
-            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-              <ItemsControl Width="620" ItemsSource="{Binding IncidentMarkers}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <Canvas Height="33" />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.Styles>
-                  <Style Selector="ItemsControl &gt; ContentPresenter">
-                    <Setter Property="Canvas.Left" Value="{Binding Left}" />
-                  </Style>
-                </ItemsControl.Styles>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Button Width="22"
-                            Height="28"
-                            Padding="2"
-                            Background="Transparent"
-                            Command="{Binding DataContext.SelectIncidentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                            CommandParameter="{Binding Id}"
-                            AutomationProperties.Name="{Binding ToolTip}"
-                            ToolTip.Tip="{Binding ToolTip}">
-                      <materialIcons:MaterialIcon Kind="Rhombus" Foreground="{Binding Colour}" Width="15" Height="15" />
-                    </Button>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
-          </Grid>
-        </Border>
-
-        <Border Grid.Row="6" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,1,0,0">
-          <Grid ColumnDefinitions="92,*">
-            <TextBlock Margin="12,0" VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Selected incident" />
-            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-              <Canvas Width="620" Height="24">
-                <Border Canvas.Left="{Binding SelectedIncidentLeft}"
-                        Width="{Binding SelectedIncidentWidth}"
-                        IsVisible="{Binding HasSelectedIncident}"
-                        Background="#4B3B0D"
-                        BorderBrush="{StaticResource AccentAmber}"
-                        BorderThickness="1"
-                        CornerRadius="2" />
-              </Canvas>
-            </ScrollViewer>
-          </Grid>
-        </Border>
-
-        <Grid Grid.Row="7" Margin="14,8" ColumnDefinitions="*,Auto">
+        <Grid Grid.Row="2" Margin="14,8" ColumnDefinitions="*,Auto">
           <StackPanel Orientation="Horizontal" Spacing="18">
             <TextBlock Foreground="{StaticResource AccentTeal}" FontSize="10" Text="━━  GPX coverage" />
             <TextBlock Classes="muted" FontSize="10" Text="◇  Incident" />

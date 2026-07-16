@@ -47,6 +47,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private double _incidentStartSeconds;
     private double _incidentEndSeconds;
     private bool _loadedMediaUsesProxy;
+    private bool _timelineScrubWasPlaying;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PlayIcon))]
@@ -192,10 +193,16 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _hasSelectedIncident;
 
     [ObservableProperty]
-    private double _selectedIncidentLeft;
+    private double _selectedIncidentStartSeconds;
 
     [ObservableProperty]
-    private double _selectedIncidentWidth;
+    private double _selectedIncidentEndSeconds;
+
+    [ObservableProperty]
+    private IReadOnlyList<TimelineBlockViewModel> _timelineBlocks = [];
+
+    [ObservableProperty]
+    private IReadOnlyList<IncidentMarkerViewModel> _incidentMarkers = [];
 
     [ObservableProperty]
     private string[] _timelineRulerLabels = ["00:00:00", "00:00:00", "00:00:00", "00:00:00", "00:00:00"];
@@ -268,8 +275,6 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public IReadOnlyList<MediaSource> ImportedMedia { get; private set; } = [];
     public IReadOnlyList<TrackPoint> GpxPoints { get; private set; } = [];
     public ObservableCollection<MissingProjectSource> MissingSources { get; } = [];
-    public ObservableCollection<TimelineBlockViewModel> TimelineBlocks { get; } = [];
-    public ObservableCollection<IncidentMarkerViewModel> IncidentMarkers { get; } = [];
     public bool HasMissingSources => MissingSourceCount > 0;
     public string[] Provinces { get; } = ["ON", "QC", "BC", "AB", "MB", "SK", "NB", "NS", "PE", "NL", "NT", "NU", "YT", "Other"];
     public Confidence[] ConfidenceLevels { get; } = Enum.GetValues<Confidence>();
@@ -343,7 +348,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         IsLocationConfirmed = false;
         LocationResolutionStatus = "Optional online lookup • © OpenStreetMap contributors";
         _pendingAttachments.Clear();
-        IncidentMarkers.Clear();
+        IncidentMarkers = [];
         HasSelectedIncident = false;
         SaveIncidentButtonText = "Save incident";
         MissingSources.Clear();
@@ -565,6 +570,140 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         finally
         {
             block.IsThumbnailLoading = false;
+        }
+    }
+
+    public void BeginTimelineScrub()
+    {
+        _timelineScrubWasPlaying = IsPlaying;
+        if (IsPlaying)
+        {
+            IsPlaying = false;
+            _mediaEngine.Pause();
+        }
+        StatusText = $"Previewing timeline from {CurrentTimeText} • release to seek";
+    }
+
+    public async Task<TimelineScrubPreview> GetTimelineScrubPreviewAsync(
+        double projectSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        var projectTime = TimeSpan.FromSeconds(Math.Clamp(projectSeconds, 0, MaximumSeconds));
+        UpdateTelemetry(projectTime.TotalSeconds);
+        UpdateGpxAnchorClock(projectTime.TotalSeconds);
+        var position = _virtualTimeline.Resolve(projectTime);
+        if (position is null)
+        {
+            return new TimelineScrubPreview(
+                projectTime.TotalSeconds,
+                null,
+                $"Gap • {FormatTimelineTime(projectTime)}");
+        }
+
+        if (ProjectDirectory is null)
+        {
+            return new TimelineScrubPreview(projectTime.TotalSeconds, null, "Create or open a project");
+        }
+
+        var source = _project.Media.FirstOrDefault(item => item.Id == position.MediaSourceId);
+        if (source is null)
+        {
+            return new TimelineScrubPreview(projectTime.TotalSeconds, null, "Source metadata unavailable");
+        }
+
+        var maximumSourceSeconds = Math.Max(0, source.Duration.TotalSeconds - 0.001);
+        var bucketedSourceTime = TimeSpan.FromSeconds(Math.Clamp(
+            Math.Round(position.SourceTime.TotalSeconds),
+            0,
+            maximumSourceSeconds));
+        var destination = _thumbnailCache.GetPath(ProjectDirectory, source.Id, bucketedSourceTime);
+        if (File.Exists(destination))
+        {
+            File.SetLastAccessTimeUtc(destination, DateTime.UtcNow);
+            return new TimelineScrubPreview(
+                projectTime.TotalSeconds,
+                destination,
+                $"{source.DisplayName} • {FormatTimelineTime(position.SourceTime)}");
+        }
+
+        _thumbnailAvailability ??= await _thumbnailGenerator.GetAvailabilityAsync(cancellationToken);
+        if (!_thumbnailAvailability.IsAvailable)
+        {
+            return new TimelineScrubPreview(
+                projectTime.TotalSeconds,
+                null,
+                $"{source.DisplayName} • cached preview unavailable");
+        }
+
+        var sourcePath = ProjectLifecycleService.ResolveStoredPath(ProjectDirectory, source.Path);
+        if (!File.Exists(sourcePath))
+        {
+            return new TimelineScrubPreview(projectTime.TotalSeconds, null, "Source needs relinking");
+        }
+
+        try
+        {
+            await _thumbnailGenerator.GenerateAsync(
+                new MediaThumbnailRequest(sourcePath, destination, source.Id, bucketedSourceTime),
+                cancellationToken);
+            File.SetLastAccessTimeUtc(destination, DateTime.UtcNow);
+            _thumbnailCache.EnforceLimits(ProjectDirectory);
+            return new TimelineScrubPreview(
+                projectTime.TotalSeconds,
+                destination,
+                $"{source.DisplayName} • {FormatTimelineTime(position.SourceTime)}");
+        }
+        catch (OperationCanceledException)
+        {
+            if (File.Exists(destination))
+            {
+                File.Delete(destination);
+            }
+            throw;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            if (File.Exists(destination))
+            {
+                File.Delete(destination);
+            }
+            return new TimelineScrubPreview(
+                projectTime.TotalSeconds,
+                null,
+                $"Preview unavailable • {exception.Message}");
+        }
+    }
+
+    public async Task CommitTimelineScrubAsync(
+        double projectSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        var target = TimeSpan.FromSeconds(Math.Clamp(projectSeconds, 0, MaximumSeconds));
+        var resumePlayback = _timelineScrubWasPlaying;
+        _timelineScrubWasPlaying = false;
+        _updatingFromMedia = true;
+        CurrentSeconds = target.TotalSeconds;
+        _updatingFromMedia = false;
+        UpdateTelemetry(target.TotalSeconds);
+        UpdateGpxAnchorClock(target.TotalSeconds);
+        IsPlaying = resumePlayback;
+        await SeekProjectTimeAsync(target, resumePlayback, cancellationToken);
+    }
+
+    public void CancelTimelineScrub()
+    {
+        UpdateTelemetry(CurrentSeconds);
+        UpdateGpxAnchorClock(CurrentSeconds);
+        if (_timelineScrubWasPlaying)
+        {
+            _timelineScrubWasPlaying = false;
+            IsPlaying = true;
+            _mediaEngine.Play();
+            StatusText = $"Resumed at project {CurrentTimeText}";
+        }
+        else
+        {
+            StatusText = $"Scrub canceled • paused at project {CurrentTimeText}";
         }
     }
 
@@ -1497,23 +1636,23 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private void RebuildTimelineDisplay()
     {
-        TimelineBlocks.Clear();
         var segments = _project.Timeline.Segments
             .OrderBy(segment => segment.ProjectStart)
             .ToArray();
+        var blocks = new List<TimelineBlockViewModel>();
         var cursor = TimeSpan.Zero;
         var gapCount = 0;
-        var durationSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
         foreach (var segment in segments)
         {
             if (segment.ProjectStart > cursor)
             {
                 var gap = segment.ProjectStart - cursor;
                 gapCount++;
-                TimelineBlocks.Add(new TimelineBlockViewModel(
+                blocks.Add(new TimelineBlockViewModel(
                     "Gap",
                     FormatTimelineTime(gap),
-                    Math.Max(60, gap.TotalSeconds / durationSeconds * 620),
+                    cursor,
+                    gap,
                     "#111F25",
                     "#65767B",
                     null,
@@ -1522,16 +1661,19 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
             var source = _project.Media.FirstOrDefault(candidate => candidate.Id == segment.MediaSourceId);
             var isMissing = MissingSources.Any(missing => missing.SourceId == segment.MediaSourceId);
-            TimelineBlocks.Add(new TimelineBlockViewModel(
+            blocks.Add(new TimelineBlockViewModel(
                 source is null ? "Unknown source" : isMissing ? $"Missing: {source.DisplayName}" : source.DisplayName,
                 FormatTimelineTime(segment.Duration),
-                Math.Max(90, segment.Duration.TotalSeconds / durationSeconds * 620),
+                segment.ProjectStart,
+                segment.Duration,
                 source is null || isMissing ? "#322126" : "#19323B",
                 source is null || isMissing ? "#B45A69" : "#14C9C3",
                 segment.MediaSourceId,
                 segment.SourceStart + TimeSpan.FromTicks(segment.Duration.Ticks / 2)));
             cursor = segment.ProjectStart + segment.Duration;
         }
+
+        TimelineBlocks = blocks;
 
         TimelineSummaryText = segments.Length == 0
             ? "No project timeline"
@@ -1544,18 +1686,19 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private void RebuildIncidentDisplay()
     {
-        const double trackWidth = 620;
-        IncidentMarkers.Clear();
-        var durationTicks = Math.Max(1, _virtualTimeline.Duration.Ticks);
+        var markers = new List<IncidentMarkerViewModel>();
         foreach (var incident in _project.Incidents.OrderBy(item => item.ProjectStart))
         {
             var centreTicks = incident.ProjectStart.Ticks + (incident.ProjectEnd - incident.ProjectStart).Ticks / 2;
-            IncidentMarkers.Add(new IncidentMarkerViewModel(
+            markers.Add(new IncidentMarkerViewModel(
                 incident.Id,
-                Math.Clamp(centreTicks / (double)durationTicks * trackWidth, 0, trackWidth - 14),
+                TimeSpan.FromTicks(centreTicks),
                 incident.Id == _editingIncidentId ? "#FFAD18" : "#809096",
-                $"{FormatIncidentType(incident.Type)} • {incident.ProjectStart:hh\\:mm\\:ss\\.fff}"));
+                $"{FormatIncidentType(incident.Type)} • {incident.ProjectStart:hh\\:mm\\:ss\\.fff}",
+                incident.Id == _editingIncidentId));
         }
+
+        IncidentMarkers = markers;
 
         var selected = _editingIncidentId is { } selectedId
             ? _project.Incidents.FirstOrDefault(item => item.Id == selectedId)
@@ -1563,8 +1706,13 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         HasSelectedIncident = selected is not null;
         if (selected is not null)
         {
-            SelectedIncidentLeft = Math.Clamp(selected.ProjectStart.Ticks / (double)durationTicks * trackWidth, 0, trackWidth);
-            SelectedIncidentWidth = Math.Max(4, (selected.ProjectEnd - selected.ProjectStart).Ticks / (double)durationTicks * trackWidth);
+            SelectedIncidentStartSeconds = selected.ProjectStart.TotalSeconds;
+            SelectedIncidentEndSeconds = selected.ProjectEnd.TotalSeconds;
+        }
+        else
+        {
+            SelectedIncidentStartSeconds = 0;
+            SelectedIncidentEndSeconds = 0;
         }
     }
 
@@ -1606,7 +1754,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 public partial class TimelineBlockViewModel(
     string label,
     string detail,
-    double width,
+    TimeSpan projectStart,
+    TimeSpan duration,
     string background,
     string borderBrush,
     Guid? mediaSourceId,
@@ -1614,7 +1763,8 @@ public partial class TimelineBlockViewModel(
 {
     public string Label { get; } = label;
     public string Detail { get; } = detail;
-    public double Width { get; } = width;
+    public TimeSpan ProjectStart { get; } = projectStart;
+    public TimeSpan Duration { get; } = duration;
     public string Background { get; } = background;
     public string BorderBrush { get; } = borderBrush;
     public Guid? MediaSourceId { get; } = mediaSourceId;
@@ -1637,6 +1787,12 @@ public partial class TimelineBlockViewModel(
 
 public sealed record IncidentMarkerViewModel(
     Guid Id,
-    double Left,
+    TimeSpan ProjectTime,
     string Colour,
-    string ToolTip);
+    string ToolTip,
+    bool IsSelected);
+
+public sealed record TimelineScrubPreview(
+    double ProjectSeconds,
+    string? ImagePath,
+    string Status);
