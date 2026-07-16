@@ -104,10 +104,11 @@ Implement the synchronized-review improvements requested for the virtual timelin
 - The primary viewport test covers a -15 to +75 second visual range, pointer mapping, and pan clamping after zoom.
 - The supplied-LRV matcher/selection, preview-folder copy, and JSON round-trip are covered; the full shared suite passed 159/159 after this slice.
 - The shared crop mapper covers letterboxing, reverse drags, edge clipping, letterbox rejection, and minimum sizing. Release build passed with 0 warnings and the full shared suite passed 164/164 after marking mode.
+- Completion audit on 2026-07-16 rebuilt the current worktree at `artifacts/verification-m08-audit-build` with 0 warnings/errors and reran the full suite at `artifacts/verification-m08-audit-test`: 164/164 passed. The first sandboxed build was blocked only by Avalonia's user-profile telemetry log; the approved retry was otherwise clean.
 - The added viewport-domain test verifies that a drag-time workspace expansion preserves the current zoom and visible offset rather than resetting to Fit.
 - Metadata parser fallbacks, trusted-gap layout, later-import collision/manual-layout protection, confidence selection, timeline edit preservation, JSON round-trip, and schema-v1 optional-field compatibility are unit tested. A local `ffprobe` read is bounded to five seconds and failure remains advisory.
 - GPX candidate-session tests cover negative project time, whole-route translation, isolated anchor moves, source/order validation, two-anchor limit, cancel, and defensive snapshots.
 
 ## Screenshot state
 
-Visual acceptance is pending the next running-workbench pass because the normal Release output is presently held by an active RoadWatcher process. Capture the completed M08 timeline/marking state at a 1152 × 820 logical viewport and record the project/GPX mapping state beside the image before milestone handoff.
+Visual acceptance is pending an interactive desktop session. On 2026-07-16 there was no visible RoadWatcher window (only headless `dotnet` workers), and the standard OS capture helper failed with `CopyFromScreen: The handle is invalid`; no image was fabricated. In the next interactive workbench pass, capture the completed M08 timeline/marking state at a 1152 × 820 logical viewport and record the project/GPX mapping state beside the image before milestone handoff.
