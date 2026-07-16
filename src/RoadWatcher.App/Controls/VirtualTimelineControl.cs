@@ -296,7 +296,7 @@ public sealed class VirtualTimelineControl : Control
 
     protected override Size MeasureOverride(Size availableSize) => new(
         double.IsFinite(availableSize.Width) ? availableSize.Width : 800,
-        RulerHeight + LaneHeight * 5);
+        RulerHeight + LaneHeight * 4);
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -326,7 +326,7 @@ public sealed class VirtualTimelineControl : Control
             return;
         }
 
-        var incidentLaneTop = RulerHeight + LaneHeight * 3;
+        var incidentLaneTop = RulerHeight + LaneHeight * 2;
         if (point.Y >= incidentLaneTop && point.Y < incidentLaneTop + LaneHeight && Incidents is not null)
         {
             var selected = Incidents
@@ -346,7 +346,7 @@ public sealed class VirtualTimelineControl : Control
             }
         }
 
-        var gpxLaneTop = RulerHeight + LaneHeight * 2;
+        var gpxLaneTop = RulerHeight + LaneHeight;
         if (point.Y >= gpxLaneTop && point.Y < gpxLaneTop + LaneHeight && GpxAnchors is not null)
         {
             var anchor = GpxAnchors
@@ -555,24 +555,22 @@ public sealed class VirtualTimelineControl : Control
         context.FillRectangle(panel, bounds);
         context.FillRectangle(raised, new Rect(0, 0, bounds.Width, RulerHeight));
         context.DrawLine(border, new Point(HeaderWidth, 0), new Point(HeaderWidth, bounds.Height));
-        for (var row = 0; row <= 5; row++)
+        for (var row = 0; row <= 4; row++)
         {
             var y = RulerHeight + row * LaneHeight;
             context.DrawLine(border, new Point(0, y), new Point(bounds.Width, y));
         }
 
         DrawText(context, "Video (front)", 8, RulerHeight + 10, muted, 10);
-        DrawText(context, "Video (rear)", 8, RulerHeight + LaneHeight + 10, muted, 10);
-        DrawText(context, "GPX (route)", 8, RulerHeight + LaneHeight * 2 + 10, muted, 10);
-        DrawText(context, "Incidents", 8, RulerHeight + LaneHeight * 3 + 10, muted, 10);
-        DrawText(context, "Selected", 8, RulerHeight + LaneHeight * 4 + 10, muted, 10);
+        DrawText(context, "GPX (route)", 8, RulerHeight + LaneHeight + 10, muted, 10);
+        DrawText(context, "Incidents", 8, RulerHeight + LaneHeight * 2 + 10, muted, 10);
+        DrawText(context, "Selected", 8, RulerHeight + LaneHeight * 3 + 10, muted, 10);
 
         using (context.PushClip(new Rect(HeaderWidth, 0, GetTimeAreaWidth(), bounds.Height)))
         {
             DrawRuler(context, muted, border);
             DrawBlocks(context, primary);
             DrawClipDragPreview(context, amber);
-            DrawRearLane(context, muted);
             DrawGpxLane(context, teal);
             DrawIncidents(context, muted, amber);
             DrawPlayhead(context, amber);
@@ -624,21 +622,13 @@ public sealed class VirtualTimelineControl : Control
         }
     }
 
-    private void DrawRearLane(DrawingContext context, IBrush muted) => DrawText(
-        context,
-        "No rear track imported",
-        HeaderWidth + 10,
-        RulerHeight + LaneHeight + 10,
-        muted,
-        9);
-
     private void DrawGpxLane(DrawingContext context, IBrush teal)
     {
         if (!HasGpx)
         {
             return;
         }
-        var y = RulerHeight + LaneHeight * 2 + LaneHeight / 2;
+        var y = RulerHeight + LaneHeight + LaneHeight / 2;
         var coverageStart = HeaderWidth + _viewport.TimeToPixel(GpxCoverageStartSeconds);
         var coverageEnd = HeaderWidth + _viewport.TimeToPixel(GpxCoverageEndSeconds);
         if (coverageEnd > coverageStart)
@@ -707,7 +697,7 @@ public sealed class VirtualTimelineControl : Control
 
     private void DrawIncidents(DrawingContext context, IBrush muted, IBrush amber)
     {
-        var markerY = RulerHeight + LaneHeight * 3 + LaneHeight / 2;
+        var markerY = RulerHeight + LaneHeight * 2 + LaneHeight / 2;
         if (Incidents is not null)
         {
             foreach (var incident in Incidents)
@@ -728,7 +718,7 @@ public sealed class VirtualTimelineControl : Control
             var end = HeaderWidth + _viewport.TimeToPixel(SelectedIncidentEndSeconds);
             var rect = new Rect(
                 start,
-                RulerHeight + LaneHeight * 4 + 8,
+                RulerHeight + LaneHeight * 3 + 8,
                 Math.Max(2, end - start),
                 LaneHeight - 16);
             context.FillRectangle(Brush("#4B3B0D"), rect, 2);
@@ -761,7 +751,7 @@ public sealed class VirtualTimelineControl : Control
             : _hoverBlock!.ProjectStart.TotalSeconds + _hoverBlock.Duration.TotalSeconds / 2;
         var playheadX = HeaderWidth + _viewport.TimeToPixel(previewSeconds);
         var left = Math.Clamp(playheadX - PreviewWidth / 2, HeaderWidth + 4, Bounds.Width - PreviewWidth - 4);
-        var top = RulerHeight + LaneHeight * 2 + 2;
+        var top = RulerHeight + LaneHeight + 2;
         var height = PreviewHeight + 34;
         var rect = new Rect(left, top, PreviewWidth, height);
         context.FillRectangle(raised, rect, 4);
