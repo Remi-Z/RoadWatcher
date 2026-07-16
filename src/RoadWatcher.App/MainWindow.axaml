@@ -472,6 +472,17 @@
         </Grid>
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsEnabled="{Binding HasIncidentDraft}">
           <StackPanel Margin="14,0,14,14" Spacing="8">
+            <Border IsVisible="{Binding IsIncidentPreviewActive}"
+                    Padding="8"
+                    Background="#163B4B"
+                    BorderBrush="#2A7287"
+                    BorderThickness="1"
+                    CornerRadius="4">
+              <StackPanel Spacing="2">
+                <TextBlock FontWeight="SemiBold" Text="{Binding IncidentPreviewTitle}" />
+                <TextBlock Classes="muted" FontSize="9" TextWrapping="Wrap" Text="{Binding IncidentPreviewDetail}" />
+              </StackPanel>
+            </Border>
             <TextBlock Classes="muted" Text="Category" />
             <ComboBox ItemsSource="{Binding Categories}"
                       SelectedItem="{Binding SelectedCategory}"

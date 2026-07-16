@@ -3550,6 +3550,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         IsSettingsPageOpen = false;
+        IsJobsDrawerOpen = false;
         RebuildIncidentLibrary();
         IsIncidentLibraryOpen = true;
         BatchEditStatus = IncidentLibraryItems.Count == 0
@@ -3626,6 +3627,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _project = _project with { Incidents = result.Incidents.ToList() };
         await _projectStore.SaveAsync(_project, ProjectDirectory);
         IncidentCount = _project.Incidents.Count;
+        if (_editingIncidentId is { } activeIncidentId && selectedIds.Contains(activeIncidentId))
+        {
+            var refreshedIncident = _project.Incidents.First(item => item.Id == activeIncidentId);
+            LoadIncidentIntoEditor(refreshedIncident, seekToIncidentSource: false);
+        }
+
         RebuildIncidentDisplay();
         ResetBatchEditForm();
         BatchEditStatus = $"Updated {result.UpdatedCount} incident(s) • source frames, locations, and attachments were unchanged.";
@@ -3643,12 +3650,6 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         SelectIncident(incidentId);
         IsIncidentLibraryOpen = false;
-        if (!HasLoadedMedia)
-        {
-            StatusText = "Incident details are open, but its video source is not currently available.";
-            return;
-        }
-
         if (!IncidentPreviewPlanner.TryCreate(
                 incident,
                 _virtualTimeline.Duration,
@@ -3659,12 +3660,42 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var previewStart = _virtualTimeline.Resolve(preview!.Start);
+        if (previewStart is null)
+        {
+            StatusText = "Incident details are open, but the saved preview begins in a source gap.";
+            return;
+        }
+
+        if (!ImportedMedia.Any(source => source.Id == incident.MediaSourceId))
+        {
+            StatusText = "Incident details are open, but this incident's source video is not currently available.";
+            return;
+        }
+
+        if (!ImportedMedia.Any(source => source.Id == previewStart.MediaSourceId))
+        {
+            StatusText = "Incident details are open, but the video source at the preview start is not currently available.";
+            return;
+        }
+
         _incidentPreviewEndSeconds = preview!.End.TotalSeconds;
         IncidentPreviewTitle = $"Preview • {FormatIncidentType(incident.Type)}";
         IncidentPreviewDetail = $"{FormatTimelineTime(preview.Start)} – {FormatTimelineTime(preview.End)} • click Stop preview to remain at the current frame";
         IsIncidentPreviewActive = true;
         IsPlaying = true;
         await SeekProjectTimeAsync(preview.Start, resumePlayback: true, cancellationToken);
+        if (_activeSegment?.MediaSourceId != previewStart.MediaSourceId)
+        {
+            IsIncidentPreviewActive = false;
+            _incidentPreviewEndSeconds = null;
+            IsPlaying = false;
+            _mediaEngine.Pause();
+            IncidentPreviewDetail = "The source could not be loaded for this incident preview.";
+            StatusText = "Incident details are open, but the preview source could not be loaded.";
+            return;
+        }
+
         StatusText = $"Previewing {FormatIncidentType(incident.Type)} • stops at {FormatTimelineTime(preview.End)}";
     }
 
@@ -3753,6 +3784,18 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
+        LoadIncidentIntoEditor(incident, seekToIncidentSource: true);
+        StatusText = $"Editing incident {incident.Id.ToString("N")[..8]}";
+        RebuildIncidentDisplay();
+    }
+
+    /// <summary>
+    /// Copies persisted values into the existing inspector. Batch edits use the
+    /// no-seek path so an open library cannot leave stale text that would later
+    /// overwrite the just-applied patch.
+    /// </summary>
+    private void LoadIncidentIntoEditor(Incident incident, bool seekToIncidentSource)
+    {
         _editingIncidentId = incident.Id;
         HasSelectedIncident = true;
         HasIncidentDraft = true;
@@ -3789,7 +3832,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             candidate.MediaSourceId == incident.MediaSourceId &&
             incident.SourceTime >= candidate.SourceStart &&
             incident.SourceTime < candidate.SourceStart + candidate.Duration);
-        if (segment is not null)
+        if (seekToIncidentSource && segment is not null)
         {
             CurrentSeconds = (segment.ProjectStart + incident.SourceTime - segment.SourceStart).TotalSeconds;
         }
@@ -3798,8 +3841,6 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         RecognitionStatus = AreVehicleValuesConfirmed
             ? "Saved vehicle values are confirmed"
             : "Saved vehicle values remain unconfirmed";
-        StatusText = $"Editing incident {incident.Id.ToString("N")[..8]}";
-        RebuildIncidentDisplay();
     }
 
     [RelayCommand]

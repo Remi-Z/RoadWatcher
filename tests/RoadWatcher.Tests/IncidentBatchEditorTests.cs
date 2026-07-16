@@ -43,6 +43,8 @@ public sealed class IncidentBatchEditorTests
         Assert.Equal(selected.SourceTime, updated.SourceTime);
         Assert.Equal(selected.Location, updated.Location);
         Assert.Equal(selected.Attachments, updated.Attachments);
+        Assert.Equal(selected.Notes, updated.Notes);
+        Assert.Equal(selected.CreatedAt, updated.CreatedAt);
         Assert.Equal(untouched, result.Incidents[1]);
     }
 
@@ -99,6 +101,8 @@ public sealed class IncidentBatchEditorTests
         Location = new IncidentLocation(43.65, -79.38, "Apple St & Banada Ave", null, true),
         Vehicle = vehicle,
         Tags = tags?.ToList() ?? [],
+        Notes = "Reviewer note that a batch edit must preserve",
+        CreatedAt = new DateTimeOffset(2026, 7, 16, 12, 0, 0, TimeSpan.Zero),
         Attachments =
         [
             new EvidenceAsset(
