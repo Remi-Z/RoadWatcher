@@ -4,7 +4,7 @@ Last updated: 2026-07-16
 
 ## Current milestone
 
-M09 — Ontario road-context readability and app hardening: implementation and automated verification are complete (170 tests). The requested interactive visual capture remains pending because this Codex session cannot access a visible Windows desktop window handle. M08's separate visual-acceptance capture remains pending; M07 representative-footage and signed-installer release gates remain external.
+M10 — Incident workflow: implementing intersection-first locations, richer vehicle identity, incident-library batch editing, and incident clip preview. M09's interactive visual capture remains pending because this Codex session cannot access a visible Windows desktop window handle; M08's separate visual-acceptance capture and M07 release gates remain external.
 
 ## Completed
 
@@ -73,6 +73,11 @@ M09 — Ontario road-context readability and app hardening: implementation and a
 - Added a local-only Settings page for version/project/tool status, job counts, cache sizes, log path/level, FFmpeg path/test, cache clearing, and preferred map style. These values never enter an evidence project or export.
 - Isolated Release build passed with 0 warnings/errors. The full Release suite passed 170/170, including schedule visibility, road/intersection resolution, cycling exclusions, source-preferred visual deduplication, and cluster dissolution alongside snapshot/schema-v1 coverage.
 - Visual acceptance remains pending a 1440 × 1024 interactive desktop capture. The isolated Release app launched but exposed no window handle in this Codex session, so a window-scoped capture was impossible; only that isolated process was closed. See `docs/milestones/M09-road-context/README.md` for the exact required state.
+
+## M10 progress
+
+- Incident locations now prefer a genuine road-context junction name (for example, `Apple St & Banada Ave`) whenever the recorded point is on a named road and within 100 m of its mapped intersection. The live playback HUD keeps its tighter 35 m intersection threshold, and the reviewer can still edit or confirm every incident location manually.
+- The focused Road-context model suite passed 9/9 after the new 100 m preference behavior, including a regression case outside the live-HUD threshold.
 
 ## M07 closure record
 

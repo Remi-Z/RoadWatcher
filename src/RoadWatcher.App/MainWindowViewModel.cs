@@ -3481,9 +3481,16 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         Intersection = string.Empty;
         Address = string.Empty;
         IsLocationConfirmed = false;
-        LocationResolutionStatus = _incidentLocationSample is null
-            ? "No synchronized GPX position is available for this incident."
-            : "Location is unconfirmed • edit manually or request one online suggestion";
+        if (TryApplyNearbyIncidentIntersection(_incidentLocationSample))
+        {
+            LocationResolutionStatus = "Nearby mapped intersection selected • review and confirm the recorded location.";
+        }
+        else
+        {
+            LocationResolutionStatus = _incidentLocationSample is null
+                ? "No synchronized GPX position is available for this incident."
+                : "Location is unconfirmed • edit manually or request one online suggestion";
+        }
         IncidentStartText = TimeSpan.FromSeconds(_incidentStartSeconds).ToString(@"hh\:mm\:ss\.fff");
         IncidentEndText = TimeSpan.FromSeconds(_incidentEndSeconds).ToString(@"hh\:mm\:ss\.fff");
         IncidentDurationText = $"Duration  {TimeSpan.FromSeconds(_incidentEndSeconds - _incidentStartSeconds):mm\\:ss\\.fff}";
@@ -3551,6 +3558,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private async Task SuggestLocationAsync()
     {
         var sample = _incidentLocationSample ?? _currentTelemetrySample;
+        if (TryApplyNearbyIncidentIntersection(sample))
+        {
+            LocationResolutionStatus = "Nearby mapped intersection selected instead of an address • review and confirm.";
+            return;
+        }
+
         if (_locationResolver is null || sample is null)
         {
             LocationResolutionStatus = "Open a project with synchronized GPX before requesting a suggestion.";
@@ -3583,6 +3596,29 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             LocationResolutionStatus = $"Lookup unavailable • {exception.Message} • manual entry remains available";
         }
+    }
+
+    private bool TryApplyNearbyIncidentIntersection(TelemetrySample? sample)
+    {
+        if (_roadContextSnapshot is null || sample is null)
+        {
+            return false;
+        }
+
+        var location = RoadContextRoadLocator.ResolveForIncident(
+            _roadContextSnapshot.Features,
+            new GeoCoordinate(sample.Latitude, sample.Longitude));
+        if (location is null || string.IsNullOrWhiteSpace(location.CrossStreetName))
+        {
+            return false;
+        }
+
+        Intersection = location.DisplayName;
+        Address = string.Empty;
+        IsLocationConfirmed = false;
+        _incidentLocationProvider = $"Road context: {location.Source.Provider} ({location.Source.Dataset})";
+        LocationText = location.DisplayName;
+        return true;
     }
 
     [RelayCommand]

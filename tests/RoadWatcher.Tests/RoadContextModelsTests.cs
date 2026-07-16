@@ -88,6 +88,51 @@ public sealed class RoadContextModelsTests
     }
 
     [Fact]
+    public void Incident_location_prefers_a_mapped_intersection_within_100_metres()
+    {
+        var source = new RoadContextSource(
+            "Ontario Road Network",
+            "ORN",
+            "https://example.test/orn",
+            RoadContextAuthority.Provincial,
+            "Ontario");
+        var main = new RoadContextFeature(
+            "main",
+            RoadContextCategory.RoadReference,
+            "Apple St",
+            new RoadContextGeometry(RoadContextGeometryKind.Line,
+                [new GeoCoordinate(43.65, -79.402), new GeoCoordinate(43.65, -79.398)]),
+            source);
+        var cross = new RoadContextFeature(
+            "cross",
+            RoadContextCategory.RoadReference,
+            "Banada Ave",
+            new RoadContextGeometry(RoadContextGeometryKind.Line,
+                [new GeoCoordinate(43.649, -79.4), new GeoCoordinate(43.651, -79.4)]),
+            source);
+        // About 72 m west of the true junction: close enough for an incident
+        // label, but intentionally outside the compact live-HUD threshold.
+        var incidentPoint = new GeoCoordinate(43.65, -79.4009);
+
+        Assert.True(RoadContextSpatial.GeometriesMeetWithinMetres(
+            main.Geometry,
+            cross.Geometry,
+            incidentPoint,
+            RoadContextRoadLocator.IncidentIntersectionPreferenceDistanceMetres));
+        Assert.InRange(
+            RoadContextSpatial.DistanceToGeometryMetres(incidentPoint, cross.Geometry),
+            0,
+            RoadContextRoadLocator.IncidentIntersectionPreferenceDistanceMetres);
+        var hud = RoadContextRoadLocator.Resolve([main, cross], incidentPoint);
+        var incident = RoadContextRoadLocator.ResolveForIncident([main, cross], incidentPoint);
+
+        Assert.NotNull(hud);
+        Assert.Equal("Apple St", hud!.DisplayName);
+        Assert.NotNull(incident);
+        Assert.Equal("Apple St & Banada Ave", incident!.DisplayName);
+    }
+
+    [Fact]
     public void Query_defensively_copies_route_and_pads_wgs84_bounds()
     {
         var route = new[]

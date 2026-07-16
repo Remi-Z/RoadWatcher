@@ -469,6 +469,10 @@
             <TextBlock Classes="muted" FontSize="11" Text="{Binding IncidentDurationText}" />
 
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Location" />
+            <TextBlock Classes="muted"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Text="A mapped intersection within 100 m is preferred over an address; both remain editable." />
             <TextBox Watermark="Intersection (optional)"
                      Text="{Binding Intersection}"
                      AutomationProperties.Name="Incident intersection" />
