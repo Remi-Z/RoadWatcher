@@ -36,6 +36,10 @@ M08 — Timeline, map, and playback review UX: implementation has begun with the
 - The virtual timeline now has a display-time domain independent of playable project time. It fits the union of video/GPX coverage plus 5% padding clamped to 5–60 seconds, supports negative/pre-video labels, and keeps playback, capture, and incident evidence bounded to real media time.
 - The first modular slice adds pure viewport coverage for pre/post-media workspace, pans and zooms within that display domain, and binds it through the existing virtual timeline rather than adding another control or chart dependency.
 - Isolated Release build passed with zero warnings and the focused suite passed 55/55. The normal Release app output is currently held by a running RoadWatcher process, so verification uses `artifacts/verification` rather than interrupting an active reviewer session.
+- Trusted camera/container timestamps are now read through optional `ffprobe` metadata, retained with their raw string/provenance/technical fields, and kept distinct from filesystem-time hints. Offset-less camera times remain explicitly assumed-local rather than silently trusted.
+- Fresh imports automatically order trusted clips and retain genuine capture-time gaps. A later trusted import is placed only when it fits a free interval, so an edited layout is never shifted; inconclusive metadata appends instead. The first trusted source provides a persisted, unconfirmed camera clock reference for the upcoming exact-time/synchronization UI.
+- Camera-clock references now follow the same source frame through a clip move or reorder. Malformed higher-priority metadata falls through to valid lower-priority tags; lower-confidence `ffprobe` time cannot hide a trusted LibVLC value; and a metadata proposal appends rather than contradicting a manually edited layout.
+- Schema-version-1 read compatibility is covered for projects without the new optional capture clock fields. Isolated Release build passed with zero warnings and the metadata-focused suite passed 68/68.
 
 ## M07 closure record
 

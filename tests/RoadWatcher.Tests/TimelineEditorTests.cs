@@ -101,13 +101,60 @@ public sealed class TimelineEditorTests
     public void Snapshot_restores_timeline_and_evidence_exactly()
     {
         var source = Guid.NewGuid();
-        var project = Project(new TimelineSegment(source, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(3)));
+        var clock = new TimelineClockReference(
+            source,
+            TimeSpan.Zero,
+            DateTimeOffset.Parse("2026-07-16T12:00:00-04:00"),
+            MediaCaptureTimestampSource.QuickTimeCreationDate,
+            HasExplicitOffset: true,
+            UserConfirmed: true);
+        var project = Project(new TimelineSegment(source, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(3))) with
+        {
+            Timeline = new TimelineDefinition
+            {
+                Segments = [new TimelineSegment(source, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(3))],
+                ClockReference = clock
+            }
+        };
         var snapshot = TimelineEditor.Capture(project);
         var moved = TimelineEditor.Move(project, source, TimeSpan.FromSeconds(5), TimeSpan.Zero).Project;
+
+        Assert.Equal(clock with { ProjectTime = TimeSpan.FromSeconds(5) }, moved.Timeline.ClockReference);
 
         var restored = TimelineEditor.Restore(moved, snapshot);
 
         Assert.Equal(TimeSpan.Zero, Assert.Single(restored.Timeline.Segments).ProjectStart);
+        Assert.Equal(clock, restored.Timeline.ClockReference);
+    }
+
+    [Fact]
+    public void Clock_reference_follows_the_same_source_frame_when_reordered()
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var clock = new TimelineClockReference(
+            first,
+            TimeSpan.FromSeconds(1),
+            DateTimeOffset.Parse("2026-07-16T12:00:01-04:00"),
+            MediaCaptureTimestampSource.ContainerCreationTime,
+            HasExplicitOffset: true,
+            UserConfirmed: true);
+        var project = new ProjectDocument
+        {
+            Timeline = new TimelineDefinition
+            {
+                Segments =
+                [
+                    new TimelineSegment(first, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(3)),
+                    new TimelineSegment(second, TimeSpan.FromSeconds(5), TimeSpan.Zero, TimeSpan.FromSeconds(4))
+                ],
+                ClockReference = clock
+            }
+        };
+
+        var result = TimelineEditor.Reorder(project, first, 1, TimeSpan.Zero);
+
+        Assert.Equal(clock with { ProjectTime = TimeSpan.FromSeconds(7) }, result.Project.Timeline.ClockReference);
     }
 
     [Fact]

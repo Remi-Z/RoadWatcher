@@ -83,6 +83,7 @@ public static class TimelineEditor
     public static TimelineEditSnapshot Capture(ProjectDocument project) => new(
         [.. project.Timeline.Segments],
         [.. project.Timeline.SyncAnchors],
+        project.Timeline.ClockReference,
         project.Incidents.Select(CloneIncident).ToList());
 
     public static ProjectDocument Restore(ProjectDocument project, TimelineEditSnapshot snapshot) => project with
@@ -90,7 +91,8 @@ public static class TimelineEditor
         Timeline = new TimelineDefinition
         {
             Segments = [.. snapshot.Segments],
-            SyncAnchors = [.. snapshot.SyncAnchors]
+            SyncAnchors = [.. snapshot.SyncAnchors],
+            ClockReference = snapshot.ClockReference
         },
         Incidents = snapshot.Incidents.Select(CloneIncident).ToList()
     };
@@ -165,6 +167,10 @@ public static class TimelineEditor
         }
 
         var rebasedPlayhead = RebasePlayhead(playhead, oldSegments, newSegments, duration);
+        var rebasedClockReference = RebaseClockReference(
+            project.Timeline.ClockReference,
+            oldSegments,
+            newSegments);
         var warnings = new List<string>();
         if (movedIncidents > 0)
         {
@@ -181,7 +187,8 @@ public static class TimelineEditor
                 Timeline = new TimelineDefinition
                 {
                     Segments = [.. newSegments],
-                    SyncAnchors = anchors
+                    SyncAnchors = anchors,
+                    ClockReference = rebasedClockReference
                 },
                 Incidents = incidents
             },
@@ -273,6 +280,48 @@ public static class TimelineEditor
             : ToProjectTime(newSegment, oldPosition.SourceTime);
     }
 
+    private static TimelineClockReference? RebaseClockReference(
+        TimelineClockReference? clockReference,
+        IReadOnlyList<TimelineSegment> oldSegments,
+        IReadOnlyList<TimelineSegment> newSegments)
+    {
+        if (clockReference is null)
+        {
+            return null;
+        }
+
+        var oldSegment = FindClockReferenceSegment(
+            oldSegments,
+            clockReference.MediaSourceId,
+            clockReference.ProjectTime,
+            projectTime: true);
+        if (oldSegment is null)
+        {
+            return null;
+        }
+
+        var sourceTime = oldSegment.SourceStart + (clockReference.ProjectTime - oldSegment.ProjectStart);
+        var newSegment = FindClockReferenceSegment(
+            newSegments,
+            clockReference.MediaSourceId,
+            sourceTime,
+            projectTime: false);
+        return newSegment is null
+            ? null
+            : clockReference with { ProjectTime = ToProjectTime(newSegment, sourceTime) };
+    }
+
+    private static TimelineSegment? FindClockReferenceSegment(
+        IEnumerable<TimelineSegment> segments,
+        Guid mediaSourceId,
+        TimeSpan time,
+        bool projectTime) => segments.FirstOrDefault(segment =>
+        segment.MediaSourceId == mediaSourceId &&
+        time >= (projectTime ? segment.ProjectStart : segment.SourceStart) &&
+        time <= (projectTime
+            ? segment.ProjectStart + segment.Duration
+            : segment.SourceStart + segment.Duration));
+
     private static TimelineSegment? FindSourceSegment(
         IEnumerable<TimelineSegment> segments,
         Guid mediaSourceId,
@@ -299,4 +348,5 @@ public sealed record TimelineEditResult(
 public sealed record TimelineEditSnapshot(
     IReadOnlyList<TimelineSegment> Segments,
     IReadOnlyList<SyncAnchor> SyncAnchors,
+    TimelineClockReference? ClockReference,
     IReadOnlyList<Incident> Incidents);

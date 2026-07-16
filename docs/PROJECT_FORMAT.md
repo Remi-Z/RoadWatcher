@@ -25,7 +25,7 @@ Minimum top-level shape:
   "createdAt": "2026-07-14T12:00:00-04:00",
   "media": [],
   "gpxSources": [],
-  "timeline": { "segments": [], "syncAnchors": [] },
+  "timeline": { "segments": [], "syncAnchors": [], "clockReference": null },
   "incidents": [],
   "analysisRuns": []
 }
@@ -38,6 +38,12 @@ The import header defaults to reference mode. With `Copy sources` checked, RoadW
 ## Timeline and evidence provenance
 
 `timeline.segments` is authoritative after import. Every segment records its source media ID, project start, source start, duration, and track. Project-time gaps are represented by intervals with no segment; they are not synthetic media. Newly imported clips whose recorded times are within two seconds of the preceding clip end may be treated as adjacent.
+
+Every media source may include optional `captureMetadata`: the raw container/camera timestamp, its source (QuickTime, container, video stream, or LibVLC), whether the raw string had an explicit UTC offset, confidence, technical fields, and a distinct filesystem-time hint. The raw string and selected offset-aware timestamp are retained so a reviewer can compare camera time with GPX time. A filesystem time is only a hint and is never treated as trusted camera metadata for automatic timeline placement. Offset-less embedded timestamps are retained as assumed-local values until the reviewer confirms their clock relationship.
+
+For a fresh import, trusted embedded timestamps place and order clips while preserving genuine recorded gaps. A later import is placed from that metadata only when it fits a free existing interval; otherwise the existing layout is left intact and the source appends. Legacy schema-version-1 projects that contain only `recordedAt` preserve their historical placement behaviour.
+
+`timeline.clockReference` is optional and records the selected media source, project time, camera wall-clock time, timestamp provenance, explicit-offset state, and reviewer-confirmation state. It is the durable basis for an exact-time guide; temporary guide positions are not evidence records. Readers must accept projects that omit it.
 
 Every incident retains its project window plus source media ID and source time. New evidence attachments also write optional `projectTime` alongside source media ID and source time. Readers must continue accepting schema-version-1 attachments that predate `projectTime`.
 

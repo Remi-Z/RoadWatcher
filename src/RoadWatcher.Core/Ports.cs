@@ -15,7 +15,15 @@ public interface IMediaEngine
     Task<EvidenceAsset> CaptureFrameAsync(string destinationPath, CancellationToken cancellationToken = default);
 }
 
-public sealed record MediaProbe(TimeSpan Duration, DateTimeOffset? RecordedAt);
+public sealed record MediaProbe(
+    TimeSpan Duration,
+    DateTimeOffset? RecordedAt,
+    MediaCaptureMetadata? CaptureMetadata = null);
+
+public interface IMediaMetadataReader
+{
+    Task<MediaCaptureMetadata?> ReadAsync(string path, CancellationToken cancellationToken = default);
+}
 
 public interface IVirtualTimeline
 {

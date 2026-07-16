@@ -1,20 +1,24 @@
 using LibVLCSharp.Shared;
 using RoadWatcher.Core;
+using RoadWatcher.Infrastructure;
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 namespace RoadWatcher.App.Services;
 
-public sealed class LibVlcMediaEngine : IMediaEngine, IDisposable
+public sealed partial class LibVlcMediaEngine : IMediaEngine, IDisposable
 {
     private readonly LibVLC _libVlc;
+    private readonly IMediaMetadataReader _metadataReader;
     private Media? _media;
     private TimeSpan _requestedSourceTime;
 
-    public LibVlcMediaEngine()
+    public LibVlcMediaEngine(IMediaMetadataReader? metadataReader = null)
     {
         LibVLCSharp.Shared.Core.Initialize();
         _libVlc = new LibVLC(enableDebugLogs: false);
+        _metadataReader = metadataReader ?? new FfprobeMediaMetadataReader();
         MediaPlayer = new MediaPlayer(_libVlc);
         MediaPlayer.TimeChanged += (_, eventArgs) =>
         {
@@ -49,17 +53,82 @@ public sealed class LibVlcMediaEngine : IMediaEngine, IDisposable
         using var media = new Media(_libVlc, new Uri(path));
         await media.Parse(MediaParseOptions.ParseLocal, timeout: 5000);
         cancellationToken.ThrowIfCancellationRequested();
-        DateTimeOffset? recordedAt = DateTimeOffset.TryParse(
-            media.Meta(MetadataType.Date),
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeLocal,
-            out var parsedDate)
-            ? parsedDate
-            : null;
+        var fileSystemHint = File.Exists(path)
+            ? new FileInfo(path).LastWriteTimeUtc
+            : (DateTimeOffset?)null;
+        MediaCaptureMetadata? ffprobeMetadata;
+        try
+        {
+            ffprobeMetadata = await _metadataReader.ReadAsync(path, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Metadata enrichment is optional. Basic LibVLC probing must
+            // remain available when ffprobe is unavailable or malformed.
+            ffprobeMetadata = null;
+        }
+
+        var libVlcMetadata = CreateLibVlcMetadata(media.Meta(MetadataType.Date), fileSystemHint);
+        var metadata = MediaCaptureMetadataPolicy.Merge(ffprobeMetadata, libVlcMetadata, fileSystemHint);
         return new MediaProbe(
             media.Duration > 0 ? TimeSpan.FromMilliseconds(media.Duration) : TimeSpan.Zero,
-            recordedAt);
+            metadata?.CapturedAt,
+            metadata);
     }
+
+    private static MediaCaptureMetadata? CreateLibVlcMetadata(
+        string? rawTimestamp,
+        DateTimeOffset? fileSystemHint)
+    {
+        if (string.IsNullOrWhiteSpace(rawTimestamp))
+        {
+            return null;
+        }
+
+        var raw = rawTimestamp.Trim();
+        var hasExplicitOffset = ExplicitOffsetPattern().IsMatch(raw);
+        DateTimeOffset? capturedAt;
+        if (hasExplicitOffset && DateTimeOffset.TryParse(
+                raw,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces,
+                out var explicitTimestamp))
+        {
+            capturedAt = explicitTimestamp;
+        }
+        else if (DateTime.TryParse(
+                     raw,
+                     CultureInfo.InvariantCulture,
+                     DateTimeStyles.AllowWhiteSpaces,
+                     out var localTimestamp))
+        {
+            var unspecified = DateTime.SpecifyKind(localTimestamp, DateTimeKind.Unspecified);
+            capturedAt = new DateTimeOffset(unspecified, TimeZoneInfo.Local.GetUtcOffset(unspecified));
+        }
+        else
+        {
+            capturedAt = null;
+        }
+
+        return new MediaCaptureMetadata(
+            capturedAt,
+            raw,
+            MediaCaptureTimestampSource.LibVlcDate,
+            hasExplicitOffset,
+            capturedAt is null
+                ? MediaCaptureTimestampConfidence.Unknown
+                : hasExplicitOffset
+                    ? MediaCaptureTimestampConfidence.Trusted
+                    : MediaCaptureTimestampConfidence.AssumedLocal,
+            fileSystemHint);
+    }
+
+    [GeneratedRegex(@"(?:Z|[+-]\d{2}:?\d{2})$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex ExplicitOffsetPattern();
 
     public void Play() => MediaPlayer.Play();
     public void Pause() => MediaPlayer.Pause();

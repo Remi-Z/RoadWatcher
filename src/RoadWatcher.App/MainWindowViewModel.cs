@@ -1133,15 +1133,22 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             var effectivePath = copy?.FullPath ?? selectedFile.FullName;
             var storedPath = copy?.RelativePath ?? selectedFile.FullName;
             var probe = await _mediaEngine.ProbeAsync(effectivePath, cancellationToken);
+            MediaCaptureMetadata? captureMetadata = probe.CaptureMetadata is null
+                ? null
+                : probe.CaptureMetadata with
+                {
+                    FileSystemRecordedAtHint = probe.CaptureMetadata.FileSystemRecordedAtHint ?? selectedFile.LastWriteTimeUtc
+                };
             sources.Add(new MediaSource(
                 Guid.NewGuid(),
                 selectedFile.Name,
                 storedPath,
                 copy?.FileSize ?? selectedFile.Length,
-                probe.RecordedAt ?? selectedFile.LastWriteTimeUtc,
+                probe.RecordedAt,
                 probe.Duration,
                 copy?.Sha256,
-                copyToProject));
+                copyToProject,
+                captureMetadata));
         }
 
         foreach (var source in sources.Where(source => _project.Media.All(existing => existing.Path != source.Path)))
@@ -1162,6 +1169,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             _project.Media);
         _project.Timeline.Segments.Clear();
         _project.Timeline.Segments.AddRange(updatedSegments);
+        EnsureTimelineClockReference();
         _virtualTimeline = new VirtualTimeline(_project.Timeline.Segments);
         MaximumSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
         RebuildTimelineDisplay();
@@ -1176,6 +1184,49 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         StatusText = sources.Count == 1
             ? $"Imported {sources[0].DisplayName} • ready to review"
             : $"Imported {sources.Count} source clips • playing {sources[0].DisplayName}";
+    }
+
+    private void EnsureTimelineClockReference()
+    {
+        if (_project.Timeline.ClockReference is not null)
+        {
+            return;
+        }
+
+        var clockSource = _project.Media
+            .Select(source => new
+            {
+                Source = source,
+                Segment = _project.Timeline.Segments
+                    .Where(segment => segment.MediaSourceId == source.Id)
+                    .OrderBy(segment => segment.ProjectStart)
+                    .FirstOrDefault()
+            })
+            .Where(candidate => candidate.Segment is not null && candidate.Source.CaptureMetadata?.IsTrustedForTimeline == true)
+            .OrderBy(candidate => candidate.Segment!.ProjectStart)
+            .FirstOrDefault();
+        if (clockSource?.Segment is not { } segment ||
+            clockSource.Source.CaptureMetadata?.CapturedAt is not { } capturedAt)
+        {
+            return;
+        }
+
+        var metadata = clockSource.Source.CaptureMetadata;
+        _project = _project with
+        {
+            Timeline = new TimelineDefinition
+            {
+                Segments = [.. _project.Timeline.Segments],
+                SyncAnchors = [.. _project.Timeline.SyncAnchors],
+                ClockReference = new TimelineClockReference(
+                    clockSource.Source.Id,
+                    segment.ProjectStart,
+                    capturedAt + segment.SourceStart,
+                    metadata.Source,
+                    metadata.HasExplicitOffset,
+                    UserConfirmed: false)
+            }
+        };
     }
 
     partial void OnCurrentSecondsChanged(double value)
@@ -1470,7 +1521,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 [
                     .. _project.Timeline.SyncAnchors.Where(anchor => anchor.GpxSourceId != gpx.Id),
                     .. ordered
-                ]
+                ],
+                ClockReference = _project.Timeline.ClockReference
             }
         };
         if (ProjectDirectory is not null)

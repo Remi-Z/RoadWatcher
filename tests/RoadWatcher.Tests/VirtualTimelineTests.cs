@@ -28,6 +28,124 @@ public sealed class VirtualTimelineTests
     }
 
     [Fact]
+    public void Planner_uses_only_trusted_capture_metadata_for_order_and_gaps()
+    {
+        var recordedAt = DateTimeOffset.Parse("2026-07-14T18:00:00-04:00");
+        var first = Source("001.mp4", recordedAt, TimeSpan.FromSeconds(10));
+        var afterGap = Source("003.mp4", recordedAt.AddSeconds(22), TimeSpan.FromSeconds(4));
+        var filesystemLate = Source(
+            "filesystem-late.mp4",
+            recordedAt.AddMinutes(10),
+            TimeSpan.FromSeconds(2),
+            MediaCaptureTimestampConfidence.Hint,
+            MediaCaptureTimestampSource.FileSystemHint);
+        var filesystemEarly = Source(
+            "filesystem-early.mp4",
+            recordedAt.AddMinutes(-10),
+            TimeSpan.FromSeconds(2),
+            MediaCaptureTimestampConfidence.Hint,
+            MediaCaptureTimestampSource.FileSystemHint);
+
+        var segments = TimelineSegmentPlanner.Build([afterGap, filesystemLate, filesystemEarly, first]);
+
+        Assert.Collection(
+            segments,
+            segment =>
+            {
+                Assert.Equal(first.Id, segment.MediaSourceId);
+                Assert.Equal(TimeSpan.Zero, segment.ProjectStart);
+            },
+            segment =>
+            {
+                Assert.Equal(afterGap.Id, segment.MediaSourceId);
+                Assert.Equal(TimeSpan.FromSeconds(22), segment.ProjectStart);
+            },
+            segment =>
+            {
+                Assert.Equal(filesystemLate.Id, segment.MediaSourceId);
+                Assert.Equal(TimeSpan.FromSeconds(26), segment.ProjectStart);
+            },
+            segment =>
+            {
+                Assert.Equal(filesystemEarly.Id, segment.MediaSourceId);
+                Assert.Equal(TimeSpan.FromSeconds(28), segment.ProjectStart);
+            });
+    }
+
+    [Fact]
+    public void Later_import_proposal_places_trusted_clip_in_a_free_metadata_gap_without_moving_existing_segments()
+    {
+        var recordedAt = DateTimeOffset.Parse("2026-07-14T18:00:00-04:00");
+        var first = Source("001.mp4", recordedAt, TimeSpan.FromSeconds(10));
+        var third = Source("003.mp4", recordedAt.AddSeconds(30), TimeSpan.FromSeconds(5));
+        var imported = Source("002.mp4", recordedAt.AddSeconds(15), TimeSpan.FromSeconds(5));
+        TimelineSegment[] existing =
+        [
+            new(first.Id, TimeSpan.Zero, TimeSpan.Zero, first.Duration),
+            new(third.Id, TimeSpan.FromSeconds(30), TimeSpan.Zero, third.Duration)
+        ];
+
+        var proposal = TimelineSegmentPlanner.ProposeMetadataPlacement(existing, [first, third], imported);
+
+        Assert.True(proposal.HasMetadataPlacement);
+        Assert.False(proposal.RequiresAppend);
+        Assert.Equal(TimeSpan.FromSeconds(15), proposal.ProjectStart);
+        Assert.Equal(TimelineImportPlacementReason.None, proposal.Reason);
+        Assert.Equal(TimeSpan.Zero, existing[0].ProjectStart);
+        Assert.Equal(TimeSpan.FromSeconds(30), existing[1].ProjectStart);
+    }
+
+    [Fact]
+    public void Later_import_proposal_requires_append_for_filesystem_hint_or_collision()
+    {
+        var recordedAt = DateTimeOffset.Parse("2026-07-14T18:00:00-04:00");
+        var first = Source("001.mp4", recordedAt, TimeSpan.FromSeconds(10));
+        var second = Source("002.mp4", recordedAt.AddSeconds(12), TimeSpan.FromSeconds(8));
+        TimelineSegment[] existing =
+        [
+            new(first.Id, TimeSpan.Zero, TimeSpan.Zero, first.Duration),
+            new(second.Id, TimeSpan.FromSeconds(12), TimeSpan.Zero, second.Duration)
+        ];
+        var filesystemHint = Source(
+            "hint.mp4",
+            recordedAt.AddSeconds(10),
+            TimeSpan.FromSeconds(2),
+            MediaCaptureTimestampConfidence.Hint,
+            MediaCaptureTimestampSource.FileSystemHint);
+        var collidingTrusted = Source("colliding.mp4", recordedAt.AddSeconds(8), TimeSpan.FromSeconds(5));
+
+        var hintProposal = TimelineSegmentPlanner.ProposeMetadataPlacement(existing, [first, second], filesystemHint);
+        var collisionProposal = TimelineSegmentPlanner.ProposeMetadataPlacement(existing, [first, second], collidingTrusted);
+
+        Assert.True(hintProposal.RequiresAppend);
+        Assert.Equal(TimelineImportPlacementReason.NoTrustedCaptureTime, hintProposal.Reason);
+        Assert.True(collisionProposal.RequiresAppend);
+        Assert.Equal(TimelineImportPlacementReason.CollidesWithExistingSegment, collisionProposal.Reason);
+    }
+
+    [Fact]
+    public void Later_import_proposal_preserves_manual_layout_when_both_metadata_neighbours_disagree()
+    {
+        var recordedAt = DateTimeOffset.Parse("2026-07-14T18:00:00-04:00");
+        var first = Source("001.mp4", recordedAt, TimeSpan.FromSeconds(10));
+        var later = Source("003.mp4", recordedAt.AddSeconds(30), TimeSpan.FromSeconds(5));
+        var imported = Source("002.mp4", recordedAt.AddSeconds(15), TimeSpan.FromSeconds(5));
+        TimelineSegment[] existing =
+        [
+            new(first.Id, TimeSpan.Zero, TimeSpan.Zero, first.Duration),
+            // The reviewer deliberately moved this clip ten seconds later
+            // than its capture clock would imply.
+            new(later.Id, TimeSpan.FromSeconds(40), TimeSpan.Zero, later.Duration)
+        ];
+
+        var proposal = TimelineSegmentPlanner.ProposeMetadataPlacement(existing, [first, later], imported);
+
+        Assert.True(proposal.RequiresAppend);
+        Assert.Equal(TimelineImportPlacementReason.ConflictsWithExistingLayout, proposal.Reason);
+        Assert.Null(proposal.ProjectStart);
+    }
+
+    [Fact]
     public void Resolve_preserves_explicit_gap_between_clips()
     {
         var firstId = Guid.NewGuid();
@@ -101,4 +219,25 @@ public sealed class VirtualTimelineTests
         Assert.Equal(TimeSpan.FromMinutes(1) - TimeSpan.FromMilliseconds(1), final?.SourceTime);
         Assert.Null(timeline.Resolve(TimeSpan.FromHours(4)));
     }
+
+    private static MediaSource Source(
+        string name,
+        DateTimeOffset recordedAt,
+        TimeSpan duration,
+        MediaCaptureTimestampConfidence confidence = MediaCaptureTimestampConfidence.Trusted,
+        MediaCaptureTimestampSource source = MediaCaptureTimestampSource.ContainerCreationTime) =>
+        new(
+            Guid.NewGuid(),
+            name,
+            name,
+            1,
+            recordedAt,
+            duration,
+            CaptureMetadata: new MediaCaptureMetadata(
+                recordedAt,
+                recordedAt.ToString("O"),
+                source,
+                HasExplicitOffset: true,
+                confidence,
+                FileSystemRecordedAtHint: recordedAt));
 }
