@@ -87,6 +87,13 @@ public sealed class VirtualTimelineControl : Control
     public static readonly StyledProperty<IReadOnlyList<GpxStopMarkerViewModel>?> GpxStopsProperty =
         AvaloniaProperty.Register<VirtualTimelineControl, IReadOnlyList<GpxStopMarkerViewModel>?>(nameof(GpxStops));
 
+    /// <summary>
+    /// Transient camera-clock and GPX positions for an explicitly entered wall-clock time.
+    /// They are visual guides only; neither timeline playback nor evidence timing changes.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<TimelineExactTimeGuideMarkerViewModel>?> ExactTimeGuidesProperty =
+        AvaloniaProperty.Register<VirtualTimelineControl, IReadOnlyList<TimelineExactTimeGuideMarkerViewModel>?>(nameof(ExactTimeGuides));
+
     public static readonly StyledProperty<TimelineClipEditMode> EditModeProperty =
         AvaloniaProperty.Register<VirtualTimelineControl, TimelineClipEditMode>(
             nameof(EditMode),
@@ -149,6 +156,7 @@ public sealed class VirtualTimelineControl : Control
             GpxSpeedSamplesProperty,
             GpxPresentationOffsetSecondsProperty,
             GpxStopsProperty,
+            ExactTimeGuidesProperty,
             EditModeProperty);
     }
 
@@ -256,6 +264,12 @@ public sealed class VirtualTimelineControl : Control
     {
         get => GetValue(GpxStopsProperty);
         set => SetValue(GpxStopsProperty, value);
+    }
+
+    public IReadOnlyList<TimelineExactTimeGuideMarkerViewModel>? ExactTimeGuides
+    {
+        get => GetValue(ExactTimeGuidesProperty);
+        set => SetValue(ExactTimeGuidesProperty, value);
     }
 
     public TimelineClipEditMode EditMode
@@ -683,6 +697,7 @@ public sealed class VirtualTimelineControl : Control
             DrawBlocks(context, primary);
             DrawClipDragPreview(context, amber);
             DrawGpxLane(context, teal);
+            DrawExactTimeGuides(context);
             DrawIncidents(context, muted, amber);
             DrawPlayhead(context, amber);
             DrawPreview(context, primary, muted, raised, border);
@@ -815,6 +830,37 @@ public sealed class VirtualTimelineControl : Control
                 new Point(x, y - 9), new Point(x, y + 9));
             context.DrawEllipse(Brush("#0D242D"), new Pen(brush, 2), new Point(x, y), 6, 6);
             DrawText(context, (anchor.Index + 1).ToString(CultureInfo.InvariantCulture), x - 2.5, y - 5, brush, 8);
+        }
+    }
+
+    private void DrawExactTimeGuides(DrawingContext context)
+    {
+        if (ExactTimeGuides is not { Count: > 0 })
+        {
+            return;
+        }
+
+        var labelIndex = 0;
+        foreach (var guide in ExactTimeGuides.OrderBy(guide => guide.ProjectTime))
+        {
+            var x = HeaderWidth + _viewport.TimeToPixel(guide.ProjectTime.TotalSeconds);
+            if (x < HeaderWidth - 1 || x > Bounds.Width + 1)
+            {
+                continue;
+            }
+
+            var brush = GetGpxBrush(guide.Color);
+            context.DrawLine(
+                new Pen(brush, 1.5),
+                new Point(x, 1),
+                new Point(x, TimelineHeight - 1));
+            DrawText(
+                context,
+                guide.Label,
+                Math.Min(x + 4, Bounds.Width - 42),
+                VideoLaneTop + 3 + (labelIndex++ % 2) * 10,
+                brush,
+                8);
         }
     }
 
@@ -1853,6 +1899,14 @@ public sealed record GpxStopMarkerViewModel(
     TimeSpan ProjectTime,
     TimeSpan Duration,
     string Label);
+
+/// <summary>
+/// A non-persistent vertical guide rendered for one exact camera/GPX wall-clock comparison.
+/// </summary>
+public sealed record TimelineExactTimeGuideMarkerViewModel(
+    TimeSpan ProjectTime,
+    string Label,
+    string Color);
 
 public sealed class TimelineGpxAnchorEditEventArgs(
     int anchorIndex,

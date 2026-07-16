@@ -56,6 +56,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _timelineGpxEditWasPlaying;
     private GpxSynchronizationSession? _gpxSynchronizationPreview;
     private bool _suppressGpxOffsetPreview;
+    private DateTimeOffset? _exactTimelineGuideTime;
     private readonly Dictionary<Guid, GpxSpeedProfile> _gpxSpeedProfileCache = [];
     private Guid? _gpxTimelineSpeedPresentationSourceId;
     private SyncAnchor[] _gpxTimelineSpeedPresentationAnchors = [];
@@ -196,6 +197,18 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _gpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
+
+    [ObservableProperty]
+    private string _exactTimelineTimeText = string.Empty;
+
+    [ObservableProperty]
+    private string _exactTimelineGuideStatusText = "Enter an exact timestamp with its UTC offset to plot camera and GPX guides.";
+
+    [ObservableProperty]
+    private string _cameraClockReferenceText = "Video metadata: no trusted explicit-offset camera time is available.";
+
+    [ObservableProperty]
+    private IReadOnlyList<TimelineExactTimeGuideMarkerViewModel> _exactTimelineGuideMarkers = [];
 
     [ObservableProperty]
     private string _intersection = string.Empty;
@@ -435,6 +448,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _timelineGpxEditWasPlaying = false;
         _gpxSpeedProfileCache.Clear();
         _project = new ProjectDocument();
+        ResetExactTimelineGuide(clearTimestampText: true);
+        UpdateCameraClockReferenceText();
         ProjectDirectory = null;
         ProjectTitle = "No project open";
         ImportedMedia = [];
@@ -531,6 +546,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _timelineGpxEditWasPlaying = false;
         _gpxSpeedProfileCache.Clear();
         _project = project;
+        ResetExactTimelineGuide(clearTimestampText: true);
+        UpdateCameraClockReferenceText();
         ProjectDirectory = Path.GetFullPath(projectDirectory);
         _locationResolver = new NominatimLocationResolver(
             Path.Combine(ProjectDirectory, "cache", "geocoding.json"));
@@ -1548,6 +1565,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                     .Where(anchor => anchor.GpxSourceId == gpx.Id)
                     .ToArray());
         }
+        RefreshExactTimelineGuide(updateVisualWorkspace: true);
         var clamped = TimeSpan.FromSeconds(Math.Clamp(playhead.TotalSeconds, 0, MaximumSeconds));
         _updatingFromMedia = true;
         CurrentSeconds = clamped.TotalSeconds;
@@ -1731,6 +1749,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _virtualTimeline = new VirtualTimeline(_project.Timeline.Segments);
         MaximumSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
         RebuildTimelineDisplay();
+        UpdateCameraClockReferenceText();
+        RefreshExactTimelineGuide(updateVisualWorkspace: true);
         if (sources.Count == 0)
         {
             return;
@@ -2099,6 +2119,26 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         CancelGpxSynchronizationPreview("GPX synchronization preview canceled");
 
     [RelayCommand]
+    private void PlotExactTimelineGuide()
+    {
+        if (!TimelineExactTimeGuidePlanner.TryParseExplicitOffset(ExactTimelineTimeText, out var exactTime))
+        {
+            ExactTimelineGuideStatusText = "Enter an ISO-style timestamp with Z or a numeric UTC offset, for example 2026-07-16 12:34:56.789 +00:00.";
+            return;
+        }
+
+        _exactTimelineGuideTime = exactTime;
+        RefreshExactTimelineGuide(updateVisualWorkspace: true);
+    }
+
+    [RelayCommand]
+    private void ClearExactTimelineGuide()
+    {
+        ResetExactTimelineGuide(clearTimestampText: true);
+        UpdateTimelineVisualWorkspace();
+    }
+
+    [RelayCommand]
     private async Task SetFirstGpxAnchorAsync()
     {
         if (!CanEditGpxSynchronization())
@@ -2352,6 +2392,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             GpxSyncStatusText += " • preview";
         }
         UpdateGpxAnchorClock(CurrentSeconds);
+        RefreshExactTimelineGuide();
         UpdateTimelineVisualWorkspace();
         UpdateTelemetry(CurrentSeconds);
     }
@@ -2566,6 +2607,97 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             CultureInfo.InvariantCulture,
             DateTimeStyles.AllowWhiteSpaces,
             out value);
+
+    private void RefreshExactTimelineGuide(bool updateVisualWorkspace = false)
+    {
+        UpdateCameraClockReferenceText();
+        if (_exactTimelineGuideTime is not { } exactTime)
+        {
+            return;
+        }
+
+        TimelineExactTimeGuide guide;
+        string? gpxError = null;
+        try
+        {
+            guide = TimelineExactTimeGuidePlanner.Create(
+                exactTime,
+                _project.Timeline.ClockReference,
+                _gpxTimelineMapper);
+        }
+        catch (InvalidOperationException exception)
+        {
+            // A malformed synchronization should not hide a valid camera-clock guide.
+            guide = TimelineExactTimeGuidePlanner.Create(
+                exactTime,
+                _project.Timeline.ClockReference,
+                gpxTimelineMapper: null);
+            gpxError = exception.Message;
+        }
+
+        var markers = new List<TimelineExactTimeGuideMarkerViewModel>(2);
+        if (guide.CameraProjectTime is { } cameraProjectTime)
+        {
+            markers.Add(new TimelineExactTimeGuideMarkerViewModel(
+                cameraProjectTime,
+                "Camera",
+                "#55D6FF"));
+        }
+        if (guide.GpxProjectTime is { } gpxProjectTime)
+        {
+            markers.Add(new TimelineExactTimeGuideMarkerViewModel(
+                gpxProjectTime,
+                "GPX",
+                "#A8E56C"));
+        }
+
+        ExactTimelineGuideMarkers = markers;
+        var cameraText = guide.CameraProjectTime is { } camera
+            ? $"camera {FormatSignedTimelineTime(camera)}"
+            : "camera unavailable";
+        var gpxText = guide.GpxProjectTime is { } gpx
+            ? $"GPX {FormatSignedTimelineTime(gpx)}"
+            : gpxError is null ? "GPX unavailable" : $"GPX unavailable ({gpxError})";
+        var deltaText = guide.GpxMinusCamera is { } delta
+            ? $"GPX − camera {delta.TotalSeconds:+0.000;-0.000;0.000} s"
+            : "compare unavailable";
+        ExactTimelineGuideStatusText = $"Exact {exactTime:O} • {cameraText} • {gpxText} • {deltaText}";
+
+        if (updateVisualWorkspace)
+        {
+            UpdateTimelineVisualWorkspace();
+        }
+    }
+
+    private void ResetExactTimelineGuide(bool clearTimestampText)
+    {
+        _exactTimelineGuideTime = null;
+        ExactTimelineGuideMarkers = [];
+        if (clearTimestampText)
+        {
+            ExactTimelineTimeText = string.Empty;
+        }
+        ExactTimelineGuideStatusText = "Enter an exact timestamp with its UTC offset to plot camera and GPX guides.";
+    }
+
+    private void UpdateCameraClockReferenceText()
+    {
+        var clockReference = _project.Timeline.ClockReference;
+        if (clockReference is null)
+        {
+            CameraClockReferenceText = "Video metadata: no trusted explicit-offset camera time is available.";
+            return;
+        }
+
+        var source = _project.Media.FirstOrDefault(media => media.Id == clockReference.MediaSourceId);
+        var rawTimestamp = source?.CaptureMetadata?.RawTimestamp;
+        var rawText = string.IsNullOrWhiteSpace(rawTimestamp)
+            ? clockReference.CameraTime.ToString("O", CultureInfo.InvariantCulture)
+            : rawTimestamp.Trim();
+        var confirmation = clockReference.UserConfirmed ? "reviewer-confirmed" : "trusted import metadata";
+        CameraClockReferenceText =
+            $"Video metadata raw: {rawText} • {clockReference.Source} • reference {clockReference.CameraTime:O} • {confirmation}";
+    }
 
     private void UpdateGpxAnchorClock(double projectSeconds)
     {
@@ -3143,7 +3275,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private void UpdateTimelineVisualWorkspace()
     {
         var projectEnd = Math.Max(0, _virtualTimeline.Duration.TotalSeconds);
-        if (projectEnd <= 0 && !HasGpx)
+        var guideTimes = ExactTimelineGuideMarkers
+            .Select(marker => marker.ProjectTime.TotalSeconds)
+            .Where(double.IsFinite)
+            .ToArray();
+        if (projectEnd <= 0 && !HasGpx && guideTimes.Length == 0)
         {
             TimelineDisplayStartSeconds = 0;
             TimelineDisplayDurationSeconds = 1;
@@ -3158,6 +3294,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             : projectEnd;
         var first = Math.Min(0, Math.Min(coverageStart, coverageEnd));
         var last = Math.Max(projectEnd, Math.Max(coverageStart, coverageEnd));
+        if (guideTimes.Length > 0)
+        {
+            first = Math.Min(first, guideTimes.Min());
+            last = Math.Max(last, guideTimes.Max());
+        }
         var padding = Math.Clamp(Math.Max(1, projectEnd) * 0.05, 5, 60);
         TimelineDisplayStartSeconds = first - padding;
         TimelineDisplayDurationSeconds = Math.Max(1, last - first + padding * 2);

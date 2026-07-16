@@ -285,6 +285,20 @@
                     </Grid>
                     <Button IsEnabled="{Binding IsGpxSynchronizationEditingEnabled}" Command="{Binding ClearGpxDriftCommand}" Content="Clear drift correction" AutomationProperties.Name="Clear GPX drift correction" />
                     <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="{Binding GpxSyncStatusText}" />
+                    <Separator Margin="0,3" />
+                    <TextBlock FontWeight="SemiBold" Text="Exact time guide" />
+                    <TextBlock Classes="muted" FontSize="9" TextWrapping="Wrap" Text="{Binding CameraClockReferenceText}" />
+                    <TextBox FontFamily="Consolas"
+                             FontSize="10"
+                             Text="{Binding ExactTimelineTimeText}"
+                             Watermark="2026-07-16 12:34:56.789 +00:00"
+                             ToolTip.Tip="An explicit UTC offset is required; plot only compares clocks and never seeks playback"
+                             AutomationProperties.Name="Exact timeline timestamp" />
+                    <Grid ColumnDefinitions="*,*">
+                      <Button Margin="0,0,3,0" Command="{Binding PlotExactTimelineGuideCommand}" Content="Plot guides" AutomationProperties.Name="Plot exact time guides" />
+                      <Button Grid.Column="1" Margin="3,0,0,0" Command="{Binding ClearExactTimelineGuideCommand}" Content="Clear guides" AutomationProperties.Name="Clear exact time guides" />
+                    </Grid>
+                    <TextBlock Classes="muted" FontSize="9" TextWrapping="Wrap" Text="{Binding ExactTimelineGuideStatusText}" />
                   </StackPanel>
                 </Border>
               </Flyout>
@@ -464,6 +478,7 @@
                                          GpxSpeedSamples="{Binding GpxTimelineSpeedSamples}"
                                          GpxPresentationOffsetSeconds="{Binding GpxTimelineSpeedPresentationOffsetSeconds}"
                                          GpxStops="{Binding GpxTimelineStops}"
+                                         ExactTimeGuides="{Binding ExactTimelineGuideMarkers}"
                                          HasSelectedIncident="{Binding HasSelectedIncident}"
                                          SelectedIncidentStartSeconds="{Binding SelectedIncidentStartSeconds}"
                                          SelectedIncidentEndSeconds="{Binding SelectedIncidentEndSeconds}"
