@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -50,6 +51,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private ExternalToolAvailability? _thumbnailAvailability;
     private ExternalToolAvailability? _proxyAvailability;
     private Guid? _editingIncidentId;
+    private double? _incidentPreviewEndSeconds;
     private double _incidentStartSeconds;
     private double _incidentEndSeconds;
     private MediaReviewPlaybackKind _loadedPlaybackKind;
@@ -365,6 +367,68 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _isSettingsPageOpen;
 
     [ObservableProperty]
+    private bool _isIncidentLibraryOpen;
+
+    [ObservableProperty]
+    private bool _isIncidentPreviewActive;
+
+    [ObservableProperty]
+    private string _incidentPreviewTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _incidentPreviewDetail = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedLibraryIncidents))]
+    [NotifyPropertyChangedFor(nameof(CanApplyIncidentBatchEdit))]
+    private int _selectedLibraryIncidentCount;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanApplyIncidentBatchEdit))]
+    private bool _applyBatchCategory;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanApplyIncidentBatchEdit))]
+    private bool _applyBatchVehicleMake;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanApplyIncidentBatchEdit))]
+    private bool _applyBatchVehicleModel;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanApplyIncidentBatchEdit))]
+    private bool _applyBatchVehicleColour;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanApplyIncidentBatchEdit))]
+    private bool _applyBatchTags;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanApplyIncidentBatchEdit))]
+    private bool _applyBatchVehicleConfirmation;
+
+    [ObservableProperty]
+    private string _batchCategory = "Bike-lane obstruction";
+
+    [ObservableProperty]
+    private string _batchVehicleMake = string.Empty;
+
+    [ObservableProperty]
+    private string _batchVehicleModel = string.Empty;
+
+    [ObservableProperty]
+    private string _batchVehicleColour = "Other";
+
+    [ObservableProperty]
+    private string _batchTagsText = string.Empty;
+
+    [ObservableProperty]
+    private bool _batchVehicleValuesConfirmed;
+
+    [ObservableProperty]
+    private string _batchEditStatus = "Select incidents, then choose only the fields to update.";
+
+    [ObservableProperty]
     private string _settingsLogLevel = RoadWatcherLogLevel.Warning.ToString();
 
     [ObservableProperty]
@@ -420,6 +484,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         };
         _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Normal, (_, _) =>
         {
+            if (IsIncidentPreviewActive && _incidentPreviewEndSeconds is { } previewEnd && CurrentSeconds >= previewEnd)
+            {
+                EndIncidentPreview();
+                return;
+            }
+
             if (IsPlaying && _activeSegment is null && _virtualTimeline.Duration > TimeSpan.Zero)
             {
                 CurrentSeconds = Math.Min(MaximumSeconds, CurrentSeconds + (0.1 * PlaybackRate));
@@ -495,8 +565,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public Guid? ActiveGpxSourceId => GetActiveGpxSource()?.Id;
     public bool HasRoadContext => _roadContextSnapshot is not null;
     public bool CanLoadRoadContext => HasOpenProject && HasGpx && !IsRoadContextLoading;
+    public bool HasSelectedLibraryIncidents => SelectedLibraryIncidentCount > 0;
+    public bool CanApplyIncidentBatchEdit => HasSelectedLibraryIncidents &&
+        (ApplyBatchCategory ||
+         ApplyBatchVehicleMake ||
+         ApplyBatchVehicleModel ||
+         ApplyBatchVehicleColour ||
+         ApplyBatchTags ||
+         ApplyBatchVehicleConfirmation);
     public string[] Provinces { get; } = ["ON", "QC", "BC", "AB", "MB", "SK", "NB", "NS", "PE", "NL", "NT", "NU", "YT", "Other"];
     public Confidence[] ConfidenceLevels { get; } = Enum.GetValues<Confidence>();
+    public ObservableCollection<IncidentLibraryItemViewModel> IncidentLibraryItems { get; } = [];
 
     public event EventHandler<IReadOnlyList<TrackPoint>>? GpxTrackChanged;
     public event EventHandler<TelemetrySample>? TelemetrySampleChanged;
@@ -607,6 +686,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _draftSourcePosition = null;
         _lastCapturedSourceFrame = null;
         _editingIncidentId = null;
+        EndIncidentPreview();
+        IsIncidentLibraryOpen = false;
+        ClearIncidentLibraryItems();
         HasIncidentDraft = false;
         IsMarkingModeEnabled = false;
         IsMarkingFrameActive = false;
@@ -693,6 +775,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _draftSourcePosition = null;
         _lastCapturedSourceFrame = null;
         _editingIncidentId = null;
+        EndIncidentPreview();
+        IsIncidentLibraryOpen = false;
         HasSelectedIncident = false;
         HasIncidentDraft = false;
         IsMarkingModeEnabled = false;
@@ -2288,6 +2372,13 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         var nextProjectTime = completed.ProjectStart + completed.Duration;
         _activeSegment = null;
+        if (IsIncidentPreviewActive && _incidentPreviewEndSeconds is { } previewEnd &&
+            nextProjectTime.TotalSeconds >= previewEnd)
+        {
+            EndIncidentPreview();
+            return;
+        }
+
         _updatingFromMedia = true;
         CurrentSeconds = Math.Min(MaximumSeconds, nextProjectTime.TotalSeconds);
         _updatingFromMedia = false;
@@ -3450,6 +3541,153 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private void OpenIncidentLibrary()
+    {
+        if (!HasOpenProject)
+        {
+            StatusText = "Create or open a project before reviewing incidents.";
+            return;
+        }
+
+        IsSettingsPageOpen = false;
+        RebuildIncidentLibrary();
+        IsIncidentLibraryOpen = true;
+        BatchEditStatus = IncidentLibraryItems.Count == 0
+            ? "No saved incidents yet. Mark and save an incident in the workbench first."
+            : "Select incidents, then choose only the fields to update.";
+    }
+
+    [RelayCommand]
+    private void CloseIncidentLibrary() => IsIncidentLibraryOpen = false;
+
+    [RelayCommand]
+    private void SelectAllLibraryIncidents()
+    {
+        foreach (var item in IncidentLibraryItems)
+        {
+            item.IsSelected = true;
+        }
+    }
+
+    [RelayCommand]
+    private void ClearLibrarySelection()
+    {
+        foreach (var item in IncidentLibraryItems)
+        {
+            item.IsSelected = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ApplyIncidentBatchEditAsync()
+    {
+        if (ProjectDirectory is null)
+        {
+            BatchEditStatus = "Open a project before applying a batch edit.";
+            return;
+        }
+
+        var selectedIds = IncidentLibraryItems
+            .Where(item => item.IsSelected)
+            .Select(item => item.Id)
+            .ToArray();
+        if (selectedIds.Length == 0)
+        {
+            BatchEditStatus = "Select at least one incident first.";
+            return;
+        }
+
+        var edit = new IncidentBatchEdit(
+            ApplyBatchCategory ? MapIncidentType(BatchCategory) : null,
+            ApplyBatchVehicleMake ? new IncidentBatchTextEdit(BatchVehicleMake) : null,
+            ApplyBatchVehicleModel ? new IncidentBatchTextEdit(BatchVehicleModel) : null,
+            ApplyBatchVehicleColour ? new IncidentBatchTextEdit(BatchVehicleColour) : null,
+            ApplyBatchTags ? IncidentInputParser.ParseTags(BatchTagsText) : null,
+            ApplyBatchVehicleConfirmation ? BatchVehicleValuesConfirmed : null);
+        if (!CanApplyIncidentBatchEdit)
+        {
+            BatchEditStatus = "Choose at least one batch field to update.";
+            return;
+        }
+
+        using var mutation = await TryBeginProjectMutationAsync("batch editing incidents");
+        if (mutation is null)
+        {
+            return;
+        }
+
+        var result = IncidentBatchEditor.Apply(_project.Incidents, selectedIds, edit);
+        if (result.UpdatedCount == 0)
+        {
+            BatchEditStatus = "The selected incidents already have those values; nothing changed.";
+            return;
+        }
+
+        _project = _project with { Incidents = result.Incidents.ToList() };
+        await _projectStore.SaveAsync(_project, ProjectDirectory);
+        IncidentCount = _project.Incidents.Count;
+        RebuildIncidentDisplay();
+        ResetBatchEditForm();
+        BatchEditStatus = $"Updated {result.UpdatedCount} incident(s) • source frames, locations, and attachments were unchanged.";
+        StatusText = BatchEditStatus;
+    }
+
+    public async Task PreviewIncidentAsync(Guid incidentId, CancellationToken cancellationToken = default)
+    {
+        var incident = _project.Incidents.FirstOrDefault(item => item.Id == incidentId);
+        if (incident is null)
+        {
+            StatusText = "That incident is no longer available.";
+            return;
+        }
+
+        SelectIncident(incidentId);
+        IsIncidentLibraryOpen = false;
+        if (!HasLoadedMedia)
+        {
+            StatusText = "Incident details are open, but its video source is not currently available.";
+            return;
+        }
+
+        if (!IncidentPreviewPlanner.TryCreate(
+                incident,
+                _virtualTimeline.Duration,
+                out var preview,
+                out var previewError))
+        {
+            StatusText = previewError ?? "This incident does not have a playable project window.";
+            return;
+        }
+
+        _incidentPreviewEndSeconds = preview!.End.TotalSeconds;
+        IncidentPreviewTitle = $"Preview • {FormatIncidentType(incident.Type)}";
+        IncidentPreviewDetail = $"{FormatTimelineTime(preview.Start)} – {FormatTimelineTime(preview.End)} • click Stop preview to remain at the current frame";
+        IsIncidentPreviewActive = true;
+        IsPlaying = true;
+        await SeekProjectTimeAsync(preview.Start, resumePlayback: true, cancellationToken);
+        StatusText = $"Previewing {FormatIncidentType(incident.Type)} • stops at {FormatTimelineTime(preview.End)}";
+    }
+
+    [RelayCommand]
+    private void StopIncidentPreview() => EndIncidentPreview();
+
+    private void EndIncidentPreview()
+    {
+        if (!IsIncidentPreviewActive)
+        {
+            _incidentPreviewEndSeconds = null;
+            return;
+        }
+
+        IsIncidentPreviewActive = false;
+        _incidentPreviewEndSeconds = null;
+        IsPlaying = false;
+        _mediaEngine.Pause();
+        IncidentPreviewDetail = $"Stopped at {CurrentTimeText} • the incident details remain open in the inspector.";
+        StatusText = "Incident clip preview stopped";
+    }
+
+    [RelayCommand]
     private void MarkIncident()
     {
         var timelinePosition = _virtualTimeline.Resolve(TimeSpan.FromSeconds(CurrentSeconds));
@@ -4206,6 +4444,88 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             SelectedIncidentStartSeconds = 0;
             SelectedIncidentEndSeconds = 0;
         }
+
+        RebuildIncidentLibrary();
+    }
+
+    private void RebuildIncidentLibrary()
+    {
+        var selectedIds = IncidentLibraryItems
+            .Where(item => item.IsSelected)
+            .Select(item => item.Id)
+            .ToHashSet();
+        ClearIncidentLibraryItems();
+        foreach (var incident in _project.Incidents.OrderBy(item => item.ProjectStart))
+        {
+            var location = incident.Location is { } savedLocation
+                ? savedLocation.Intersection ?? savedLocation.Address ??
+                    $"{savedLocation.Latitude:F5}, {savedLocation.Longitude:F5}"
+                : "No location";
+            var vehicle = incident.Vehicle is { } savedVehicle
+                ? string.Join(" · ", new[]
+                    {
+                        savedVehicle.PlateNumber,
+                        savedVehicle.Make,
+                        savedVehicle.Model,
+                        savedVehicle.Colour
+                    }
+                    .Where(value => !string.IsNullOrWhiteSpace(value)))
+                : "No vehicle details";
+            var tags = incident.Tags.Count == 0
+                ? "No tags"
+                : string.Join(", ", incident.Tags);
+            var item = new IncidentLibraryItemViewModel(
+                incident.Id,
+                FormatIncidentType(incident.Type),
+                $"{FormatTimelineTime(incident.ProjectStart)} – {FormatTimelineTime(incident.ProjectEnd)}",
+                location,
+                vehicle,
+                tags,
+                incident.Attachments.Count,
+                selectedIds.Contains(incident.Id));
+            item.PropertyChanged += OnIncidentLibraryItemPropertyChanged;
+            IncidentLibraryItems.Add(item);
+        }
+
+        RefreshLibrarySelectionState();
+    }
+
+    private void ClearIncidentLibraryItems()
+    {
+        foreach (var item in IncidentLibraryItems)
+        {
+            item.PropertyChanged -= OnIncidentLibraryItemPropertyChanged;
+        }
+
+        IncidentLibraryItems.Clear();
+        RefreshLibrarySelectionState();
+    }
+
+    private void OnIncidentLibraryItemPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
+    {
+        if (eventArgs.PropertyName == nameof(IncidentLibraryItemViewModel.IsSelected))
+        {
+            RefreshLibrarySelectionState();
+        }
+    }
+
+    private void RefreshLibrarySelectionState() =>
+        SelectedLibraryIncidentCount = IncidentLibraryItems.Count(item => item.IsSelected);
+
+    private void ResetBatchEditForm()
+    {
+        ApplyBatchCategory = false;
+        ApplyBatchVehicleMake = false;
+        ApplyBatchVehicleModel = false;
+        ApplyBatchVehicleColour = false;
+        ApplyBatchTags = false;
+        ApplyBatchVehicleConfirmation = false;
+        BatchCategory = Categories[0];
+        BatchVehicleMake = string.Empty;
+        BatchVehicleModel = string.Empty;
+        BatchVehicleColour = "Other";
+        BatchTagsText = string.Empty;
+        BatchVehicleValuesConfirmed = false;
     }
 
     private double NormalizeProjectSeconds(double projectSeconds) =>
@@ -4540,6 +4860,28 @@ public sealed record IncidentMarkerViewModel(
     string Colour,
     string ToolTip,
     bool IsSelected);
+
+public partial class IncidentLibraryItemViewModel(
+    Guid id,
+    string category,
+    string projectWindowText,
+    string locationText,
+    string vehicleText,
+    string tagsText,
+    int attachmentCount,
+    bool isSelected) : ObservableObject
+{
+    public Guid Id { get; } = id;
+    public string Category { get; } = category;
+    public string ProjectWindowText { get; } = projectWindowText;
+    public string LocationText { get; } = locationText;
+    public string VehicleText { get; } = vehicleText;
+    public string TagsText { get; } = tagsText;
+    public int AttachmentCount { get; } = attachmentCount;
+
+    [ObservableProperty]
+    private bool _isSelected = isSelected;
+}
 
 public sealed record TimelineScrubPreview(
     double ProjectSeconds,

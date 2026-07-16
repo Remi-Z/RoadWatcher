@@ -67,6 +67,16 @@
             </StackPanel>
           </Button>
           <Button Classes="nav"
+                  Command="{Binding OpenIncidentLibraryCommand}"
+                  IsEnabled="{Binding HasOpenProject}"
+                  ToolTip.Tip="Review and batch-edit saved incidents"
+                  AutomationProperties.Name="Open incident library">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <materialIcons:MaterialIcon Kind="FormatListBulleted" Width="20" Height="20" />
+              <TextBlock VerticalAlignment="Center" Text="Incidents" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav"
                   Command="{Binding ToggleJobsDrawerCommand}"
                   ToolTip.Tip="Open FFmpeg jobs">
             <StackPanel Orientation="Horizontal" Spacing="12">
@@ -212,7 +222,7 @@
 
     <!-- Player controls -->
     <Border Grid.Row="2" Grid.Column="1" Classes="panel">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" Margin="9,0">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto" Margin="9,0">
         <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="{Binding PlayLabel}" AutomationProperties.Name="{Binding PlayLabel}">
           <materialIcons:MaterialIcon Kind="{Binding PlayIcon}" Width="23" Height="23" />
         </Button>
@@ -266,10 +276,17 @@
                   AutomationProperties.Name="Marking mode">
           <TextBlock FontSize="10" Text="Marking mode" />
         </CheckBox>
-        <Button Grid.Column="8" Classes="icon" Command="{Binding CaptureFrameCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Capture screenshot" AutomationProperties.Name="Capture current frame">
+        <Button Grid.Column="8"
+                Margin="0,0,6,0"
+                Command="{Binding StopIncidentPreviewCommand}"
+                IsVisible="{Binding IsIncidentPreviewActive}"
+                Content="Stop preview"
+                ToolTip.Tip="Stop at the current preview frame"
+                AutomationProperties.Name="Stop incident clip preview" />
+        <Button Grid.Column="9" Classes="icon" Command="{Binding CaptureFrameCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Capture screenshot" AutomationProperties.Name="Capture current frame">
           <materialIcons:MaterialIcon Kind="CameraOutline" Width="20" Height="20" />
         </Button>
-        <Button Grid.Column="9" Classes="icon" Click="OnCropFrameClicked" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Crop current frame" AutomationProperties.Name="Crop current frame">
+        <Button Grid.Column="10" Classes="icon" Click="OnCropFrameClicked" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Crop current frame" AutomationProperties.Name="Crop current frame">
           <materialIcons:MaterialIcon Kind="Crop" Width="20" Height="20" />
         </Button>
       </Grid>
@@ -650,6 +667,153 @@
           </StackPanel>
           <TextBlock Grid.Column="1" Classes="muted" FontSize="10" Text="{Binding StatusText}" />
         </Grid>
+      </Grid>
+    </Border>
+
+    <!-- Saved-incidents page. It deliberately uses standard Avalonia list,
+         checkbox, ComboBox, and TextBox controls so the later Fluent 2 pass
+         can restyle it without changing the batch-editing workflow. -->
+    <Border Grid.Row="0"
+            Grid.RowSpan="4"
+            Grid.Column="1"
+            Grid.ColumnSpan="5"
+            Background="#F2081A22"
+            IsVisible="{Binding IsIncidentLibraryOpen}">
+      <Grid Margin="20" RowDefinitions="56,*" ColumnDefinitions="*,330">
+        <Grid Grid.ColumnSpan="2" ColumnDefinitions="*,Auto">
+          <StackPanel VerticalAlignment="Center" Spacing="2">
+            <TextBlock FontSize="16" FontWeight="SemiBold" Text="Incident library" />
+            <TextBlock Classes="muted" FontSize="10" Text="Select records for a deliberate batch edit • double-click a row to review its video window and details" />
+          </StackPanel>
+          <Button Grid.Column="1"
+                  Classes="icon"
+                  VerticalAlignment="Center"
+                  Command="{Binding CloseIncidentLibraryCommand}"
+                  ToolTip.Tip="Return to workbench"
+                  AutomationProperties.Name="Close incident library">
+            <materialIcons:MaterialIcon Kind="Close" Width="20" Height="20" />
+          </Button>
+        </Grid>
+
+        <Border Grid.Row="1" Margin="0,0,14,0" Classes="panel" Padding="0">
+          <Grid RowDefinitions="42,*,Auto">
+            <Grid Margin="12,0" ColumnDefinitions="*,Auto,Auto">
+              <TextBlock VerticalAlignment="Center"
+                         Classes="muted"
+                         Text="{Binding SelectedLibraryIncidentCount, StringFormat={}{0} selected}" />
+              <Button Grid.Column="1"
+                      Margin="0,0,6,0"
+                      Padding="8,3"
+                      Command="{Binding SelectAllLibraryIncidentsCommand}"
+                      Content="Select all"
+                      AutomationProperties.Name="Select all incidents for batch edit" />
+              <Button Grid.Column="2"
+                      Padding="8,3"
+                      Command="{Binding ClearLibrarySelectionCommand}"
+                      Content="Clear"
+                      AutomationProperties.Name="Clear incident batch selection" />
+            </Grid>
+            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding IncidentLibraryItems}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Margin="12,0,12,8"
+                            Padding="12"
+                            Background="#C6081A22"
+                            BorderBrush="{StaticResource PanelBorder}"
+                            BorderThickness="1"
+                            CornerRadius="5"
+                            DoubleTapped="OnIncidentLibraryItemDoubleTapped"
+                            ToolTip.Tip="Double-click to preview this incident's video window">
+                      <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+                        <CheckBox Margin="0,1,12,0"
+                                  VerticalAlignment="Top"
+                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                  ToolTip.Tip="Include in batch edit"
+                                  AutomationProperties.Name="Select incident for batch edit" />
+                        <StackPanel Grid.Column="1" Spacing="3">
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Category}" />
+                          <TextBlock Classes="muted" FontFamily="Consolas" FontSize="10" Text="{Binding ProjectWindowText}" />
+                          <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="{Binding LocationText}" />
+                          <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="{Binding VehicleText}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" HorizontalAlignment="Right" Spacing="4">
+                          <TextBlock Classes="muted" FontSize="10" Text="{Binding AttachmentCount, StringFormat={}{0} file(s)}" />
+                          <TextBlock Classes="muted" FontSize="9" Text="Double-click preview" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="1"
+                                   Grid.Column="1"
+                                   Grid.ColumnSpan="2"
+                                   Margin="0,7,0,0"
+                                   Classes="muted"
+                                   FontSize="9"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding TagsText}" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+            <TextBlock Grid.Row="2"
+                       Margin="12,8,12,12"
+                       Classes="muted"
+                       FontSize="10"
+                       Text="Batch edits never alter an incident's source frame, project window, location, attachments, notes, or creation time." />
+          </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Grid.Column="1" Classes="panel" Padding="14">
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="10">
+              <TextBlock FontSize="13" FontWeight="SemiBold" Text="Batch edit selected" />
+              <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="Only checked fields change. An enabled blank make or type deliberately clears that field." />
+
+              <CheckBox IsChecked="{Binding ApplyBatchCategory, Mode=TwoWay}" Content="Set category" />
+              <ComboBox IsEnabled="{Binding ApplyBatchCategory}"
+                        ItemsSource="{Binding Categories}"
+                        SelectedItem="{Binding BatchCategory, Mode=TwoWay}"
+                        AutomationProperties.Name="Batch incident category" />
+
+              <CheckBox IsChecked="{Binding ApplyBatchVehicleMake, Mode=TwoWay}" Content="Set vehicle make" />
+              <TextBox IsEnabled="{Binding ApplyBatchVehicleMake}"
+                       Text="{Binding BatchVehicleMake, Mode=TwoWay}"
+                       Watermark="Brand / make"
+                       AutomationProperties.Name="Batch vehicle make" />
+
+              <CheckBox IsChecked="{Binding ApplyBatchVehicleModel, Mode=TwoWay}" Content="Set vehicle type" />
+              <TextBox IsEnabled="{Binding ApplyBatchVehicleModel}"
+                       Text="{Binding BatchVehicleModel, Mode=TwoWay}"
+                       Watermark="Type / model"
+                       AutomationProperties.Name="Batch vehicle type or model" />
+
+              <CheckBox IsChecked="{Binding ApplyBatchVehicleColour, Mode=TwoWay}" Content="Set vehicle colour" />
+              <ComboBox IsEnabled="{Binding ApplyBatchVehicleColour}"
+                        ItemsSource="{Binding VehicleColors}"
+                        SelectedItem="{Binding BatchVehicleColour, Mode=TwoWay}"
+                        AutomationProperties.Name="Batch vehicle colour" />
+
+              <CheckBox IsChecked="{Binding ApplyBatchTags, Mode=TwoWay}" Content="Append tags" />
+              <TextBox IsEnabled="{Binding ApplyBatchTags}"
+                       Text="{Binding BatchTagsText, Mode=TwoWay}"
+                       Watermark="Comma-separated tags"
+                       AutomationProperties.Name="Batch append incident tags" />
+
+              <CheckBox IsChecked="{Binding ApplyBatchVehicleConfirmation, Mode=TwoWay}" Content="Set vehicle confirmation" />
+              <CheckBox IsEnabled="{Binding ApplyBatchVehicleConfirmation}"
+                        IsChecked="{Binding BatchVehicleValuesConfirmed, Mode=TwoWay}"
+                        Content="Vehicle values confirmed"
+                        AutomationProperties.Name="Batch vehicle values confirmed" />
+
+              <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="{Binding BatchEditStatus}" />
+              <Button Classes="primary"
+                      Command="{Binding ApplyIncidentBatchEditCommand}"
+                      IsEnabled="{Binding CanApplyIncidentBatchEdit}"
+                      Content="Apply to selected incidents"
+                      AutomationProperties.Name="Apply incident batch edit" />
+            </StackPanel>
+          </ScrollViewer>
+        </Border>
       </Grid>
     </Border>
 

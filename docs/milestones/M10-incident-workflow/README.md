@@ -15,10 +15,18 @@ Improve the reviewer workflow around individual and multiple incident records be
 - The inspector now adds **Brand / make** and **Type / model** fields next to the existing plate, colour, confidence, and confirmation controls.
 - Values load from saved incidents, persist through `VehicleObservation`, and are already shown in the canonical evidence-export vehicle summary. Empty values remain optional for evidence that cannot support a make/model identification.
 
+## Slice 3 — incident library, batch edit, and clip preview
+
+- The new **Incidents** sidebar page shows every saved record with its project window, preferred location label, vehicle summary, tags, attachment count, and a selection checkbox.
+- Batch edits are intentionally narrow and opt-in per field: category, vehicle make, vehicle type/model, vehicle colour, appended tags, and vehicle confirmation. An enabled blank make/type field clears only that field. Source media/time, project window, location, attachments, notes, and creation time cannot be altered by the batch operation.
+- Double-clicking a row opens the existing inspector for that record and plays its persisted project-time incident window in the main player. The preview ends at the saved incident end or when the reviewer presses **Stop preview**; it never fabricates media outside the project timeline.
+
 ## Verification
 
 - `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore --filter FullyQualifiedName~RoadContextModelsTests -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-m10-intersection-final\bin\` — passed 9/9.
 - `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore --filter FullyQualifiedName~IncidentAndRecognitionTests.Project_store_round_trips_incident_provenance_and_attachment -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-m10-vehicle\bin\` — passed 1/1.
+- `dotnet build RoadWatcher.slnx --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-m10-library-final-build\bin\` — passed with 0 warnings and 0 errors.
+- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-m10-library-full\bin\` — passed 177/177, including 3 batch-edit and 3 incident-preview planning regressions.
 
 ## Screenshot state
 

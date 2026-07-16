@@ -80,6 +80,9 @@ M10 — Incident workflow: implementing intersection-first locations, richer veh
 - The focused Road-context model suite passed 9/9 after the new 100 m preference behavior, including a regression case outside the live-HUD threshold.
 - The incident inspector now captures vehicle make/brand and type/model alongside plate, jurisdiction, colour, and confidence. Both values round-trip through project persistence and are already included in the canonical HTML export's vehicle summary.
 - The focused incident persistence regression passed 1/1 after the make/type edit.
+- A new **Incidents** sidebar page lists every saved record, supports explicit multi-select batch changes (category, make, type, colour, tags, and vehicle confirmation), and preserves source-frame provenance, locations, evidence windows, attachments, notes, and creation times.
+- Double-clicking a library row returns to the workbench with its detail inspector loaded and plays its bounded project-time video window. The preview stops at the incident end or at the reviewer’s explicit stop action.
+- Release build passed with 0 warnings/errors and the full suite passed 177/177, including pure batch-edit and clip-preview planning tests.
 
 ## M07 closure record
 

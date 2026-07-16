@@ -1069,6 +1069,25 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void OnIncidentLibraryItemDoubleTapped(object? sender, TappedEventArgs eventArgs)
+    {
+        if (eventArgs.Source is CheckBox ||
+            sender is not Control { DataContext: IncidentLibraryItemViewModel item } ||
+            DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            await viewModel.PreviewIncidentAsync(item.Id);
+        }
+        catch (Exception exception)
+        {
+            ReportAsyncUiFailure(viewModel, "incident clip preview", exception);
+        }
+    }
+
     private void OnTimelineClipDragStarted(object? sender, EventArgs eventArgs)
     {
         if (DataContext is MainWindowViewModel viewModel)
