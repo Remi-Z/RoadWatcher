@@ -2,6 +2,29 @@ namespace RoadWatcher.Core;
 
 public static class TimelineSegmentPlanner
 {
+    public static IReadOnlyList<TimelineSegment> AppendMissing(
+        IEnumerable<TimelineSegment> existingSegments,
+        IEnumerable<MediaSource> mediaSources)
+    {
+        var existing = existingSegments.ToList();
+        if (existing.Count == 0)
+        {
+            return Build(mediaSources);
+        }
+
+        var existingIds = existing.Select(segment => segment.MediaSourceId).ToHashSet();
+        var cursor = existing.Max(segment => segment.ProjectStart + segment.Duration);
+        foreach (var source in mediaSources.Where(source =>
+                     source.Duration > TimeSpan.Zero && !existingIds.Contains(source.Id)))
+        {
+            existing.Add(new TimelineSegment(source.Id, cursor, TimeSpan.Zero, source.Duration));
+            existingIds.Add(source.Id);
+            cursor += source.Duration;
+        }
+
+        return existing;
+    }
+
     public static IReadOnlyList<TimelineSegment> Build(
         IEnumerable<MediaSource> mediaSources,
         TimeSpan? adjacencyTolerance = null)

@@ -47,6 +47,9 @@ public sealed partial class MainWindow : Window
             timeline.ScrubCommitted += OnTimelineScrubCommitted;
             timeline.ScrubCanceled += OnTimelineScrubCanceled;
             timeline.IncidentInvoked += OnTimelineIncidentInvoked;
+            timeline.ClipDragStarted += OnTimelineClipDragStarted;
+            timeline.ClipEditCommitted += OnTimelineClipEditCommitted;
+            timeline.ClipEditCanceled += OnTimelineClipEditCanceled;
         }
         InitializeMap();
         Closed += (_, _) =>
@@ -257,6 +260,22 @@ public sealed partial class MainWindow : Window
     private void OnTimelineZoomInClicked(object? sender, RoutedEventArgs eventArgs) =>
         this.FindControl<VirtualTimelineControl>("TimelineSurface")?.ZoomIn();
 
+    private void OnTimelineReorderModeChecked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (this.FindControl<VirtualTimelineControl>("TimelineSurface") is { } timeline)
+        {
+            timeline.EditMode = TimelineClipEditMode.Reorder;
+        }
+    }
+
+    private void OnTimelinePositionModeChecked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (this.FindControl<VirtualTimelineControl>("TimelineSurface") is { } timeline)
+        {
+            timeline.EditMode = TimelineClipEditMode.Position;
+        }
+    }
+
     private void OnTimelineScrubStarted(object? sender, EventArgs eventArgs)
     {
         _timelinePreviewCancellation?.Cancel();
@@ -320,6 +339,34 @@ public sealed partial class MainWindow : Window
         if (DataContext is MainWindowViewModel viewModel)
         {
             viewModel.SelectIncidentCommand.Execute(eventArgs.IncidentId);
+        }
+    }
+
+    private void OnTimelineClipDragStarted(object? sender, EventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.BeginTimelineClipEdit();
+        }
+    }
+
+    private async void OnTimelineClipEditCommitted(object? sender, TimelineClipEditEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            await viewModel.ApplyTimelineClipEditAsync(
+                eventArgs.MediaSourceId,
+                eventArgs.Mode,
+                eventArgs.TargetIndex,
+                eventArgs.ProjectStart);
+        }
+    }
+
+    private void OnTimelineClipEditCanceled(object? sender, EventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.CancelTimelineClipEdit();
         }
     }
 

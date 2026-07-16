@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Input;
@@ -45,6 +46,11 @@ public sealed class VirtualTimelineControl : Control
     public static readonly StyledProperty<bool> HasGpxProperty =
         AvaloniaProperty.Register<VirtualTimelineControl, bool>(nameof(HasGpx));
 
+    public static readonly StyledProperty<TimelineClipEditMode> EditModeProperty =
+        AvaloniaProperty.Register<VirtualTimelineControl, TimelineClipEditMode>(
+            nameof(EditMode),
+            TimelineClipEditMode.Reorder);
+
     private TimelineViewportState _viewport = TimelineViewportState.Fit(1, 1);
     private bool _isFit = true;
     private bool _isScrubbing;
@@ -53,6 +59,16 @@ public sealed class VirtualTimelineControl : Control
     private long _lastPreviewRequest;
     private Bitmap? _previewBitmap;
     private string _previewStatus = string.Empty;
+    private TimelineBlockViewModel? _dragBlock;
+    private Guid? _selectedMediaSourceId;
+    private bool _isClipDragging;
+    private double _dragPointerOffsetSeconds;
+    private double _dragProposedStartSeconds;
+    private int _dragTargetIndex;
+    private bool _dragValid;
+    private IPointer? _dragPointer;
+    private Point _dragStartPoint;
+    private bool _clipDragActivated;
 
     static VirtualTimelineControl()
     {
@@ -64,7 +80,8 @@ public sealed class VirtualTimelineControl : Control
             SelectedIncidentStartSecondsProperty,
             SelectedIncidentEndSecondsProperty,
             HasSelectedIncidentProperty,
-            HasGpxProperty);
+            HasGpxProperty,
+            EditModeProperty);
     }
 
     public VirtualTimelineControl()
@@ -121,11 +138,20 @@ public sealed class VirtualTimelineControl : Control
         set => SetValue(HasGpxProperty, value);
     }
 
+    public TimelineClipEditMode EditMode
+    {
+        get => GetValue(EditModeProperty);
+        set => SetValue(EditModeProperty, value);
+    }
+
     public event EventHandler? ScrubStarted;
     public event EventHandler<TimelineScrubEventArgs>? ScrubPreviewRequested;
     public event EventHandler<TimelineScrubEventArgs>? ScrubCommitted;
     public event EventHandler? ScrubCanceled;
     public event EventHandler<TimelineIncidentEventArgs>? IncidentInvoked;
+    public event EventHandler? ClipDragStarted;
+    public event EventHandler<TimelineClipEditEventArgs>? ClipEditCommitted;
+    public event EventHandler? ClipEditCanceled;
 
     public void Fit()
     {
@@ -167,6 +193,15 @@ public sealed class VirtualTimelineControl : Control
         _previewBitmap?.Dispose();
         _previewBitmap = null;
         _previewStatus = string.Empty;
+        InvalidateVisual();
+    }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new ControlAutomationPeer(this);
+
+    protected override void OnGotFocus(GotFocusEventArgs e)
+    {
+        base.OnGotFocus(e);
+        _selectedMediaSourceId ??= GetClipBlocks().FirstOrDefault()?.MediaSourceId;
         InvalidateVisual();
     }
 
@@ -222,22 +257,21 @@ public sealed class VirtualTimelineControl : Control
             }
         }
 
-        if (
-            (point.Y > RulerHeight && Math.Abs(point.X - playheadX) > 7))
+        if (point.Y <= RulerHeight || Math.Abs(point.X - playheadX) <= 7)
         {
+            BeginScrub(e, point);
             return;
         }
 
-        Focus();
-        _isScrubbing = true;
-        _scrubStartSeconds = PositionSeconds;
-        _scrubSeconds = GetTimeAt(point.X);
-        _lastPreviewRequest = 0;
-        e.Pointer.Capture(this);
-        ScrubStarted?.Invoke(this, EventArgs.Empty);
-        RequestPreview(force: true);
-        e.Handled = true;
-        InvalidateVisual();
+        var frontLaneTop = RulerHeight;
+        if (point.Y >= frontLaneTop && point.Y < frontLaneTop + LaneHeight)
+        {
+            var block = FindBlockAt(point.X);
+            if (block?.MediaSourceId is not null)
+            {
+                BeginClipDrag(e, point, block);
+            }
+        }
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -245,6 +279,10 @@ public sealed class VirtualTimelineControl : Control
         base.OnPointerMoved(e);
         if (!_isScrubbing)
         {
+            if (_isClipDragging)
+            {
+                UpdateClipDrag(e);
+            }
             return;
         }
 
@@ -259,6 +297,10 @@ public sealed class VirtualTimelineControl : Control
         base.OnPointerReleased(e);
         if (!_isScrubbing)
         {
+            if (_isClipDragging)
+            {
+                CompleteClipDrag(e);
+            }
             return;
         }
 
@@ -304,6 +346,49 @@ public sealed class VirtualTimelineControl : Control
             ClearScrubPreview();
             InvalidateVisual();
         }
+        else if (e.Key == Key.Escape && _isClipDragging)
+        {
+            CancelClipDrag();
+            e.Handled = true;
+        }
+        else if (_selectedMediaSourceId is { } selectedId &&
+                 (e.Key == Key.Left || e.Key == Key.Right))
+        {
+            var direction = e.Key == Key.Left ? -1 : 1;
+            var clips = GetClipBlocks();
+            var selectedIndex = clips.FindIndex(block => block.MediaSourceId == selectedId);
+            if (selectedIndex < 0)
+            {
+                return;
+            }
+
+            if (EditMode == TimelineClipEditMode.Reorder && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                var target = Math.Clamp(selectedIndex + direction, 0, clips.Count - 1);
+                if (target != selectedIndex)
+                {
+                    ClipDragStarted?.Invoke(this, EventArgs.Empty);
+                    ClipEditCommitted?.Invoke(this, new TimelineClipEditEventArgs(
+                        selectedId,
+                        EditMode,
+                        target,
+                        clips[selectedIndex].ProjectStart));
+                }
+                e.Handled = true;
+            }
+            else if (EditMode == TimelineClipEditMode.Position)
+            {
+                var increment = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 1 : 0.1;
+                var start = Math.Max(0, clips[selectedIndex].ProjectStart.TotalSeconds + direction * increment);
+                ClipDragStarted?.Invoke(this, EventArgs.Empty);
+                ClipEditCommitted?.Invoke(this, new TimelineClipEditEventArgs(
+                    selectedId,
+                    EditMode,
+                    selectedIndex,
+                    TimeSpan.FromSeconds(start)));
+                e.Handled = true;
+            }
+        }
     }
 
     public override void Render(DrawingContext context)
@@ -337,6 +422,7 @@ public sealed class VirtualTimelineControl : Control
         {
             DrawRuler(context, muted, border);
             DrawBlocks(context, primary);
+            DrawClipDragPreview(context, amber);
             DrawRearLane(context, muted);
             DrawGpxLane(context, teal);
             DrawIncidents(context, muted, amber);
@@ -378,6 +464,10 @@ public sealed class VirtualTimelineControl : Control
             var rect = new Rect(x + 1, y, Math.Max(1, width - 2), LaneHeight - 8);
             context.FillRectangle(Brush(block.Background), rect, 2);
             context.DrawRectangle(new Pen(Brush(block.BorderBrush), 1), rect, 2);
+            if (_selectedMediaSourceId is not null && block.MediaSourceId == _selectedMediaSourceId)
+            {
+                context.DrawRectangle(new Pen(Brush("#FFAD18"), 2), rect, 2);
+            }
             if (rect.Width > 45)
             {
                 DrawText(context, block.Label, rect.X + 7, rect.Y + 7, primary, 9);
@@ -488,6 +578,213 @@ public sealed class VirtualTimelineControl : Control
         ScrubPreviewRequested?.Invoke(this, new TimelineScrubEventArgs(_scrubSeconds));
     }
 
+    private void BeginScrub(PointerPressedEventArgs e, Point point)
+    {
+        Focus();
+        _isScrubbing = true;
+        _scrubStartSeconds = PositionSeconds;
+        _scrubSeconds = GetTimeAt(point.X);
+        _lastPreviewRequest = 0;
+        e.Pointer.Capture(this);
+        ScrubStarted?.Invoke(this, EventArgs.Empty);
+        RequestPreview(force: true);
+        e.Handled = true;
+        InvalidateVisual();
+    }
+
+    private void BeginClipDrag(PointerPressedEventArgs e, Point point, TimelineBlockViewModel block)
+    {
+        Focus();
+        _dragBlock = block;
+        _selectedMediaSourceId = block.MediaSourceId;
+        _isClipDragging = true;
+        _clipDragActivated = false;
+        _dragStartPoint = point;
+        _dragPointerOffsetSeconds = GetTimeAt(point.X) - block.ProjectStart.TotalSeconds;
+        _dragProposedStartSeconds = block.ProjectStart.TotalSeconds;
+        _dragTargetIndex = GetClipBlocks().FindIndex(candidate => candidate.MediaSourceId == block.MediaSourceId);
+        _dragValid = true;
+        _dragPointer = e.Pointer;
+        e.Pointer.Capture(this);
+        e.Handled = true;
+        InvalidateVisual();
+    }
+
+    private void UpdateClipDrag(PointerEventArgs e)
+    {
+        if (_dragBlock?.MediaSourceId is not { } mediaSourceId)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(this);
+        if (!_clipDragActivated)
+        {
+            var distance = point - _dragStartPoint;
+            if (Math.Abs(distance.X) < 4 && Math.Abs(distance.Y) < 4)
+            {
+                return;
+            }
+
+            _clipDragActivated = true;
+            ClipDragStarted?.Invoke(this, EventArgs.Empty);
+        }
+
+        if (point.X < HeaderWidth + 24)
+        {
+            _viewport = _viewport.PanByPixels(-12);
+        }
+        else if (point.X > Bounds.Width - 24)
+        {
+            _viewport = _viewport.PanByPixels(12);
+        }
+
+        var clips = GetClipBlocks();
+        if (EditMode == TimelineClipEditMode.Reorder)
+        {
+            var pointerTime = GetTimeAt(point.X);
+            _dragTargetIndex = clips.Count(candidate =>
+                candidate.MediaSourceId != mediaSourceId &&
+                candidate.ProjectStart.TotalSeconds + candidate.Duration.TotalSeconds / 2 < pointerTime);
+            _dragTargetIndex = Math.Clamp(_dragTargetIndex, 0, Math.Max(0, clips.Count - 1));
+            _dragValid = true;
+        }
+        else
+        {
+            var proposed = Math.Max(0, GetTimeAt(point.X) - _dragPointerOffsetSeconds);
+            if (!e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+            {
+                proposed = SnapClipStart(proposed, _dragBlock.Duration.TotalSeconds, mediaSourceId);
+            }
+            _dragProposedStartSeconds = proposed;
+            var end = proposed + _dragBlock.Duration.TotalSeconds;
+            _dragValid = clips
+                .Where(candidate => candidate.MediaSourceId != mediaSourceId)
+                .All(candidate =>
+                    end <= candidate.ProjectStart.TotalSeconds ||
+                    proposed >= candidate.ProjectStart.TotalSeconds + candidate.Duration.TotalSeconds);
+        }
+
+        e.Handled = true;
+        InvalidateVisual();
+    }
+
+    private void CompleteClipDrag(PointerReleasedEventArgs e)
+    {
+        var block = _dragBlock;
+        var valid = _dragValid;
+        var activated = _clipDragActivated;
+        _isClipDragging = false;
+        _clipDragActivated = false;
+        _dragBlock = null;
+        _dragPointer = null;
+        e.Pointer.Capture(null);
+        if (!activated)
+        {
+            e.Handled = true;
+            InvalidateVisual();
+            return;
+        }
+
+        if (block?.MediaSourceId is { } mediaSourceId && valid)
+        {
+            ClipEditCommitted?.Invoke(this, new TimelineClipEditEventArgs(
+                mediaSourceId,
+                EditMode,
+                _dragTargetIndex,
+                TimeSpan.FromSeconds(_dragProposedStartSeconds)));
+        }
+        else
+        {
+            ClipEditCanceled?.Invoke(this, EventArgs.Empty);
+        }
+        e.Handled = true;
+        InvalidateVisual();
+    }
+
+    private void CancelClipDrag()
+    {
+        _isClipDragging = false;
+        _clipDragActivated = false;
+        _dragBlock = null;
+        _dragPointer?.Capture(null);
+        _dragPointer = null;
+        ClipEditCanceled?.Invoke(this, EventArgs.Empty);
+        InvalidateVisual();
+    }
+
+    private void DrawClipDragPreview(DrawingContext context, IBrush amber)
+    {
+        if (!_isClipDragging || !_clipDragActivated || _dragBlock is null)
+        {
+            return;
+        }
+
+        if (EditMode == TimelineClipEditMode.Reorder)
+        {
+            var clips = GetClipBlocks();
+            var target = clips[Math.Clamp(_dragTargetIndex, 0, clips.Count - 1)];
+            var x = HeaderWidth + _viewport.TimeToPixel(target.ProjectStart.TotalSeconds);
+            context.DrawLine(new Pen(amber, 3), new Point(x, RulerHeight + 2), new Point(x, RulerHeight + LaneHeight - 2));
+            return;
+        }
+
+        var ghostX = HeaderWidth + _viewport.TimeToPixel(_dragProposedStartSeconds);
+        var width = Math.Max(2, _dragBlock.Duration.TotalSeconds * _viewport.PixelsPerSecond);
+        var rect = new Rect(ghostX + 1, RulerHeight + 4, Math.Max(1, width - 2), LaneHeight - 8);
+        var colour = _dragValid ? Color.Parse("#A014C9C3") : Color.Parse("#B0FF6B57");
+        context.FillRectangle(new SolidColorBrush(colour), rect, 2);
+        context.DrawRectangle(new Pen(_dragValid ? amber : Brush("#FF6B57"), 2), rect, 2);
+    }
+
+    private TimelineBlockViewModel? FindBlockAt(double controlX)
+    {
+        var time = GetTimeAt(controlX);
+        return Blocks?.FirstOrDefault(block =>
+            block.MediaSourceId is not null &&
+            time >= block.ProjectStart.TotalSeconds &&
+            time < block.ProjectStart.TotalSeconds + block.Duration.TotalSeconds);
+    }
+
+    private List<TimelineBlockViewModel> GetClipBlocks() => Blocks?
+        .Where(block => block.MediaSourceId is not null)
+        .OrderBy(block => block.ProjectStart)
+        .ToList() ?? [];
+
+    private double SnapClipStart(double proposed, double duration, Guid mediaSourceId)
+    {
+        var threshold = 8 / _viewport.PixelsPerSecond;
+        var candidates = new List<double> { 0, PositionSeconds };
+        if (Incidents is not null)
+        {
+            candidates.AddRange(Incidents.Select(incident => incident.ProjectTime.TotalSeconds));
+        }
+        foreach (var block in GetClipBlocks().Where(block => block.MediaSourceId != mediaSourceId))
+        {
+            candidates.Add(block.ProjectStart.TotalSeconds);
+            candidates.Add(block.ProjectStart.TotalSeconds + block.Duration.TotalSeconds);
+        }
+
+        var best = proposed;
+        var bestDistance = threshold;
+        foreach (var candidate in candidates)
+        {
+            var startDistance = Math.Abs(proposed - candidate);
+            if (startDistance < bestDistance)
+            {
+                best = candidate;
+                bestDistance = startDistance;
+            }
+            var endDistance = Math.Abs(proposed + duration - candidate);
+            if (endDistance < bestDistance)
+            {
+                best = candidate - duration;
+                bestDistance = endDistance;
+            }
+        }
+        return Math.Max(0, best);
+    }
+
     private void ZoomAt(double scale, double anchorPixel)
     {
         _isFit = false;
@@ -544,4 +841,22 @@ public sealed class TimelineScrubEventArgs(double projectSeconds) : EventArgs
 public sealed class TimelineIncidentEventArgs(Guid incidentId) : EventArgs
 {
     public Guid IncidentId { get; } = incidentId;
+}
+
+public enum TimelineClipEditMode
+{
+    Reorder,
+    Position
+}
+
+public sealed class TimelineClipEditEventArgs(
+    Guid mediaSourceId,
+    TimelineClipEditMode mode,
+    int targetIndex,
+    TimeSpan projectStart) : EventArgs
+{
+    public Guid MediaSourceId { get; } = mediaSourceId;
+    public TimelineClipEditMode Mode { get; } = mode;
+    public int TargetIndex { get; } = targetIndex;
+    public TimeSpan ProjectStart { get; } = projectStart;
 }

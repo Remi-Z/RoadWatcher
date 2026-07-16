@@ -377,8 +377,11 @@
             <Button Padding="8,4" Click="OnTimelineFitClicked" Content="Fit" ToolTip.Tip="Fit the complete ride" AutomationProperties.Name="Fit complete timeline" />
             <Button Padding="8,4" Click="OnTimelineZoomOutClicked" Content="−" ToolTip.Tip="Zoom out" AutomationProperties.Name="Zoom timeline out" />
             <Button Padding="8,4" Click="OnTimelineZoomInClicked" Content="+" ToolTip.Tip="Zoom in" AutomationProperties.Name="Zoom timeline in" />
+            <RadioButton GroupName="TimelineEditMode" IsChecked="True" Checked="OnTimelineReorderModeChecked" Content="Reorder" ToolTip.Tip="Drag clips to change their order" AutomationProperties.Name="Reorder timeline clips" />
+            <RadioButton GroupName="TimelineEditMode" Checked="OnTimelinePositionModeChecked" Content="Position" ToolTip.Tip="Drag clips freely to create or adjust gaps" AutomationProperties.Name="Position timeline clips" />
+            <Button Padding="7,4" Command="{Binding UndoTimelineCommand}" IsEnabled="{Binding CanUndoTimeline}" Content="Undo" AutomationProperties.Name="Undo timeline edit" />
+            <Button Padding="7,4" Command="{Binding RedoTimelineCommand}" IsEnabled="{Binding CanRedoTimeline}" Content="Redo" AutomationProperties.Name="Redo timeline edit" />
           </StackPanel>
-          <TextBlock Grid.Column="1" Margin="16,0" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="Shift+wheel zoom • wheel pan • drag the amber playback head" />
           <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="muted" Text="{Binding TimelineSummaryText}" />
         </Grid>
         <controls:VirtualTimelineControl x:Name="TimelineSurface"
@@ -391,6 +394,7 @@
                                          HasSelectedIncident="{Binding HasSelectedIncident}"
                                          SelectedIncidentStartSeconds="{Binding SelectedIncidentStartSeconds}"
                                          SelectedIncidentEndSeconds="{Binding SelectedIncidentEndSeconds}"
+                                         ToolTip.Tip="Shift+wheel zoom • wheel pan • drag the amber playback head"
                                          AutomationProperties.Name="Interactive project timeline" />
 
         <Grid Grid.Row="2" Margin="14,8" ColumnDefinitions="*,Auto">

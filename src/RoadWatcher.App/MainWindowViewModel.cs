@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LibVLCSharp.Shared;
+using RoadWatcher.App.Controls;
 using RoadWatcher.App.Services;
 using RoadWatcher.Core;
 using RoadWatcher.Infrastructure;
@@ -48,6 +49,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private double _incidentEndSeconds;
     private bool _loadedMediaUsesProxy;
     private bool _timelineScrubWasPlaying;
+    private bool _timelineClipEditWasPlaying;
+    private readonly Stack<TimelineUndoEntry> _timelineUndo = [];
+    private readonly Stack<TimelineUndoEntry> _timelineRedo = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PlayIcon))]
@@ -205,6 +209,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private IReadOnlyList<IncidentMarkerViewModel> _incidentMarkers = [];
 
     [ObservableProperty]
+    private bool _canUndoTimeline;
+
+    [ObservableProperty]
+    private bool _canRedoTimeline;
+
+    [ObservableProperty]
     private string[] _timelineRulerLabels = ["00:00:00", "00:00:00", "00:00:00", "00:00:00", "00:00:00"];
 
     public MainWindowViewModel()
@@ -320,6 +330,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void CloseProject()
     {
+        ClearTimelineHistory();
         Interlocked.Increment(ref _timelineSeekVersion);
         _mediaEngine.Pause();
         IsPlaying = false;
@@ -395,6 +406,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         IReadOnlyList<MissingProjectSource> missingSources,
         CancellationToken cancellationToken)
     {
+        ClearTimelineHistory();
         Interlocked.Increment(ref _timelineSeekVersion);
         _mediaEngine.Pause();
         IsPlaying = false;
@@ -707,6 +719,204 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    public void BeginTimelineClipEdit()
+    {
+        _timelineClipEditWasPlaying = IsPlaying;
+        if (IsPlaying)
+        {
+            IsPlaying = false;
+            _mediaEngine.Pause();
+        }
+        StatusText = "Editing timeline • release to apply or press Escape to cancel";
+    }
+
+    public async Task ApplyTimelineClipEditAsync(
+        Guid mediaSourceId,
+        TimelineClipEditMode mode,
+        int targetIndex,
+        TimeSpan projectStart,
+        CancellationToken cancellationToken = default)
+    {
+        if (ProjectDirectory is null)
+        {
+            CancelTimelineClipEdit("Open a project before editing its timeline.");
+            return;
+        }
+
+        TimelineEditResult result;
+        try
+        {
+            result = mode == TimelineClipEditMode.Reorder
+                ? TimelineEditor.Reorder(
+                    _project,
+                    mediaSourceId,
+                    targetIndex,
+                    TimeSpan.FromSeconds(CurrentSeconds))
+                : TimelineEditor.Move(
+                    _project,
+                    mediaSourceId,
+                    projectStart,
+                    TimeSpan.FromSeconds(CurrentSeconds));
+        }
+        catch (Exception exception)
+        {
+            CancelTimelineClipEdit($"Timeline edit rejected: {exception.Message}");
+            return;
+        }
+
+        if (result.Project.Timeline.Segments.SequenceEqual(_project.Timeline.Segments))
+        {
+            CancelTimelineClipEdit("Timeline unchanged");
+            return;
+        }
+
+        try
+        {
+            await _projectLifecycle.SaveAsync(result.Project, ProjectDirectory, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            CancelTimelineClipEdit($"Timeline edit could not be saved: {exception.Message}");
+            return;
+        }
+
+        _timelineUndo.Push(new TimelineUndoEntry(
+            TimelineEditor.Capture(_project),
+            TimeSpan.FromSeconds(CurrentSeconds)));
+        TrimUndoStack(_timelineUndo);
+        _timelineRedo.Clear();
+        UpdateTimelineHistoryState();
+        _project = result.Project;
+        var resumePlayback = _timelineClipEditWasPlaying;
+        _timelineClipEditWasPlaying = false;
+        await ApplyTimelineStateAsync(result.Playhead, resumePlayback, cancellationToken);
+        var warningText = result.Warnings.Count == 0
+            ? string.Empty
+            : $" • {string.Join(" ", result.Warnings)}";
+        StatusText = $"Timeline {mode.ToString().ToLowerInvariant()} saved{warningText}";
+    }
+
+    public void CancelTimelineClipEdit(string? status = null)
+    {
+        if (_timelineClipEditWasPlaying)
+        {
+            _timelineClipEditWasPlaying = false;
+            IsPlaying = true;
+            _mediaEngine.Play();
+        }
+        StatusText = status ?? "Timeline edit canceled";
+    }
+
+    [RelayCommand]
+    private async Task UndoTimelineAsync()
+    {
+        if (_timelineUndo.Count == 0 || ProjectDirectory is null)
+        {
+            return;
+        }
+
+        var entry = _timelineUndo.Peek();
+        var restored = TimelineEditor.Restore(_project, entry.Snapshot);
+        try
+        {
+            await _projectLifecycle.SaveAsync(restored, ProjectDirectory);
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Timeline undo could not be saved: {exception.Message}";
+            return;
+        }
+
+        IsPlaying = false;
+        _mediaEngine.Pause();
+        _timelineRedo.Push(new TimelineUndoEntry(
+            TimelineEditor.Capture(_project),
+            TimeSpan.FromSeconds(CurrentSeconds)));
+        _timelineUndo.Pop();
+        _project = restored;
+        UpdateTimelineHistoryState();
+        await ApplyTimelineStateAsync(entry.Playhead, resumePlayback: false);
+        StatusText = "Timeline edit undone • project saved";
+    }
+
+    [RelayCommand]
+    private async Task RedoTimelineAsync()
+    {
+        if (_timelineRedo.Count == 0 || ProjectDirectory is null)
+        {
+            return;
+        }
+
+        var entry = _timelineRedo.Peek();
+        var restored = TimelineEditor.Restore(_project, entry.Snapshot);
+        try
+        {
+            await _projectLifecycle.SaveAsync(restored, ProjectDirectory);
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Timeline redo could not be saved: {exception.Message}";
+            return;
+        }
+
+        IsPlaying = false;
+        _mediaEngine.Pause();
+        _timelineUndo.Push(new TimelineUndoEntry(
+            TimelineEditor.Capture(_project),
+            TimeSpan.FromSeconds(CurrentSeconds)));
+        _timelineRedo.Pop();
+        _project = restored;
+        UpdateTimelineHistoryState();
+        await ApplyTimelineStateAsync(entry.Playhead, resumePlayback: false);
+        StatusText = "Timeline edit redone • project saved";
+    }
+
+    private async Task ApplyTimelineStateAsync(
+        TimeSpan playhead,
+        bool resumePlayback,
+        CancellationToken cancellationToken = default)
+    {
+        _virtualTimeline = new VirtualTimeline(_project.Timeline.Segments);
+        MaximumSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
+        RebuildTimelineDisplay();
+        var clamped = TimeSpan.FromSeconds(Math.Clamp(playhead.TotalSeconds, 0, MaximumSeconds));
+        _updatingFromMedia = true;
+        CurrentSeconds = clamped.TotalSeconds;
+        _updatingFromMedia = false;
+        UpdateTelemetry(CurrentSeconds);
+        UpdateGpxAnchorClock(CurrentSeconds);
+        IsPlaying = resumePlayback;
+        await SeekProjectTimeAsync(clamped, resumePlayback, cancellationToken);
+    }
+
+    private void UpdateTimelineHistoryState()
+    {
+        CanUndoTimeline = _timelineUndo.Count > 0;
+        CanRedoTimeline = _timelineRedo.Count > 0;
+    }
+
+    private void ClearTimelineHistory()
+    {
+        _timelineUndo.Clear();
+        _timelineRedo.Clear();
+        UpdateTimelineHistoryState();
+    }
+
+    private static void TrimUndoStack(Stack<TimelineUndoEntry> stack)
+    {
+        if (stack.Count <= 50)
+        {
+            return;
+        }
+
+        var retained = stack.Take(50).Reverse().ToArray();
+        stack.Clear();
+        foreach (var entry in retained)
+        {
+            stack.Push(entry);
+        }
+    }
+
     [RelayCommand]
     private async Task PrepareProxiesAsync()
     {
@@ -827,8 +1037,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             .ToArray();
         RefreshAvailableProxyPaths();
         ImportedClipCount = ImportedMedia.Count;
+        var updatedSegments = TimelineSegmentPlanner.AppendMissing(
+            _project.Timeline.Segments,
+            _project.Media);
         _project.Timeline.Segments.Clear();
-        _project.Timeline.Segments.AddRange(TimelineSegmentPlanner.Build(_project.Media));
+        _project.Timeline.Segments.AddRange(updatedSegments);
         _virtualTimeline = new VirtualTimeline(_project.Timeline.Segments);
         MaximumSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
         RebuildTimelineDisplay();
@@ -1796,3 +2009,7 @@ public sealed record TimelineScrubPreview(
     double ProjectSeconds,
     string? ImagePath,
     string Status);
+
+public sealed record TimelineUndoEntry(
+    TimelineEditSnapshot Snapshot,
+    TimeSpan Playhead);

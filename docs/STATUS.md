@@ -1,6 +1,6 @@
 # Handoff status
 
-Last updated: 2026-07-14
+Last updated: 2026-07-16
 
 ## Current milestone
 
@@ -81,6 +81,9 @@ M07 — V1 acceptance closure: implementation complete and ready for V2 work; re
 - Final self-contained packaging produced `artifacts/RoadWatcher-win-x64.zip` at 132,251,141 bytes (126.12 MiB), SHA-256 `e751b78fffee2e6be4dbab83ce8c7a245d598161fb9417c48dcf3468c0dfb316`. Its 673-file publish tree contains only the intended `libvlc/win-x64` native runtime and no FFmpeg or foreign-architecture payloads.
 - The published executable opened the acceptance project, exposed the Proxies action, restored cached-proxy playback, advanced the real timeline, and remained open. All unblocked V1 implementation and deterministic acceptance work is complete; V2 implementation can begin without changing these source/evidence boundaries.
 - Final handoff verification ran the required commands verbatim: Release build passed with zero warnings/errors and Release tests passed 32/32. The first sandboxed test restore failed with NU1301/socket-denied access to NuGet; the approved outside-sandbox retry restored successfully and passed without a source change.
+- The illustrative fixed-width timeline has been replaced by the planned virtual multi-track control. It shares one exact project-time viewport across ruler, clips, gaps, GPX, incidents, and selection; supports cached-frame scrubbing with exact seek on release, cursor-centred Shift+wheel zoom, plain-wheel pan, adaptive ticks, and Fit/zoom controls.
+- Timeline clip editing now has explicit Reorder and Position modes. Pointer and keyboard edits preserve gaps or create new ones, reject overlap, rebase incidents/attachments/playhead to the same source frame, guard against reversed GPX anchors, save atomically, and support persisted Undo/Redo. Later imports retain the edited layout and append only new sources.
+- Release acceptance exercised the GPX-anchor reorder rejection, a 100 ms Position edit, Undo, Redo, and final restoration in the 1152 × 820 logical workbench. Release build succeeds with zero warnings and all 43 tests pass.
 
 ## Milestone commits
 
@@ -103,6 +106,7 @@ M07 — V1 acceptance closure: implementation complete and ready for V2 work; re
 - `8d1116a` — long-ride timeline lookup optimization
 - `ec2fccc` — bounded hover previews
 - `ea49c85` — bounded proxy playback and source-direct capture
+- `2ebc728` — interactive timeline scrubbing and zoom
 
 ## Next actions
 

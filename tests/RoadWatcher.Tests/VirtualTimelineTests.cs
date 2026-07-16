@@ -45,6 +45,42 @@ public sealed class VirtualTimelineTests
     }
 
     [Fact]
+    public void Import_append_preserves_manual_layout_and_places_only_new_sources_at_the_end()
+    {
+        var first = new MediaSource(
+            Guid.NewGuid(), "first.mp4", "first.mp4", 1, null, TimeSpan.FromSeconds(3));
+        var second = new MediaSource(
+            Guid.NewGuid(), "second.mp4", "second.mp4", 1, null, TimeSpan.FromSeconds(4));
+        var imported = new MediaSource(
+            Guid.NewGuid(), "new.mp4", "new.mp4", 1, null, TimeSpan.FromSeconds(2));
+        TimelineSegment[] edited =
+        [
+            new(second.Id, TimeSpan.FromSeconds(2), TimeSpan.Zero, second.Duration),
+            new(first.Id, TimeSpan.FromSeconds(10), TimeSpan.Zero, first.Duration)
+        ];
+
+        var result = TimelineSegmentPlanner.AppendMissing(edited, [first, second, imported]);
+
+        Assert.Collection(
+            result,
+            segment =>
+            {
+                Assert.Equal(second.Id, segment.MediaSourceId);
+                Assert.Equal(TimeSpan.FromSeconds(2), segment.ProjectStart);
+            },
+            segment =>
+            {
+                Assert.Equal(first.Id, segment.MediaSourceId);
+                Assert.Equal(TimeSpan.FromSeconds(10), segment.ProjectStart);
+            },
+            segment =>
+            {
+                Assert.Equal(imported.Id, segment.MediaSourceId);
+                Assert.Equal(TimeSpan.FromSeconds(13), segment.ProjectStart);
+            });
+    }
+
+    [Fact]
     public void Four_hour_timeline_resolves_across_two_hundred_forty_clips()
     {
         var ids = Enumerable.Range(0, 240).Select(_ => Guid.NewGuid()).ToArray();
