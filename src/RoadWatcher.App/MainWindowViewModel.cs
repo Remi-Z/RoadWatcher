@@ -59,6 +59,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private GpxSynchronizationSession? _gpxSynchronizationPreview;
     private bool _suppressGpxOffsetPreview;
     private DateTimeOffset? _exactTimelineGuideTime;
+    private CapturedSourceFrame? _lastCapturedSourceFrame;
+    private TimelinePosition? _draftSourcePosition;
     private readonly Dictionary<Guid, GpxSpeedProfile> _gpxSpeedProfileCache = [];
     private Guid? _gpxTimelineSpeedPresentationSourceId;
     private SyncAnchor[] _gpxTimelineSpeedPresentationAnchors = [];
@@ -103,6 +105,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
     [NotifyPropertyChangedFor(nameof(ShowTelemetryOverlay))]
+    [NotifyPropertyChangedFor(nameof(ShowPlaybackSurface))]
+    [NotifyPropertyChangedFor(nameof(CanUsePlaybackControls))]
     private bool _hasLoadedMedia;
 
     [ObservableProperty]
@@ -256,6 +260,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _isTelemetryOverlayVisible = true;
 
     [ObservableProperty]
+    private bool _isMarkingModeEnabled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowPlaybackSurface))]
+    [NotifyPropertyChangedFor(nameof(CanUsePlaybackControls))]
+    private bool _isMarkingFrameActive;
+
+    [ObservableProperty]
     private bool _hasIncidentDraft;
 
     [ObservableProperty]
@@ -362,6 +374,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public string CurrentTimeText => TimeSpan.FromSeconds(CurrentSeconds).ToString(@"hh\:mm\:ss\.fff");
     public bool ShowEmptyState => !HasLoadedMedia;
     public bool ShowTelemetryOverlay => HasLoadedMedia && IsTelemetryOverlayVisible;
+    public bool ShowPlaybackSurface => HasLoadedMedia && !IsMarkingFrameActive;
+    public bool CanUsePlaybackControls => HasLoadedMedia && !IsMarkingFrameActive;
     public bool HasOpenProject => ProjectDirectory is not null;
     public string ProjectStateText => HasOpenProject ? "Project open" : "No project open";
     public MediaPlayer MediaPlayer => _mediaEngine.MediaPlayer;
@@ -480,8 +494,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _currentTelemetrySample = null;
         _incidentLocationSample = null;
         _incidentLocationProvider = null;
+        _draftSourcePosition = null;
+        _lastCapturedSourceFrame = null;
         _editingIncidentId = null;
         HasIncidentDraft = false;
+        IsMarkingModeEnabled = false;
+        IsMarkingFrameActive = false;
         Intersection = string.Empty;
         Address = string.Empty;
         IsLocationConfirmed = false;
@@ -561,9 +579,13 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _pendingAttachments.Clear();
         _incidentLocationSample = null;
         _incidentLocationProvider = null;
+        _draftSourcePosition = null;
+        _lastCapturedSourceFrame = null;
         _editingIncidentId = null;
         HasSelectedIncident = false;
         HasIncidentDraft = false;
+        IsMarkingModeEnabled = false;
+        IsMarkingFrameActive = false;
         SaveIncidentButtonText = "Save incident";
         ResetIncidentEditorValues();
         Intersection = string.Empty;
@@ -1940,7 +1962,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         SourceTimeText = sourcePosition is null
             ? "Source gap"
             : $"Source {FormatTimelineTime(sourcePosition.SourceTime)}";
-        if (HasLoadedMedia && !_updatingFromMedia)
+        if (HasLoadedMedia && !_updatingFromMedia && !IsMarkingFrameActive)
         {
             _ = SeekProjectTimeAsync(TimeSpan.FromSeconds(value), IsPlaying);
         }
@@ -2912,6 +2934,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task TogglePlaybackAsync()
     {
+        if (IsMarkingFrameActive)
+        {
+            StatusText = "Finish or cancel marking before resuming playback.";
+            return;
+        }
+
         if (!HasLoadedMedia || _virtualTimeline.Duration == TimeSpan.Zero)
         {
             StatusText = "Import or relink at least one video before playback.";
@@ -2935,10 +2963,22 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void SeekBack() => CurrentSeconds = Math.Max(0, CurrentSeconds - 10);
+    private void SeekBack()
+    {
+        if (!IsMarkingFrameActive)
+        {
+            CurrentSeconds = Math.Max(0, CurrentSeconds - 10);
+        }
+    }
 
     [RelayCommand]
-    private void SeekForward() => CurrentSeconds = Math.Min(MaximumSeconds, CurrentSeconds + 10);
+    private void SeekForward()
+    {
+        if (!IsMarkingFrameActive)
+        {
+            CurrentSeconds = Math.Min(MaximumSeconds, CurrentSeconds + 10);
+        }
+    }
 
     private void ResetIncidentEditorValues()
     {
@@ -2962,7 +3002,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void MarkIncident()
     {
-        if (_virtualTimeline.Resolve(TimeSpan.FromSeconds(CurrentSeconds)) is null)
+        var timelinePosition = _virtualTimeline.Resolve(TimeSpan.FromSeconds(CurrentSeconds));
+        if (timelinePosition is null)
         {
             StatusText = "An incident must be marked on a source frame, not inside a timeline gap.";
             return;
@@ -2970,16 +3011,30 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         IsPlaying = false;
         _mediaEngine.Pause();
+        BeginIncidentDraft(
+            timelinePosition,
+            _currentTelemetrySample,
+            [],
+            $"Incident window marked ±15 seconds around {CurrentTimeText}");
+    }
+
+    private void BeginIncidentDraft(
+        TimelinePosition sourcePosition,
+        TelemetrySample? locationSample,
+        IReadOnlyList<EvidenceAsset> attachments,
+        string status)
+    {
         ResetIncidentEditorValues();
-        _incidentStartSeconds = Math.Max(0, CurrentSeconds - 15);
-        _incidentEndSeconds = Math.Min(MaximumSeconds, CurrentSeconds + 15);
+        _incidentStartSeconds = Math.Max(0, sourcePosition.ProjectTime.TotalSeconds - 15);
+        _incidentEndSeconds = Math.Min(MaximumSeconds, sourcePosition.ProjectTime.TotalSeconds + 15);
+        _draftSourcePosition = sourcePosition;
         _editingIncidentId = null;
         HasSelectedIncident = false;
         HasIncidentDraft = true;
         SaveIncidentButtonText = "Save incident";
-        _pendingAttachments.Clear();
-        AttachmentCount = 0;
-        _incidentLocationSample = _currentTelemetrySample;
+        _pendingAttachments.AddRange(attachments);
+        AttachmentCount = _pendingAttachments.Count;
+        _incidentLocationSample = locationSample;
         _incidentLocationProvider = null;
         Intersection = string.Empty;
         Address = string.Empty;
@@ -2990,7 +3045,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         IncidentStartText = TimeSpan.FromSeconds(_incidentStartSeconds).ToString(@"hh\:mm\:ss\.fff");
         IncidentEndText = TimeSpan.FromSeconds(_incidentEndSeconds).ToString(@"hh\:mm\:ss\.fff");
         IncidentDurationText = $"Duration  {TimeSpan.FromSeconds(_incidentEndSeconds - _incidentStartSeconds):mm\\:ss\\.fff}";
-        StatusText = $"Incident window marked ±15 seconds around {CurrentTimeText}";
+        StatusText = status;
         RebuildIncidentDisplay();
     }
 
@@ -3022,6 +3077,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             ? new TelemetrySample(DateTimeOffset.MinValue, location.Latitude, location.Longitude, null, null)
             : null;
         _incidentLocationProvider = incident.Location?.Provider;
+        _draftSourcePosition = null;
         PlateNumber = incident.Vehicle?.PlateNumber ?? string.Empty;
         SelectedProvince = incident.Vehicle?.Province ?? "ON";
         VehicleColor = incident.Vehicle?.Colour ?? "Other";
@@ -3103,7 +3159,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         var timelinePosition = _virtualTimeline.Resolve(TimeSpan.FromSeconds(CurrentSeconds));
-        if (timelinePosition is null)
+        var sourcePosition = _draftSourcePosition ?? timelinePosition;
+        if (sourcePosition is null)
         {
             StatusText = "Seek to an available source frame before saving an incident.";
             return;
@@ -3124,7 +3181,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _incidentStartSeconds = incidentStart.TotalSeconds;
         _incidentEndSeconds = incidentEnd.TotalSeconds;
         IncidentDurationText = $"Duration  {incidentEnd - incidentStart:mm\\:ss\\.fff}";
-        var sourceId = timelinePosition.MediaSourceId;
+        var sourceId = sourcePosition.MediaSourceId;
         var sample = _incidentLocationSample ?? _currentTelemetrySample;
         var existing = _editingIncidentId is { } editingId
             ? _project.Incidents.FirstOrDefault(item => item.Id == editingId)
@@ -3136,7 +3193,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             ProjectStart = incidentStart,
             ProjectEnd = incidentEnd,
             MediaSourceId = existing?.MediaSourceId ?? sourceId,
-            SourceTime = existing?.SourceTime ?? timelinePosition.SourceTime,
+            SourceTime = existing?.SourceTime ?? sourcePosition.SourceTime,
             Location = sample is null
                 ? null
                 : new IncidentLocation(
@@ -3215,6 +3272,103 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public async Task<string?> CaptureFrameToProjectAsync()
     {
+        var captured = await CaptureSourceFrameAsync("frame");
+        if (captured is null)
+        {
+            return null;
+        }
+
+        _lastCapturedSourceFrame = captured;
+        _pendingAttachments.Add(captured.FrameAsset);
+        LastCapturedFramePath = captured.AbsolutePath;
+        AttachmentCount = _pendingAttachments.Count;
+        StatusText = $"Frame captured directly from source at project {FormatTimelineTime(captured.TimelinePosition.ProjectTime)} • ready to crop";
+        return captured.AbsolutePath;
+    }
+
+    /// <summary>
+    /// Freezes one authoritative source frame for the marking canvas. The
+    /// returned frame is deliberately not attached to an incident until the
+    /// reviewer finishes a valid drag selection.
+    /// </summary>
+    public async Task<CapturedSourceFrame?> CaptureMarkingFrameAsync(
+        CancellationToken cancellationToken = default)
+    {
+        IsPlaying = false;
+        _mediaEngine.Pause();
+        var captured = await CaptureSourceFrameAsync("marking-frame", cancellationToken);
+        if (captured is not null)
+        {
+            StatusText = $"Source-direct marking frame ready at project {FormatTimelineTime(captured.TimelinePosition.ProjectTime)} • drag a vehicle or plate";
+        }
+
+        return captured;
+    }
+
+    public void DiscardMarkingFrame(CapturedSourceFrame captured)
+    {
+        try
+        {
+            if (File.Exists(captured.AbsolutePath))
+            {
+                File.Delete(captured.AbsolutePath);
+            }
+        }
+        catch (IOException)
+        {
+            // The canceled marking frame is never attached; a transient file
+            // lock should not interrupt review playback or a later retry.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // See the IO case above.
+        }
+    }
+
+    /// <summary>
+    /// Turns a completed marking drag into an unsaved incident draft. Both the
+    /// original frame and its crop retain the frozen source/project position.
+    /// </summary>
+    public async Task<bool> CompleteMarkingIncidentAsync(
+        CapturedSourceFrame captured,
+        string cropPath)
+    {
+        if (ProjectDirectory is null)
+        {
+            StatusText = "Create or open a project before marking an incident.";
+            return false;
+        }
+
+        if (!File.Exists(captured.AbsolutePath) || !File.Exists(cropPath))
+        {
+            StatusText = "The frozen marking frame or its crop is unavailable; try marking again.";
+            return false;
+        }
+
+        BeginIncidentDraft(
+            captured.TimelinePosition,
+            captured.TelemetrySample,
+            [captured.FrameAsset],
+            $"Marked source frame at project {FormatTimelineTime(captured.TimelinePosition.ProjectTime)} • analyzing selection");
+        _lastCapturedSourceFrame = captured;
+        LastCapturedFramePath = captured.AbsolutePath;
+        try
+        {
+            await AddCropAndRecognizeAsync(cropPath, captured, "Marked frame crop");
+            StatusText = $"{RecognitionStatus} • incident draft ready to review and save";
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            StatusText = $"Marked crop could not be attached: {exception.Message}";
+            return false;
+        }
+    }
+
+    private async Task<CapturedSourceFrame?> CaptureSourceFrameAsync(
+        string filePrefix,
+        CancellationToken cancellationToken = default)
+    {
         if (ProjectDirectory is null)
         {
             StatusText = "Create or open a project before capturing evidence.";
@@ -3227,8 +3381,20 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             StatusText = "Seek to an available source frame before capturing evidence.";
             return null;
         }
-        await SeekProjectTimeAsync(TimeSpan.FromSeconds(CurrentSeconds), resumePlayback: IsPlaying);
-        if (_activeSegment?.MediaSourceId != timelinePosition.MediaSourceId)
+
+        await SeekProjectTimeAsync(
+            TimeSpan.FromSeconds(CurrentSeconds),
+            resumePlayback: IsPlaying,
+            cancellationToken: cancellationToken);
+        var captureSegment = _activeSegment;
+        if (captureSegment is null || captureSegment.MediaSourceId != timelinePosition.MediaSourceId)
+        {
+            StatusText = "The source frame is unavailable; relink the media before capture.";
+            return null;
+        }
+
+        var source = ImportedMedia.FirstOrDefault(candidate => candidate.Id == timelinePosition.MediaSourceId);
+        if (source is null)
         {
             StatusText = "The source frame is unavailable; relink the media before capture.";
             return null;
@@ -3236,15 +3402,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         var assetsDirectory = Path.Combine(ProjectDirectory, "assets");
         Directory.CreateDirectory(assetsDirectory);
-        var destination = Path.Combine(assetsDirectory, $"frame-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmssfff}.png");
-        var sourceId = timelinePosition.MediaSourceId;
-        var source = ImportedMedia.FirstOrDefault(candidate => candidate.Id == sourceId);
-        if (source is null)
-        {
-            StatusText = "The source frame is unavailable; relink the media before capture.";
-            return null;
-        }
-
+        var destination = Path.Combine(
+            assetsDirectory,
+            $"{filePrefix}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmssfff}.png");
         var requestedProjectTime = TimeSpan.FromSeconds(CurrentSeconds);
         var restorePreviewPlayback = _loadedPlaybackKind != MediaReviewPlaybackKind.Original;
         var resumePlayback = IsPlaying;
@@ -3264,9 +3424,13 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 _mediaEngine.Seek(timelinePosition.SourceTime);
             }
 
-            capturedFrame = await _mediaEngine.CaptureFrameAsync(destination);
-            capturedProjectTime = _activeSegment.ProjectStart +
-                (capturedFrame.SourceTime - _activeSegment.SourceStart);
+            capturedFrame = await _mediaEngine.CaptureFrameAsync(destination, cancellationToken);
+            capturedProjectTime = captureSegment.ProjectStart +
+                (capturedFrame.SourceTime - captureSegment.SourceStart);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {
@@ -3297,45 +3461,57 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             CurrentSeconds = capturedProjectTime.Value.TotalSeconds;
             _updatingFromMedia = false;
         }
+        var capturedPosition = new TimelinePosition(
+            timelinePosition.MediaSourceId,
+            capturedProjectTime.Value,
+            capturedFrame.SourceTime,
+            timelinePosition.Track);
         var asset = new EvidenceAsset(
             Guid.NewGuid(),
             Path.GetRelativePath(ProjectDirectory, destination),
             "frame",
-            sourceId,
+            timelinePosition.MediaSourceId,
             capturedFrame.SourceTime,
             capturedFrame.Sha256,
             IsDerived: true,
             capturedFrame.Derivation ?? "Frame capture",
             ProjectTime: capturedProjectTime.Value);
-        _pendingAttachments.Add(asset);
-        LastCapturedFramePath = destination;
-        AttachmentCount = _pendingAttachments.Count;
-        StatusText = $"Frame captured directly from source at project {FormatTimelineTime(capturedProjectTime.Value)} • ready to crop";
-        return destination;
+        return new CapturedSourceFrame(
+            destination,
+            asset,
+            capturedPosition,
+            GetTelemetrySampleAtProjectTime(capturedProjectTime.Value));
     }
 
     public async Task AddCropAndRecognizeAsync(string cropPath)
+    {
+        var captured = _lastCapturedSourceFrame
+            ?? throw new InvalidOperationException("Capture a source frame before adding a crop.");
+        await AddCropAndRecognizeAsync(cropPath, captured, "Manual frame crop");
+    }
+
+    private async Task AddCropAndRecognizeAsync(
+        string cropPath,
+        CapturedSourceFrame captured,
+        string derivation)
     {
         if (ProjectDirectory is null)
         {
             throw new InvalidOperationException("Create or open a project before adding evidence.");
         }
 
-        var timelinePosition = _virtualTimeline.Resolve(TimeSpan.FromSeconds(CurrentSeconds))
-            ?? throw new InvalidOperationException("A crop must be attached to an available source frame.");
-        var sourceId = timelinePosition.MediaSourceId;
         await using var cropStream = File.OpenRead(cropPath);
         var cropSha256 = Convert.ToHexStringLower(await SHA256.HashDataAsync(cropStream));
         _pendingAttachments.Add(new EvidenceAsset(
             Guid.NewGuid(),
             Path.GetRelativePath(ProjectDirectory, cropPath),
             "crop",
-            sourceId,
-            timelinePosition.SourceTime,
+            captured.TimelinePosition.MediaSourceId,
+            captured.TimelinePosition.SourceTime,
             cropSha256,
             IsDerived: true,
-            "Manual frame crop",
-            ProjectTime: TimeSpan.FromSeconds(CurrentSeconds)));
+            derivation,
+            ProjectTime: captured.TimelinePosition.ProjectTime));
         AttachmentCount = _pendingAttachments.Count;
 
         var plateTask = _plateRecognizer.RecognizeAsync(cropPath);
@@ -3365,6 +3541,26 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 ? $"Crop saved • colour suggested: {VehicleColor} • Tesseract unavailable/no match"
                 : $"Suggestions: {PlateNumber} / {VehicleColor} • confirm before save";
         StatusText = RecognitionStatus;
+    }
+
+    private TelemetrySample? GetTelemetrySampleAtProjectTime(TimeSpan projectTime)
+    {
+        if (_gpxTimelineMapper is null || GpxPoints.Count == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var gpxTime = _gpxTimelineMapper.MapToGpxTime(projectTime);
+            return gpxTime < GpxPoints[0].RecordedAt || gpxTime > GpxPoints[^1].RecordedAt
+                ? null
+                : _gpxTrackService.SampleAt(GpxPoints, gpxTime);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     private void RebuildTimelineDisplay()
@@ -3529,6 +3725,16 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _mediaEngine.Dispose();
     }
 }
+
+/// <summary>
+/// Immutable provenance for a source-direct frame held while the reviewer
+/// completes a marking drag. It is not persisted until an incident is saved.
+/// </summary>
+public sealed record CapturedSourceFrame(
+    string AbsolutePath,
+    EvidenceAsset FrameAsset,
+    TimelinePosition TimelinePosition,
+    TelemetrySample? TelemetrySample);
 
 public partial class TimelineBlockViewModel(
     string label,

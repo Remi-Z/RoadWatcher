@@ -19,10 +19,14 @@ using Mapsui.UI.Avalonia;
 using NetTopologySuite.Geometries;
 using RoadWatcher.App.Controls;
 using RoadWatcher.Core;
+using SkiaSharp;
 using AvaloniaImage = Avalonia.Controls.Image;
 using Brush = Mapsui.Styles.Brush;
 using Color = Mapsui.Styles.Color;
 using Pen = Mapsui.Styles.Pen;
+using AvaloniaPoint = Avalonia.Point;
+using AvaloniaRect = Avalonia.Rect;
+using AvaloniaSize = Avalonia.Size;
 
 namespace RoadWatcher.App;
 
@@ -41,6 +45,11 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _gpxStopPreviewCancellation;
     private Bitmap? _gpxStopPreviewBitmap;
     private GpxStopPreview? _gpxStopPreview;
+    private CancellationTokenSource? _markingFrameCancellation;
+    private Bitmap? _markingFrameBitmap;
+    private CapturedSourceFrame? _markingFrame;
+    private AvaloniaPoint? _markingDragStart;
+    private AvaloniaRect _markingSelection;
 
     private const int PlayerProgressPreviewDelayMilliseconds = 175;
     public MainWindow() : this(null)
@@ -80,6 +89,7 @@ public sealed partial class MainWindow : Window
         InitializeMap();
         Closed += (_, _) =>
         {
+            EndMarkingSession(discardFrame: true);
             CancelPlayerProgressPreview();
             CancelGpxStopPreview();
             _timelinePreviewCancellation?.Cancel();
@@ -268,6 +278,251 @@ public sealed partial class MainWindow : Window
         {
             await viewModel.AddCropAndRecognizeAsync(destination);
         }
+    }
+
+    private async void OnMarkingModeChecked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is not MainWindowViewModel viewModel || !viewModel.HasLoadedMedia)
+        {
+            return;
+        }
+
+        EndMarkingSession(discardFrame: true);
+        var cancellation = new CancellationTokenSource();
+        _markingFrameCancellation = cancellation;
+        viewModel.StatusText = "Preparing a source-direct marking frame…";
+        try
+        {
+            var captured = await viewModel.CaptureMarkingFrameAsync(cancellation.Token);
+            if (cancellation.IsCancellationRequested ||
+                !ReferenceEquals(_markingFrameCancellation, cancellation))
+            {
+                if (captured is not null)
+                {
+                    viewModel.DiscardMarkingFrame(captured);
+                }
+
+                return;
+            }
+
+            if (captured is null)
+            {
+                viewModel.IsMarkingModeEnabled = false;
+                return;
+            }
+
+            try
+            {
+                _markingFrameBitmap = new Bitmap(captured.AbsolutePath);
+            }
+            catch (Exception exception) when (exception is IOException or ArgumentException)
+            {
+                viewModel.DiscardMarkingFrame(captured);
+                viewModel.StatusText = $"The marking frame could not be opened: {exception.Message}";
+                viewModel.IsMarkingModeEnabled = false;
+                return;
+            }
+
+            _markingFrame = captured;
+            MarkingFrameImage.Source = _markingFrameBitmap;
+            ClearMarkingSelection();
+            viewModel.IsMarkingFrameActive = true;
+        }
+        catch (OperationCanceledException)
+        {
+            // Turning marking mode off intentionally cancels a pending capture.
+        }
+        finally
+        {
+            if (ReferenceEquals(_markingFrameCancellation, cancellation))
+            {
+                _markingFrameCancellation = null;
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private void OnMarkingModeUnchecked(object? sender, RoutedEventArgs eventArgs) =>
+        EndMarkingSession(discardFrame: true);
+
+    private void OnCancelMarkingClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.IsMarkingModeEnabled = false;
+        }
+
+        EndMarkingSession(discardFrame: true);
+    }
+
+    private void OnMarkingCanvasPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (_markingFrame is null ||
+            !eventArgs.GetCurrentPoint(MarkingCanvas).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _markingDragStart = ClampMarkingPoint(eventArgs.GetPosition(MarkingCanvas));
+        _markingSelection = new AvaloniaRect(_markingDragStart.Value, new AvaloniaSize(0, 0));
+        eventArgs.Pointer.Capture(MarkingCanvas);
+        UpdateMarkingSelectionVisual();
+    }
+
+    private void OnMarkingCanvasPointerMoved(object? sender, PointerEventArgs eventArgs)
+    {
+        if (_markingDragStart is null ||
+            !eventArgs.GetCurrentPoint(MarkingCanvas).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        var current = ClampMarkingPoint(eventArgs.GetPosition(MarkingCanvas));
+        var selection = FrameDisplayRect.FromPoints(
+            _markingDragStart.Value.X,
+            _markingDragStart.Value.Y,
+            current.X,
+            current.Y);
+        _markingSelection = new AvaloniaRect(selection.X, selection.Y, selection.Width, selection.Height);
+        UpdateMarkingSelectionVisual();
+    }
+
+    private async void OnMarkingCanvasPointerReleased(object? sender, PointerReleasedEventArgs eventArgs)
+    {
+        if (_markingDragStart is null)
+        {
+            return;
+        }
+
+        var selection = FrameDisplayRect.FromPoints(
+            _markingDragStart.Value.X,
+            _markingDragStart.Value.Y,
+            ClampMarkingPoint(eventArgs.GetPosition(MarkingCanvas)).X,
+            ClampMarkingPoint(eventArgs.GetPosition(MarkingCanvas)).Y);
+        _markingSelection = new AvaloniaRect(selection.X, selection.Y, selection.Width, selection.Height);
+        _markingDragStart = null;
+        eventArgs.Pointer.Capture(null);
+        UpdateMarkingSelectionVisual();
+        if (DataContext is not MainWindowViewModel viewModel ||
+            _markingFrame is not { } captured ||
+            _markingFrameBitmap is null ||
+            !FrameCropMapper.TryMapSelection(
+                new FrameDisplayRect(
+                    _markingSelection.X,
+                    _markingSelection.Y,
+                    _markingSelection.Width,
+                    _markingSelection.Height),
+                MarkingCanvas.Bounds.Width,
+                MarkingCanvas.Bounds.Height,
+                _markingFrameBitmap.PixelSize.Width,
+                _markingFrameBitmap.PixelSize.Height,
+                out var cropBounds))
+        {
+            if (DataContext is MainWindowViewModel activeViewModel && _markingFrame is not null)
+            {
+                activeViewModel.StatusText = "Drag a larger box over the visible source frame to mark an incident.";
+            }
+
+            return;
+        }
+
+        if (viewModel.ProjectDirectory is null)
+        {
+            viewModel.StatusText = "Create or open a project before marking an incident.";
+            return;
+        }
+
+        var destination = Path.Combine(
+            viewModel.ProjectDirectory,
+            "assets",
+            $"crop-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmssfff}.png");
+        try
+        {
+            WriteCrop(captured.AbsolutePath, destination, cropBounds);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            viewModel.StatusText = $"Marked crop could not be written: {exception.Message}";
+            return;
+        }
+
+        if (!await viewModel.CompleteMarkingIncidentAsync(captured, destination))
+        {
+            return;
+        }
+
+        EndMarkingSession(discardFrame: false);
+        viewModel.IsMarkingModeEnabled = false;
+    }
+
+    private void EndMarkingSession(bool discardFrame)
+    {
+        _markingFrameCancellation?.Cancel();
+        _markingFrameCancellation?.Dispose();
+        _markingFrameCancellation = null;
+        if (discardFrame && _markingFrame is { } captured && DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.DiscardMarkingFrame(captured);
+        }
+
+        _markingFrame = null;
+        _markingDragStart = null;
+        _markingSelection = default;
+        _markingFrameBitmap?.Dispose();
+        _markingFrameBitmap = null;
+        MarkingFrameImage.Source = null;
+        MarkingSelectionBorder.IsVisible = false;
+        if (DataContext is MainWindowViewModel activeViewModel)
+        {
+            activeViewModel.IsMarkingFrameActive = false;
+        }
+    }
+
+    private void ClearMarkingSelection()
+    {
+        _markingDragStart = null;
+        _markingSelection = default;
+        MarkingSelectionBorder.IsVisible = false;
+    }
+
+    private void UpdateMarkingSelectionVisual()
+    {
+        MarkingSelectionBorder.IsVisible =
+            _markingSelection.Width >= FrameCropMapper.MinimumDisplaySelectionPixels &&
+            _markingSelection.Height >= FrameCropMapper.MinimumDisplaySelectionPixels;
+        Canvas.SetLeft(MarkingSelectionBorder, _markingSelection.X);
+        Canvas.SetTop(MarkingSelectionBorder, _markingSelection.Y);
+        MarkingSelectionBorder.Width = _markingSelection.Width;
+        MarkingSelectionBorder.Height = _markingSelection.Height;
+    }
+
+    private AvaloniaPoint ClampMarkingPoint(AvaloniaPoint point) => new(
+        Math.Clamp(point.X, 0, MarkingCanvas.Bounds.Width),
+        Math.Clamp(point.Y, 0, MarkingCanvas.Bounds.Height));
+
+    private static void WriteCrop(string sourcePath, string destinationPath, FramePixelRect cropBounds)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)
+            ?? throw new InvalidOperationException("Crop destination directory is missing."));
+        using var source = SKBitmap.Decode(sourcePath)
+            ?? throw new InvalidDataException("The captured frame could not be decoded.");
+        using var crop = new SKBitmap(cropBounds.Width, cropBounds.Height);
+        using (var canvas = new SKCanvas(crop))
+        {
+            canvas.DrawBitmap(
+                source,
+                new SKRectI(
+                    cropBounds.X,
+                    cropBounds.Y,
+                    cropBounds.X + cropBounds.Width,
+                    cropBounds.Y + cropBounds.Height),
+                new SKRect(0, 0, cropBounds.Width, cropBounds.Height));
+        }
+
+        using var image = SKImage.FromBitmap(crop);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 95);
+        using var stream = File.Create(destinationPath);
+        data.SaveTo(stream);
     }
 
     private void OnPlayerProgressPointerEntered(object? sender, PointerEventArgs eventArgs) =>

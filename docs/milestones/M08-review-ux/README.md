@@ -91,16 +91,23 @@ Implement the synchronized-review improvements requested for the virtual timelin
 - Playback chooses a valid supplied LRV before a cached FFmpeg proxy, then the original source. The existing bounded FFmpeg generation remains the automatic fallback for clips without an LRV; the renamed **Previews** action makes this choice clear.
 - A supplied preview is persisted separately from evidence media and, when project copying is selected, goes under `sources/previews`. Capturing a frame always temporarily restores the original source, then returns to the chosen review asset, so no LRV/proxy frame can become evidence.
 
+## Slice 15 — freeze-frame marking mode
+
+- The player controls now include a **Marking mode** checkbox. It pauses review on a source-direct frame, replaces the native playback surface with an ordinary Avalonia canvas, and lets the reviewer drag a vehicle/plate rectangle without native-video overlay or input-order issues.
+- Canceling disposes the frozen bitmap, restores the player surface, and removes the unattached temporary frame. A valid drag writes the crop, creates an unsaved incident draft with the original frame and crop, and keeps saving an incident as an explicit reviewer action.
+- Display-to-source crop mapping is now shared by the marking canvas and the existing crop dialog. It handles uniform-image letterboxing, reverse drags, clipping, and minimum selection size; both attachments retain the frozen source ID, source time, and project time even if the playhead later changes.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed with 0 warnings and 0 errors.
 - `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-handoff\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, 73/73 after the live-preview integration, 91/91 after the continuous-speed/unknown-telemetry slice, 101/101 after the wheel-navigation slice, 107/107 after live map-route progress, 109/109 after the decoder-ready handoff, 120/120 after the playback-rate bar, 126/126 after the map-style catalog/selector, 135/135 after the delayed player-progress preview, 140/140 after the map stop-frame preview, and 149/149 after the exact-time guide. The alternate output path avoids a locked DLL in the active reviewer process.
 - The primary viewport test covers a -15 to +75 second visual range, pointer mapping, and pan clamping after zoom.
 - The supplied-LRV matcher/selection, preview-folder copy, and JSON round-trip are covered; the full shared suite passed 159/159 after this slice.
+- The shared crop mapper covers letterboxing, reverse drags, edge clipping, letterbox rejection, and minimum sizing. Release build passed with 0 warnings and the full shared suite passed 164/164 after marking mode.
 - The added viewport-domain test verifies that a drag-time workspace expansion preserves the current zoom and visible offset rather than resetting to Fit.
 - Metadata parser fallbacks, trusted-gap layout, later-import collision/manual-layout protection, confidence selection, timeline edit preservation, JSON round-trip, and schema-v1 optional-field compatibility are unit tested. A local `ffprobe` read is bounded to five seconds and failure remains advisory.
 - GPX candidate-session tests cover negative project time, whole-route translation, isolated anchor moves, source/order validation, two-anchor limit, cancel, and defensive snapshots.
 
 ## Screenshot state
 
-Visual acceptance is pending the next running-workbench pass because the normal Release output is presently held by an active RoadWatcher process. Capture the completed M08 timeline state at a 1152 × 820 logical viewport and record the project/GPX mapping state beside the image before milestone handoff.
+Visual acceptance is pending the next running-workbench pass because the normal Release output is presently held by an active RoadWatcher process. Capture the completed M08 timeline/marking state at a 1152 × 820 logical viewport and record the project/GPX mapping state beside the image before milestone handoff.

@@ -134,8 +134,54 @@
         </Border>
         <controls:EmbeddedVideoView x:Name="VideoSurface"
                                     Grid.Row="1"
-                                    IsVisible="{Binding HasLoadedMedia}"
+                                    IsVisible="{Binding ShowPlaybackSurface}"
                                     MediaPlayer="{Binding MediaPlayer}" />
+        <Border x:Name="MarkingFrameSurface"
+                Grid.Row="1"
+                IsVisible="{Binding IsMarkingFrameActive}"
+                Background="#020609"
+                ClipToBounds="True">
+          <Grid>
+            <Canvas x:Name="MarkingCanvas"
+                    Background="#020609"
+                    PointerPressed="OnMarkingCanvasPointerPressed"
+                    PointerMoved="OnMarkingCanvasPointerMoved"
+                    PointerReleased="OnMarkingCanvasPointerReleased">
+              <Image x:Name="MarkingFrameImage"
+                     Width="{Binding #MarkingCanvas.Bounds.Width}"
+                     Height="{Binding #MarkingCanvas.Bounds.Height}"
+                     Stretch="Uniform" />
+              <Border x:Name="MarkingSelectionBorder"
+                      IsVisible="False"
+                      Background="#38FFAD18"
+                      BorderBrush="{StaticResource AccentAmber}"
+                      BorderThickness="2"
+                      CornerRadius="2" />
+            </Canvas>
+            <Border Margin="12"
+                    Padding="9,6"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Background="#D90A1A20"
+                    BorderBrush="{StaticResource PanelBorder}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    IsHitTestVisible="False">
+              <StackPanel Spacing="2">
+                <TextBlock FontSize="11" FontWeight="SemiBold" Text="Marking frame" />
+                <TextBlock Classes="muted" FontSize="10" Text="Drag a vehicle or plate • source-direct capture" />
+              </StackPanel>
+            </Border>
+            <Button HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="12"
+                    Padding="9,5"
+                    Click="OnCancelMarkingClicked"
+                    ToolTip.Tip="Discard this marking frame">
+              <TextBlock Text="Cancel marking" />
+            </Button>
+          </Grid>
+        </Border>
         <Border Grid.Row="1" IsVisible="{Binding ShowEmptyState}" Background="#061217">
           <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
             <TextBlock HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="No video loaded" />
@@ -147,14 +193,14 @@
 
     <!-- Player controls -->
     <Border Grid.Row="2" Grid.Column="1" Classes="panel">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto" Margin="9,0">
-        <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="{Binding PlayLabel}" AutomationProperties.Name="{Binding PlayLabel}">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" Margin="9,0">
+        <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="{Binding PlayLabel}" AutomationProperties.Name="{Binding PlayLabel}">
           <materialIcons:MaterialIcon Kind="{Binding PlayIcon}" Width="23" Height="23" />
         </Button>
-        <Button Grid.Column="1" Classes="icon" Command="{Binding SeekBackCommand}" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="Back 10 seconds">
+        <Button Grid.Column="1" Classes="icon" Command="{Binding SeekBackCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Back 10 seconds">
           <materialIcons:MaterialIcon Kind="Replay" Width="20" Height="20" />
         </Button>
-        <Button Grid.Column="2" Classes="icon" Command="{Binding SeekForwardCommand}" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="Forward 10 seconds">
+        <Button Grid.Column="2" Classes="icon" Command="{Binding SeekForwardCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Forward 10 seconds">
           <materialIcons:MaterialIcon Kind="FastForward10" Width="20" Height="20" />
         </Button>
         <TextBlock Grid.Column="3" Margin="8,0,8,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding CurrentTimeText}" ToolTip.Tip="Project time" />
@@ -165,7 +211,7 @@
                 Minimum="0"
                 Maximum="{Binding MaximumSeconds}"
                 Value="{Binding CurrentSeconds, Mode=TwoWay}"
-                IsEnabled="{Binding HasLoadedMedia}"
+                IsEnabled="{Binding CanUsePlaybackControls}"
                 PointerEntered="OnPlayerProgressPointerEntered"
                 PointerMoved="OnPlayerProgressPointerMoved"
                 PointerExited="OnPlayerProgressPointerExited"
@@ -179,7 +225,7 @@
             </StackPanel>
           </Border>
         </Popup>
-        <Grid Grid.Column="6" Margin="0,0,8,0" VerticalAlignment="Center" ColumnDefinitions="Auto,108" IsEnabled="{Binding HasLoadedMedia}">
+        <Grid Grid.Column="6" Margin="0,0,8,0" VerticalAlignment="Center" ColumnDefinitions="Auto,108" IsEnabled="{Binding CanUsePlaybackControls}">
           <TextBlock Margin="0,0,6,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding PlaybackRateText}" />
           <Slider Grid.Column="1"
                   Minimum="{Binding MinimumPlaybackRate}"
@@ -190,10 +236,21 @@
                   ToolTip.Tip="Playback speed from 0.5× to 5×"
                   AutomationProperties.Name="Playback speed from 0.5× to 5×" />
         </Grid>
-        <Button Grid.Column="7" Classes="icon" Command="{Binding CaptureFrameCommand}" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="Capture screenshot" AutomationProperties.Name="Capture current frame">
+        <CheckBox Grid.Column="7"
+                  Margin="0,0,9,0"
+                  VerticalAlignment="Center"
+                  IsEnabled="{Binding HasLoadedMedia}"
+                  IsChecked="{Binding IsMarkingModeEnabled, Mode=TwoWay}"
+                  Checked="OnMarkingModeChecked"
+                  Unchecked="OnMarkingModeUnchecked"
+                  ToolTip.Tip="Freeze an original-source frame, then drag to mark a vehicle or plate"
+                  AutomationProperties.Name="Marking mode">
+          <TextBlock FontSize="10" Text="Marking mode" />
+        </CheckBox>
+        <Button Grid.Column="8" Classes="icon" Command="{Binding CaptureFrameCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Capture screenshot" AutomationProperties.Name="Capture current frame">
           <materialIcons:MaterialIcon Kind="CameraOutline" Width="20" Height="20" />
         </Button>
-        <Button Grid.Column="8" Classes="icon" Click="OnCropFrameClicked" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="Crop current frame" AutomationProperties.Name="Crop current frame">
+        <Button Grid.Column="9" Classes="icon" Click="OnCropFrameClicked" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Crop current frame" AutomationProperties.Name="Crop current frame">
           <materialIcons:MaterialIcon Kind="Crop" Width="20" Height="20" />
         </Button>
       </Grid>
@@ -432,7 +489,7 @@
           </StackPanel>
         </ScrollViewer>
         <StackPanel Grid.Row="2" Margin="14,8,14,14" Spacing="8">
-          <Button Classes="primary" Command="{Binding MarkIncidentCommand}" IsEnabled="{Binding HasLoadedMedia}" HorizontalContentAlignment="Center" AutomationProperties.Name="Mark incident">
+          <Button Classes="primary" Command="{Binding MarkIncidentCommand}" IsEnabled="{Binding CanUsePlaybackControls}" HorizontalContentAlignment="Center" AutomationProperties.Name="Mark incident">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <materialIcons:MaterialIcon Kind="FlagOutline" Width="19" Height="19" />
               <TextBlock Text="Mark incident" />

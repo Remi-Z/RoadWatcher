@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
+using RoadWatcher.Core;
 using SkiaSharp;
 
 namespace RoadWatcher.App;
@@ -92,31 +93,33 @@ public sealed partial class CropDialog : Window
             return;
         }
 
-        var imageRect = GetDisplayedImageRect(_bitmap.PixelSize.Width, _bitmap.PixelSize.Height);
-        var clipped = _selection.Intersect(imageRect);
-        if (clipped.Width < 4 || clipped.Height < 4)
+        if (!FrameCropMapper.TryMapSelection(
+                new FrameDisplayRect(_selection.X, _selection.Y, _selection.Width, _selection.Height),
+                Surface.Bounds.Width,
+                Surface.Bounds.Height,
+                _bitmap.PixelSize.Width,
+                _bitmap.PixelSize.Height,
+                out var cropBounds))
         {
             StatusText.Text = "The selection must overlap the evidence frame.";
             return;
         }
 
-        var scale = imageRect.Width / _bitmap.PixelSize.Width;
-        var left = Math.Clamp((int)Math.Floor((clipped.X - imageRect.X) / scale), 0, _bitmap.PixelSize.Width - 1);
-        var top = Math.Clamp((int)Math.Floor((clipped.Y - imageRect.Y) / scale), 0, _bitmap.PixelSize.Height - 1);
-        var width = Math.Clamp((int)Math.Ceiling(clipped.Width / scale), 1, _bitmap.PixelSize.Width - left);
-        var height = Math.Clamp((int)Math.Ceiling(clipped.Height / scale), 1, _bitmap.PixelSize.Height - top);
-
         Directory.CreateDirectory(Path.GetDirectoryName(_destinationPath)
             ?? throw new InvalidOperationException("Crop destination directory is missing."));
         using var source = SKBitmap.Decode(_sourcePath)
             ?? throw new InvalidDataException("The captured frame could not be decoded.");
-        using var crop = new SKBitmap(width, height);
+        using var crop = new SKBitmap(cropBounds.Width, cropBounds.Height);
         using (var canvas = new SKCanvas(crop))
         {
             canvas.DrawBitmap(
                 source,
-                new SKRectI(left, top, left + width, top + height),
-                new SKRect(0, 0, width, height));
+                new SKRectI(
+                    cropBounds.X,
+                    cropBounds.Y,
+                    cropBounds.X + cropBounds.Width,
+                    cropBounds.Y + cropBounds.Height),
+                new SKRect(0, 0, cropBounds.Width, cropBounds.Height));
         }
 
         using var image = SKImage.FromBitmap(crop);
@@ -127,14 +130,6 @@ public sealed partial class CropDialog : Window
     }
 
     private void OnCancelClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs eventArgs) => Close(false);
-
-    private Rect GetDisplayedImageRect(double pixelWidth, double pixelHeight)
-    {
-        var scale = Math.Min(Surface.Bounds.Width / pixelWidth, Surface.Bounds.Height / pixelHeight);
-        var width = pixelWidth * scale;
-        var height = pixelHeight * scale;
-        return new Rect((Surface.Bounds.Width - width) / 2, (Surface.Bounds.Height - height) / 2, width, height);
-    }
 
     private Point Clamp(Point point) => new(
         Math.Clamp(point.X, 0, Surface.Bounds.Width),
