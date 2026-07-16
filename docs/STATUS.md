@@ -55,6 +55,7 @@ M08 — Timeline, map, and playback review UX: implementation has begun with the
 - Playback speed is now a labelled 0.5×–5× standard slider instead of a cycle button. It snaps to half-speed increments through a shared Core policy and restores the last accepted rate if LibVLC rejects a selection; isolated Release build passed with zero warnings and the shared full suite passed 120/120.
 - Context-map styling now offers Night, Day, Satellite, and OSM modes. It swaps only the attributed, locally cached basemap while retaining the viewport and every GPX/road-context overlay; isolated Release build passed with zero warnings and the shared full suite passed 126/126.
 - Hovering over the player progress bar now waits 175 ms, then presents a cached/generated frame and exact project/source status without moving playback, telemetry, GPX synchronization, or the map. Gaps and unavailable images remain explicit no-frame states; the pointer mapper is unit-tested. Isolated Release build passed with zero warnings and the shared full suite passed 135/135.
+- Tapping a GPX stop on the map now opens a cancellable, non-destructive card with its offset-preserving raw GPX timestamp, dwell duration, mapped project/video source time, and cached/generated frame. A pure resolver keeps pre-video, post-video, and clip-gap stops explicit no-video states; only the card's Jump action pauses/seeks. Isolated Release build passed with zero warnings and the shared full suite passed 140/140.
 
 ## M07 closure record
 

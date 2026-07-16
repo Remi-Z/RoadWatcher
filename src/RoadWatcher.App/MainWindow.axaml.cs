@@ -10,6 +10,7 @@ using BruTile.Predefined;
 using BruTile.Web;
 using Mapsui;
 using Mapsui.Layers;
+using Mapsui.Manipulations;
 using Mapsui.Nts;
 using Mapsui.Projections;
 using Mapsui.Styles;
@@ -37,6 +38,9 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _timelinePreviewCancellation;
     private CancellationTokenSource? _playerProgressPreviewCancellation;
     private Bitmap? _playerProgressPreviewBitmap;
+    private CancellationTokenSource? _gpxStopPreviewCancellation;
+    private Bitmap? _gpxStopPreviewBitmap;
+    private GpxStopPreview? _gpxStopPreview;
 
     private const int PlayerProgressPreviewDelayMilliseconds = 175;
     public MainWindow() : this(null)
@@ -77,6 +81,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             CancelPlayerProgressPreview();
+            CancelGpxStopPreview();
             _timelinePreviewCancellation?.Cancel();
             _timelinePreviewCancellation?.Dispose();
             (DataContext as IDisposable)?.Dispose();
@@ -368,6 +373,186 @@ public sealed partial class MainWindow : Window
         this.FindControl<TextBlock>("PlayerProgressPreviewStatus")?.Text = string.Empty;
         _playerProgressPreviewBitmap?.Dispose();
         _playerProgressPreviewBitmap = null;
+    }
+
+    private void OnMapTapped(object? sender, MapEventArgs eventArgs)
+    {
+        if (eventArgs.GestureType != GestureType.SingleTap || _stopLayer is null)
+        {
+            return;
+        }
+
+        var mapInfo = eventArgs.GetMapInfo([_stopLayer]);
+        var target = mapInfo.MapInfoRecords
+            .Select(record => record.Feature.Data)
+            .OfType<GpxStopPreviewTarget>()
+            .FirstOrDefault();
+        if (target is null)
+        {
+            return;
+        }
+
+        // Only consume the gesture when a stop feature was selected. Normal
+        // pan/zoom/tap behavior remains available everywhere else on the map.
+        eventArgs.Handled = true;
+        RequestGpxStopPreview(target);
+    }
+
+    private async void RequestGpxStopPreview(GpxStopPreviewTarget target)
+    {
+        CancelGpxStopPreview();
+        if (DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        ShowGpxStopPreviewLoading(target);
+        var cancellation = new CancellationTokenSource();
+        _gpxStopPreviewCancellation = cancellation;
+        try
+        {
+            var preview = await viewModel.GetGpxStopPreviewAsync(target, cancellation.Token);
+            if (cancellation.IsCancellationRequested ||
+                !ReferenceEquals(_gpxStopPreviewCancellation, cancellation))
+            {
+                return;
+            }
+
+            _gpxStopPreview = preview;
+            ShowGpxStopPreview(preview);
+        }
+        catch (OperationCanceledException)
+        {
+            // Selecting a different stop intentionally discards the stale frame request.
+        }
+        catch (Exception exception)
+        {
+            if (ReferenceEquals(_gpxStopPreviewCancellation, cancellation) &&
+                this.FindControl<TextBlock>("GpxStopPreviewStatus") is { } status)
+            {
+                status.Text = $"Preview unavailable — {exception.Message}";
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_gpxStopPreviewCancellation, cancellation))
+            {
+                _gpxStopPreviewCancellation = null;
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private void OnGpxStopPreviewClosed(object? sender, RoutedEventArgs eventArgs) =>
+        CancelGpxStopPreview();
+
+    private async void OnGpxStopPreviewJumpClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (_gpxStopPreview is not { } preview || DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        if (sender is Control control)
+        {
+            control.IsEnabled = false;
+        }
+
+        try
+        {
+            await viewModel.JumpToGpxStopAsync(preview.Target);
+        }
+        finally
+        {
+            if (sender is Control jumpControl && ReferenceEquals(_gpxStopPreview, preview))
+            {
+                jumpControl.IsEnabled = preview.CanJump;
+            }
+        }
+    }
+
+    private void ShowGpxStopPreviewLoading(GpxStopPreviewTarget target)
+    {
+        ClearGpxStopPreviewImage();
+        if (this.FindControl<Border>("GpxStopPreviewCard") is { } card)
+        {
+            card.IsVisible = true;
+        }
+        if (this.FindControl<TextBlock>("GpxStopPreviewGpxTime") is { } gpxTime)
+        {
+            gpxTime.Text = $"GPX {target.Stop.CentreTime:O} • stopped {target.Stop.Duration.TotalSeconds:0.#} s";
+        }
+        this.FindControl<TextBlock>("GpxStopPreviewProjectTime")?.Text = "Resolving synchronized project time…";
+        this.FindControl<TextBlock>("GpxStopPreviewVideoTime")?.Text = "Video frame preview loading…";
+        this.FindControl<TextBlock>("GpxStopPreviewStatus")?.Text = "Selecting this stop does not seek playback.";
+        if (this.FindControl<Button>("GpxStopPreviewJumpButton") is { } jump)
+        {
+            jump.IsEnabled = false;
+        }
+    }
+
+    private void ShowGpxStopPreview(GpxStopPreview preview)
+    {
+        if (this.FindControl<Border>("GpxStopPreviewCard") is { } card)
+        {
+            card.IsVisible = true;
+        }
+        this.FindControl<TextBlock>("GpxStopPreviewGpxTime")?.Text = preview.GpxTimeText;
+        this.FindControl<TextBlock>("GpxStopPreviewProjectTime")?.Text = preview.ProjectTimeText;
+        this.FindControl<TextBlock>("GpxStopPreviewVideoTime")?.Text = preview.VideoTimeText;
+        this.FindControl<TextBlock>("GpxStopPreviewStatus")?.Text = preview.Status;
+        if (this.FindControl<Button>("GpxStopPreviewJumpButton") is { } jump)
+        {
+            jump.IsEnabled = preview.CanJump;
+        }
+
+        ClearGpxStopPreviewImage();
+        if (preview.ImagePath is { } imagePath && File.Exists(imagePath) &&
+            this.FindControl<AvaloniaImage>("GpxStopPreviewImage") is { } image)
+        {
+            try
+            {
+                _gpxStopPreviewBitmap = new Bitmap(imagePath);
+                image.Source = _gpxStopPreviewBitmap;
+                image.IsVisible = true;
+            }
+            catch
+            {
+                // The card keeps its exact time and no-frame status if the cache is unreadable.
+            }
+        }
+    }
+
+    private void CancelGpxStopPreview()
+    {
+        _gpxStopPreviewCancellation?.Cancel();
+        _gpxStopPreviewCancellation?.Dispose();
+        _gpxStopPreviewCancellation = null;
+        _gpxStopPreview = null;
+        if (this.FindControl<Border>("GpxStopPreviewCard") is { } card)
+        {
+            card.IsVisible = false;
+        }
+        this.FindControl<TextBlock>("GpxStopPreviewGpxTime")?.Text = string.Empty;
+        this.FindControl<TextBlock>("GpxStopPreviewProjectTime")?.Text = string.Empty;
+        this.FindControl<TextBlock>("GpxStopPreviewVideoTime")?.Text = string.Empty;
+        this.FindControl<TextBlock>("GpxStopPreviewStatus")?.Text = string.Empty;
+        if (this.FindControl<Button>("GpxStopPreviewJumpButton") is { } jump)
+        {
+            jump.IsEnabled = false;
+        }
+        ClearGpxStopPreviewImage();
+    }
+
+    private void ClearGpxStopPreviewImage()
+    {
+        if (this.FindControl<AvaloniaImage>("GpxStopPreviewImage") is { } image)
+        {
+            image.Source = null;
+            image.IsVisible = false;
+        }
+        _gpxStopPreviewBitmap?.Dispose();
+        _gpxStopPreviewBitmap = null;
     }
 
     private async void OnTimelineClipPreviewRequested(
@@ -662,6 +847,7 @@ public sealed partial class MainWindow : Window
             name: "CARTO Dark",
             attribution: attribution);
         var map = new Map();
+        map.Tapped += OnMapTapped;
         map.Layers.Add(new TileLayer(tileSource));
 
         _futureRouteLayer = new MemoryLayer("GPX route (upcoming)")
@@ -737,6 +923,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // A map route refresh always represents a newly opened/imported GPX
+        // source. Do not leave a card pointing to the previous source.
+        CancelGpxStopPreview();
+
         if (points.Count < 2)
         {
             _mapRouteSegments = [];
@@ -761,13 +951,20 @@ public sealed partial class MainWindow : Window
         _mapRouteSegments = profile.ContinuousSegments;
         _mapRouteProgressKey = null;
         UpdateMapRouteProgress(null);
-        _stopLayer.Features = profile.Stops
-            .Select(stop =>
-            {
-                var coordinate = SphericalMercator.FromLonLat(stop.Longitude, stop.Latitude);
-                return (IFeature)new PointFeature(coordinate.x, coordinate.y);
-            })
-            .ToArray();
+        var gpxSourceId = (DataContext as MainWindowViewModel)?.ActiveGpxSourceId;
+        _stopLayer.Features = gpxSourceId is { } sourceId
+            ? profile.Stops
+                .Select(stop =>
+                {
+                    var coordinate = SphericalMercator.FromLonLat(stop.Longitude, stop.Latitude);
+                    var feature = new PointFeature(coordinate.x, coordinate.y)
+                    {
+                        Data = new GpxStopPreviewTarget(sourceId, stop)
+                    };
+                    return (IFeature)feature;
+                })
+                .ToArray()
+            : [];
         _stopLayer.DataHasChanged();
         var projectedPoints = points
             .Select(point => SphericalMercator.FromLonLat(point.Longitude, point.Latitude))

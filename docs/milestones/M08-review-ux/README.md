@@ -73,10 +73,16 @@ Implement the synchronized-review improvements requested for the virtual timelin
 - Thumbnail lookup is now reusable without touching the playhead, telemetry, GPX synchronization presentation, or map. A source gap, missing source, or unavailable thumbnail remains an explicit no-frame status rather than pretending a frame exists.
 - Pointer-to-project-time mapping is a small Core utility with coverage for endpoints, clamping, non-zero ranges, and invalid geometry.
 
+## Slice 12 — map stop-frame preview
+
+- Tapping a compact GPX stop marker opens a non-destructive map card immediately, showing the recorded GPX centre time in offset-preserving ISO-8601 form, stop duration, mapped project time, and resolved video/source time.
+- The map queries only the GPX stop layer, so advisory road-context features cannot consume a stop click. Cached/generated frame work is cancellable when a different stop is selected; the card does not move playback until the reviewer explicitly chooses **Jump to frame**.
+- A Core resolver maps raw GPX stop times without clamping. A genuine clip gap and coverage before/after the project therefore show a clear no-video reason rather than a misleading endpoint thumbnail. Stop previews use millisecond source-time cache keys while retaining the existing bounded thumbnail cache.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed with 0 warnings and 0 errors.
-- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-handoff\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, 73/73 after the live-preview integration, 91/91 after the continuous-speed/unknown-telemetry slice, 101/101 after the wheel-navigation slice, 107/107 after live map-route progress, 109/109 after the decoder-ready handoff, 120/120 after the playback-rate bar, 126/126 after the map-style catalog/selector, and 135/135 after the delayed player-progress preview. The alternate output path avoids a locked DLL in the active reviewer process.
+- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-handoff\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, 73/73 after the live-preview integration, 91/91 after the continuous-speed/unknown-telemetry slice, 101/101 after the wheel-navigation slice, 107/107 after live map-route progress, 109/109 after the decoder-ready handoff, 120/120 after the playback-rate bar, 126/126 after the map-style catalog/selector, 135/135 after the delayed player-progress preview, and 140/140 after the map stop-frame preview. The alternate output path avoids a locked DLL in the active reviewer process.
 - The primary viewport test covers a -15 to +75 second visual range, pointer mapping, and pan clamping after zoom.
 - The added viewport-domain test verifies that a drag-time workspace expansion preserves the current zoom and visible offset rather than resetting to Fit.
 - Metadata parser fallbacks, trusted-gap layout, later-import collision/manual-layout protection, confidence selection, timeline edit preservation, JSON round-trip, and schema-v1 optional-field compatibility are unit tested. A local `ffprobe` read is bounded to five seconds and failure remains advisory.

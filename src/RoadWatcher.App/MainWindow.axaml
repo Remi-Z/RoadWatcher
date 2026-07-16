@@ -220,7 +220,44 @@
           </ComboBox>
         </Grid>
         <Border Grid.Row="1" Margin="10,0" CornerRadius="6" ClipToBounds="True" Background="#0B222B">
-          <mapsui:MapControl x:Name="ContextMap" />
+          <Grid>
+            <mapsui:MapControl x:Name="ContextMap" />
+            <Border x:Name="GpxStopPreviewCard"
+                    Width="250"
+                    Margin="10"
+                    Padding="8"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Background="#0A1C23"
+                    BorderBrush="{StaticResource PanelBorder}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    IsVisible="False">
+              <StackPanel Spacing="4">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold" Text="GPX stop preview" />
+                  <Button Grid.Column="1"
+                          Classes="icon"
+                          Click="OnGpxStopPreviewClosed"
+                          ToolTip.Tip="Close GPX stop preview"
+                          AutomationProperties.Name="Close GPX stop preview">
+                    <materialIcons:MaterialIcon Kind="Close" Width="16" Height="16" />
+                  </Button>
+                </Grid>
+                <Image x:Name="GpxStopPreviewImage" Width="232" Height="130" Stretch="Uniform" IsVisible="False" />
+                <TextBlock x:Name="GpxStopPreviewGpxTime" FontFamily="Consolas" FontSize="8" TextWrapping="Wrap" />
+                <TextBlock x:Name="GpxStopPreviewProjectTime" FontFamily="Consolas" FontSize="9" TextWrapping="Wrap" />
+                <TextBlock x:Name="GpxStopPreviewVideoTime" FontFamily="Consolas" FontSize="9" TextWrapping="Wrap" />
+                <TextBlock x:Name="GpxStopPreviewStatus" Classes="muted" FontSize="9" TextWrapping="Wrap" />
+                <Button x:Name="GpxStopPreviewJumpButton"
+                        Click="OnGpxStopPreviewJumpClicked"
+                        IsEnabled="False"
+                        Content="Jump to frame"
+                        ToolTip.Tip="Pause and seek to this stop's resolved video frame"
+                        AutomationProperties.Name="Jump to GPX stop frame" />
+              </StackPanel>
+            </Border>
+          </Grid>
         </Border>
         <StackPanel Grid.Row="2" Margin="16,12,16,16" Spacing="10">
           <Button IsEnabled="{Binding HasGpx}" Content="GPX synchronization…" AutomationProperties.Name="GPX synchronization">

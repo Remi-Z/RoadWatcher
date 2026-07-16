@@ -357,6 +357,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool HasMissingSources => MissingSourceCount > 0;
     public bool HasGpxSynchronizationPreview => _gpxSynchronizationPreview?.HasChanges == true;
     public bool IsGpxSynchronizationEditingEnabled => !IsGpxSynchronizationPersisting;
+    public Guid? ActiveGpxSourceId => GetActiveGpxSource()?.Id;
     public string[] Provinces { get; } = ["ON", "QC", "BC", "AB", "MB", "SK", "NB", "NS", "PE", "NL", "NT", "NU", "YT", "Other"];
     public Confidence[] ConfidenceLevels { get; } = Enum.GetValues<Confidence>();
 
@@ -756,7 +757,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private async Task<TimelineScrubPreview> GetTimelineThumbnailPreviewCoreAsync(
         TimeSpan projectTime,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useMillisecondSourceTime = false)
     {
         var position = _virtualTimeline.Resolve(projectTime);
         if (position is null)
@@ -779,8 +781,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         var maximumSourceSeconds = Math.Max(0, source.Duration.TotalSeconds - 0.001);
+        var sourceTime = TimeSpan.FromSeconds(Math.Clamp(
+            position.SourceTime.TotalSeconds,
+            0,
+            maximumSourceSeconds));
+        var bucketedSeconds = useMillisecondSourceTime
+            ? Math.Round(sourceTime.TotalMilliseconds) / 1_000d
+            : Math.Round(sourceTime.TotalSeconds);
         var bucketedSourceTime = TimeSpan.FromSeconds(Math.Clamp(
-            Math.Round(position.SourceTime.TotalSeconds),
+            bucketedSeconds,
             0,
             maximumSourceSeconds));
         var destination = _thumbnailCache.GetPath(ProjectDirectory, source.Id, bucketedSourceTime);
@@ -838,6 +847,110 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 projectTime.TotalSeconds,
                 null,
                 $"Preview unavailable • {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Builds a non-destructive map-stop preview. The raw GPX timestamp is
+    /// mapped without clamping, so an inter-clip gap or pre/post-video stop
+    /// remains visibly unavailable instead of borrowing an endpoint frame.
+    /// </summary>
+    public async Task<GpxStopPreview> GetGpxStopPreviewAsync(
+        GpxStopPreviewTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (!TryResolveGpxStopPreview(target, out var resolution))
+        {
+            return CreateGpxStopPreview(
+                target,
+                null,
+                "Video —",
+                "No video — this GPX source is no longer the active synchronized track.",
+                null,
+                canJump: false);
+        }
+
+        if (!resolution.HasVideo)
+        {
+            return CreateGpxStopPreview(
+                target,
+                resolution,
+                "Video —",
+                $"No video — {DescribeStopVideoAvailability(resolution.VideoAvailability)}",
+                null,
+                canJump: false);
+        }
+
+        var position = resolution.TimelinePosition!;
+        var source = _project.Media.FirstOrDefault(item => item.Id == position.MediaSourceId);
+        if (source is null)
+        {
+            return CreateGpxStopPreview(
+                target,
+                resolution,
+                "Video source metadata unavailable",
+                "No frame — source metadata unavailable.",
+                null,
+                canJump: false);
+        }
+
+        var sourcePath = ProjectDirectory is null
+            ? null
+            : ProjectLifecycleService.ResolveStoredPath(ProjectDirectory, source.Path);
+        var canJump = sourcePath is not null && File.Exists(sourcePath);
+        var thumbnail = await GetTimelineThumbnailPreviewCoreAsync(
+            resolution.ProjectTime,
+            cancellationToken,
+            useMillisecondSourceTime: true);
+        var status = thumbnail.ImagePath is null
+            ? $"No frame — {thumbnail.Status}"
+            : canJump
+                ? "Frame preview ready"
+                : "Cached frame preview • video needs relinking before it can be opened.";
+        return CreateGpxStopPreview(
+            target,
+            resolution,
+            $"Video {source.DisplayName} • source {FormatTimelineTime(position.SourceTime)}",
+            status,
+            thumbnail.ImagePath,
+            canJump);
+    }
+
+    /// <summary>
+    /// Performs the explicit navigation requested by the reviewer after a
+    /// stop preview. Selecting a stop alone never changes review state.
+    /// </summary>
+    public async Task JumpToGpxStopAsync(
+        GpxStopPreviewTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (!TryResolveGpxStopPreview(target, out var resolution) || !resolution.HasVideo)
+        {
+            StatusText = "The selected GPX stop has no video frame at its current synchronization.";
+            return;
+        }
+
+        var position = resolution.TimelinePosition!;
+        var source = ImportedMedia.FirstOrDefault(item => item.Id == position.MediaSourceId);
+        if (source is null)
+        {
+            StatusText = "The selected GPX stop source is unavailable • relink the video to open it.";
+            return;
+        }
+
+        IsPlaying = false;
+        _mediaEngine.Pause();
+        _updatingFromMedia = true;
+        CurrentSeconds = resolution.ProjectTime.TotalSeconds;
+        _updatingFromMedia = false;
+        UpdateTelemetry(resolution.ProjectTime.TotalSeconds);
+        UpdateGpxAnchorClock(resolution.ProjectTime.TotalSeconds);
+        await SeekProjectTimeAsync(resolution.ProjectTime, resumePlayback: false, cancellationToken);
+        if (_activeSegment?.MediaSourceId == position.MediaSourceId)
+        {
+            StatusText = $"Jumped to GPX stop • {source.DisplayName} • project {FormatTimelineTime(resolution.ProjectTime)} • source {FormatTimelineTime(position.SourceTime)}";
         }
     }
 
@@ -1905,7 +2018,6 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _gpxSpeedProfileCache.Remove(sourceId);
         var anchor = new SyncAnchor(sourceId, TimeSpan.Zero, points[0].RecordedAt);
         _gpxTimelineMapper = new GpxTimelineMapper([anchor]);
-        GpxTrackChanged?.Invoke(this, points);
         if (existingSource is null)
         {
             _project.GpxSources.Add(new GpxSource(
@@ -1920,6 +2032,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _project.Timeline.SyncAnchors.RemoveAll(existing => existing.GpxSourceId == sourceId);
         _project.Timeline.SyncAnchors.Add(anchor);
         ConfigureGpxSynchronization(_project.GpxSources.Single(source => source.Id == sourceId), [anchor]);
+        GpxTrackChanged?.Invoke(this, points);
         UpdateTelemetry(CurrentSeconds);
 
         LoadedMediaName = ImportedMedia.Count > 0
@@ -2245,6 +2358,45 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private GpxSource? GetActiveGpxSource() =>
         _project.GpxSources.FirstOrDefault(source => source.Points.Count > 0);
+
+    private bool TryResolveGpxStopPreview(
+        GpxStopPreviewTarget target,
+        out GpxStopPreviewResolution resolution)
+    {
+        resolution = null!;
+        if (_gpxTimelineMapper is null || GetActiveGpxSource()?.Id != target.GpxSourceId)
+        {
+            return false;
+        }
+
+        resolution = GpxStopPreviewResolver.Resolve(target, _gpxTimelineMapper, _virtualTimeline);
+        return true;
+    }
+
+    private static GpxStopPreview CreateGpxStopPreview(
+        GpxStopPreviewTarget target,
+        GpxStopPreviewResolution? resolution,
+        string videoTimeText,
+        string status,
+        string? imagePath,
+        bool canJump) => new(
+        target,
+        $"GPX {target.Stop.CentreTime:O} • stopped {target.Stop.Duration.TotalSeconds:0.#} s",
+        resolution is null
+            ? "Project time unavailable"
+            : $"Project {FormatSignedTimelineTime(resolution.ProjectTime)}",
+        videoTimeText,
+        status,
+        imagePath,
+        canJump);
+
+    private static string DescribeStopVideoAvailability(GpxStopVideoAvailability availability) => availability switch
+    {
+        GpxStopVideoAvailability.BeforeProject => "the stop is before the first project clip.",
+        GpxStopVideoAvailability.SourceGap => "the stop falls in a source gap.",
+        GpxStopVideoAvailability.AfterProject => "the stop is after the last project clip.",
+        _ => "no source frame is available."
+    };
 
     private GpxSource? GetGpxSource(Guid gpxSourceId) =>
         _project.GpxSources.FirstOrDefault(source =>
@@ -3048,6 +3200,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             ? Math.Clamp(projectSeconds, 0, MaximumSeconds)
             : 0;
 
+    private static string FormatSignedTimelineTime(TimeSpan value) =>
+        (value < TimeSpan.Zero ? "−" : string.Empty) + FormatTimelineTime(value.Duration());
+
     private static string FormatTimelineTime(TimeSpan value) =>
         value.ToString(value.TotalHours >= 1 ? @"hh\:mm\:ss\.fff" : @"mm\:ss\.fff");
 
@@ -3128,6 +3283,15 @@ public sealed record TimelineScrubPreview(
     double ProjectSeconds,
     string? ImagePath,
     string Status);
+
+public sealed record GpxStopPreview(
+    GpxStopPreviewTarget Target,
+    string GpxTimeText,
+    string ProjectTimeText,
+    string VideoTimeText,
+    string Status,
+    string? ImagePath,
+    bool CanJump);
 
 public sealed record TimelineUndoEntry(
     TimelineEditSnapshot Snapshot,
