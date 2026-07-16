@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -54,6 +53,7 @@ public sealed partial class MainWindow : Window
             timeline.GpxAnchorDragStarted += OnTimelineGpxAnchorDragStarted;
             timeline.GpxAnchorEditCommitted += OnTimelineGpxAnchorEditCommitted;
             timeline.GpxAnchorEditCanceled += OnTimelineGpxAnchorEditCanceled;
+            timeline.ClipPreviewRequested += OnTimelineClipPreviewRequested;
         }
         InitializeMap();
         Closed += (_, _) =>
@@ -246,12 +246,14 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void OnTimelineBlockPointerEntered(object? sender, PointerEventArgs eventArgs)
+    private async void OnTimelineClipPreviewRequested(
+        object? sender,
+        TimelineClipPreviewEventArgs eventArgs)
     {
-        if (sender is Control { DataContext: TimelineBlockViewModel block } &&
-            DataContext is MainWindowViewModel viewModel)
+        if (sender is VirtualTimelineControl timeline && DataContext is MainWindowViewModel viewModel)
         {
-            await viewModel.EnsureTimelineThumbnailAsync(block);
+            await viewModel.EnsureTimelineThumbnailAsync(eventArgs.Block);
+            timeline.SetClipHoverPreview(eventArgs.Block);
         }
     }
 
@@ -424,16 +426,7 @@ public sealed partial class MainWindow : Window
         var map = new Map();
         map.Layers.Add(new TileLayer(tileSource));
 
-        var routeCoordinates = new[]
-        {
-            Project(-79.40130, 43.66460),
-            Project(-79.40112, 43.66620),
-            Project(-79.40089, 43.66745),
-            Project(-79.39910, 43.66755),
-            Project(-79.39730, 43.66768)
-        };
-        var demoRoute = CreateRouteFeature(routeCoordinates, GpxSpeedPalette.Steady);
-        _routeLayer = new MemoryLayer("GPX route") { Features = [demoRoute] };
+        _routeLayer = new MemoryLayer("GPX route") { Features = [] };
         map.Layers.Add(_routeLayer);
 
         _stopLayer = new MemoryLayer("GPX stops")
@@ -452,7 +445,7 @@ public sealed partial class MainWindow : Window
         var centre = new MPoint(projected.x, projected.y);
         _positionLayer = new MemoryLayer("Incident position")
         {
-            Features = [new PointFeature(centre)],
+            Features = [],
             Style = new SymbolStyle
             {
                 Fill = new Brush(Color.FromString("#FFAD18")),
@@ -469,8 +462,23 @@ public sealed partial class MainWindow : Window
 
     private void UpdateMapRoute(IReadOnlyList<TrackPoint> points)
     {
-        if (_map is null || _routeLayer is null || _stopLayer is null || points.Count < 2)
+        if (_map is null || _routeLayer is null || _stopLayer is null)
         {
+            return;
+        }
+
+        if (points.Count < 2)
+        {
+            _routeLayer.Features = [];
+            _stopLayer.Features = [];
+            if (_positionLayer is not null)
+            {
+                _positionLayer.Features = [];
+                _positionLayer.DataHasChanged();
+            }
+            _routeLayer.DataHasChanged();
+            _stopLayer.DataHasChanged();
+            _map.RefreshGraphics();
             return;
         }
 

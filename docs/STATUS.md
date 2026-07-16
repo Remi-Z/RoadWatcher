@@ -88,6 +88,8 @@ M07 — V1 acceptance closure: implementation complete and ready for V2 work; re
 - Direct anchor edits enforce increasing project/GPX time, keep edge handles fully visible without changing their exact value, pause/resume active review safely, and persist the candidate project before changing live state. Release acceptance persisted a 100 ms anchor nudge and restored the prior anchors through Undo; Release build succeeds with zero warnings and all 45 tests pass.
 - One shared GPX speed profile now drives the map and timeline: blue below 10 km/h, teal from 10–20, amber from 20–30, and coral at 30+. The compact timeline legend states the fixed units/ranges, while imported map routes auto-fit their extent and retain the same per-segment colours.
 - Stops require continuous speed at or below 1 km/h for at least three seconds with no sample gap above five seconds. They render as magenta timeline markers and map halos so a live-position marker cannot hide them. A disposable multi-speed track exercised all four bands plus a four-second stop in the 1152 × 820 logical workbench; Release build succeeds with zero warnings and all 54 tests pass.
+- The final visible-workbench integrity pass removed the dead Settings navigation action and unimplemented V2 object/lane overlay affordances, replaced packaged demo media/map state with an honest empty state, and gates project/media/draft actions by real availability. New incident drafts now start with blank plate/notes, `Other` colour, and `Low` confidence instead of fabricated evidence.
+- The player now keeps project and resolved source time visible together, the telemetry overlay is a functional toggle, and cached source-correct thumbnails are available directly from clip hover in the virtual timeline. Release UI Automation verified the overlay on/off state, project 2.0 seconds resolving to source 2.0 seconds, blank/low-confidence draft defaults, and a newly generated source-1.5-second hover cache frame; Release build succeeds with zero warnings and all 54 tests pass.
 
 ## Milestone commits
 
@@ -113,6 +115,7 @@ M07 — V1 acceptance closure: implementation complete and ready for V2 work; re
 - `2ebc728` — interactive timeline scrubbing and zoom
 - `805367b` — evidence-safe timeline clip editing
 - `19ca13c` — direct GPX timeline synchronization
+- `d470ba1` — GPX speed bands and stop visualization
 
 ## Next actions
 

@@ -75,16 +75,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NotesCharacterCount))]
-    private string _notes = "Driver entered and travelled in the marked bike lane while preparing to turn right. No signal observed.";
+    private string _notes = string.Empty;
 
     [ObservableProperty]
-    private string _plateNumber = "CRBX 294";
+    private string _plateNumber = string.Empty;
 
     [ObservableProperty]
     private string _selectedCategory = "Bike-lane obstruction";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowDemoFrame))]
+    [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
+    [NotifyPropertyChangedFor(nameof(ShowTelemetryOverlay))]
     private bool _hasLoadedMedia;
 
     [ObservableProperty]
@@ -109,16 +110,16 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private string _coordinateText = "—";
 
     [ObservableProperty]
-    private string _vehicleColor = "Dark blue";
+    private string _vehicleColor = "Other";
 
     [ObservableProperty]
     private string _selectedProvince = "ON";
 
     [ObservableProperty]
-    private Confidence _plateConfidence = Confidence.High;
+    private Confidence _plateConfidence = Confidence.Low;
 
     [ObservableProperty]
-    private Confidence _eventConfidence = Confidence.High;
+    private Confidence _eventConfidence = Confidence.Low;
 
     [ObservableProperty]
     private string _tagsText = string.Empty;
@@ -155,6 +156,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private string _projectTitle = "No project open";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOpenProject))]
+    [NotifyPropertyChangedFor(nameof(ProjectStateText))]
     private string? _projectDirectory;
 
     [ObservableProperty]
@@ -214,6 +217,16 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _canRedoTimeline;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowTelemetryOverlay))]
+    private bool _isTelemetryOverlayVisible = true;
+
+    [ObservableProperty]
+    private bool _hasIncidentDraft;
+
+    [ObservableProperty]
+    private string _sourceTimeText = "Source —";
 
     [ObservableProperty]
     private double _gpxCoverageStartSeconds;
@@ -295,7 +308,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public string PlaybackRateText => $"{PlaybackRate:0.0}×";
     public string NotesCharacterCount => $"{Notes.Length} / 500";
     public string CurrentTimeText => TimeSpan.FromSeconds(CurrentSeconds).ToString(@"hh\:mm\:ss\.fff");
-    public bool ShowDemoFrame => !HasLoadedMedia;
+    public bool ShowEmptyState => !HasLoadedMedia;
+    public bool ShowTelemetryOverlay => HasLoadedMedia && IsTelemetryOverlayVisible;
+    public bool HasOpenProject => ProjectDirectory is not null;
+    public string ProjectStateText => HasOpenProject ? "Project open" : "No project open";
     public MediaPlayer MediaPlayer => _mediaEngine.MediaPlayer;
     public bool HasCapturedFrame => !string.IsNullOrWhiteSpace(LastCapturedFramePath);
     public IReadOnlyList<MediaSource> ImportedMedia { get; private set; } = [];
@@ -355,6 +371,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         ProjectTitle = "No project open";
         ImportedMedia = [];
         GpxPoints = [];
+        GpxTrackChanged?.Invoke(this, []);
         _gpxTimelineMapper = null;
         _locationResolver = null;
         HasGpx = false;
@@ -375,6 +392,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _incidentLocationSample = null;
         _incidentLocationProvider = null;
         _editingIncidentId = null;
+        HasIncidentDraft = false;
         Intersection = string.Empty;
         Address = string.Empty;
         IsLocationConfirmed = false;
@@ -383,6 +401,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         IncidentMarkers = [];
         HasSelectedIncident = false;
         SaveIncidentButtonText = "Save incident";
+        ResetIncidentEditorValues();
         MissingSources.Clear();
         MissingSourceCount = 0;
         HasLoadedMedia = false;
@@ -390,6 +409,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         IncidentCount = 0;
         AttachmentCount = 0;
         CurrentSeconds = 0;
+        SourceTimeText = "Source —";
         MaximumSeconds = 1;
         LoadedMediaName = "No ride sources loaded";
         LastCapturedFramePath = null;
@@ -443,7 +463,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _incidentLocationProvider = null;
         _editingIncidentId = null;
         HasSelectedIncident = false;
+        HasIncidentDraft = false;
         SaveIncidentButtonText = "Save incident";
+        ResetIncidentEditorValues();
         Intersection = string.Empty;
         Address = string.Empty;
         IsLocationConfirmed = false;
@@ -515,6 +537,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             GpxOffsetSeconds = 0;
             GpxAnchorTimeText = string.Empty;
             GpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
+            GpxTrackChanged?.Invoke(this, []);
         }
     }
 
@@ -536,7 +559,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         if (gpxPaths.Count > 0)
         {
-            await ImportGpxAsync(gpxPaths[0], isDemo: false, copyToProject, cancellationToken);
+            await ImportGpxAsync(gpxPaths[0], copyToProject, cancellationToken);
         }
 
         await _projectLifecycle.SaveAsync(_project, ProjectDirectory, cancellationToken);
@@ -1150,6 +1173,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     partial void OnCurrentSecondsChanged(double value)
     {
+        var sourcePosition = _virtualTimeline.Resolve(TimeSpan.FromSeconds(value));
+        SourceTimeText = sourcePosition is null
+            ? "Source gap"
+            : $"Source {FormatTimelineTime(sourcePosition.SourceTime)}";
         if (HasLoadedMedia && !_updatingFromMedia)
         {
             _ = SeekProjectTimeAsync(TimeSpan.FromSeconds(value), IsPlaying);
@@ -1273,7 +1300,6 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private async Task ImportGpxAsync(
         string path,
-        bool isDemo,
         bool copyToProject = false,
         CancellationToken cancellationToken = default)
     {
@@ -1313,12 +1339,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         ConfigureGpxSynchronization(_project.GpxSources.Single(source => source.Id == sourceId), [anchor]);
         UpdateTelemetry(CurrentSeconds);
 
-        if (!isDemo)
-        {
-            LoadedMediaName = ImportedMedia.Count > 0
-                ? $"{ImportedMedia[0].DisplayName}  +  {selectedFile.Name}"
-                : selectedFile.Name;
-        }
+        LoadedMediaName = ImportedMedia.Count > 0
+            ? $"{ImportedMedia[0].DisplayName}  +  {selectedFile.Name}"
+            : selectedFile.Name;
 
         StatusText = $"GPX aligned • {points.Count} points • offset +00:00.000";
     }
@@ -1613,6 +1636,25 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void SeekForward() => CurrentSeconds = Math.Min(MaximumSeconds, CurrentSeconds + 10);
 
+    private void ResetIncidentEditorValues()
+    {
+        SelectedCategory = "Bike-lane obstruction";
+        Notes = string.Empty;
+        TagsText = string.Empty;
+        PlateNumber = string.Empty;
+        SelectedProvince = "ON";
+        VehicleColor = "Other";
+        PlateConfidence = Confidence.Low;
+        EventConfidence = Confidence.Low;
+        AreVehicleValuesConfirmed = false;
+        Intersection = string.Empty;
+        Address = string.Empty;
+        IsLocationConfirmed = false;
+        _pendingAttachments.Clear();
+        AttachmentCount = 0;
+        RecognitionStatus = "Manual values • suggestions require confirmation";
+    }
+
     [RelayCommand]
     private void MarkIncident()
     {
@@ -1624,10 +1666,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         IsPlaying = false;
         _mediaEngine.Pause();
+        ResetIncidentEditorValues();
         _incidentStartSeconds = Math.Max(0, CurrentSeconds - 15);
         _incidentEndSeconds = Math.Min(MaximumSeconds, CurrentSeconds + 15);
         _editingIncidentId = null;
         HasSelectedIncident = false;
+        HasIncidentDraft = true;
         SaveIncidentButtonText = "Save incident";
         _pendingAttachments.Clear();
         AttachmentCount = 0;
@@ -1657,6 +1701,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         _editingIncidentId = incident.Id;
         HasSelectedIncident = true;
+        HasIncidentDraft = true;
         SaveIncidentButtonText = "Update incident";
         _incidentStartSeconds = incident.ProjectStart.TotalSeconds;
         _incidentEndSeconds = incident.ProjectEnd.TotalSeconds;

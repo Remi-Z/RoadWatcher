@@ -92,6 +92,7 @@ public sealed class VirtualTimelineControl : Control
     private bool _gpxDragActivated;
     private bool _dragGpxValid;
     private double _gpxDragPointerOffsetSeconds;
+    private TimelineBlockViewModel? _hoverBlock;
 
     static VirtualTimelineControl()
     {
@@ -213,6 +214,7 @@ public sealed class VirtualTimelineControl : Control
     public event EventHandler? GpxAnchorDragStarted;
     public event EventHandler<TimelineGpxAnchorEditEventArgs>? GpxAnchorEditCommitted;
     public event EventHandler? GpxAnchorEditCanceled;
+    public event EventHandler<TimelineClipPreviewEventArgs>? ClipPreviewRequested;
 
     public void Fit()
     {
@@ -246,6 +248,32 @@ public sealed class VirtualTimelineControl : Control
             }
         }
         _previewStatus = status;
+        InvalidateVisual();
+    }
+
+    public void SetClipHoverPreview(TimelineBlockViewModel block)
+    {
+        if (_hoverBlock is not { } hovered ||
+            hovered.MediaSourceId != block.MediaSourceId ||
+            hovered.ProjectStart != block.ProjectStart)
+        {
+            return;
+        }
+
+        _previewBitmap?.Dispose();
+        _previewBitmap = null;
+        if (block.ThumbnailPath is { } imagePath && File.Exists(imagePath))
+        {
+            try
+            {
+                _previewBitmap = new Bitmap(imagePath);
+            }
+            catch
+            {
+                // The status text below still provides the non-image fallback.
+            }
+        }
+        _previewStatus = block.ThumbnailStatus;
         InvalidateVisual();
     }
 
@@ -364,6 +392,10 @@ public sealed class VirtualTimelineControl : Control
             {
                 UpdateClipDrag(e);
             }
+            else
+            {
+                UpdateClipHover(e.GetPosition(this));
+            }
             return;
         }
 
@@ -371,6 +403,12 @@ public sealed class VirtualTimelineControl : Control
         RequestPreview(force: false);
         e.Handled = true;
         InvalidateVisual();
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        ClearClipHover();
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -713,12 +751,15 @@ public sealed class VirtualTimelineControl : Control
         IBrush raised,
         Pen border)
     {
-        if (!_isScrubbing)
+        if (!_isScrubbing && _hoverBlock is null)
         {
             return;
         }
 
-        var playheadX = HeaderWidth + _viewport.TimeToPixel(_scrubSeconds);
+        var previewSeconds = _isScrubbing
+            ? _scrubSeconds
+            : _hoverBlock!.ProjectStart.TotalSeconds + _hoverBlock.Duration.TotalSeconds / 2;
+        var playheadX = HeaderWidth + _viewport.TimeToPixel(previewSeconds);
         var left = Math.Clamp(playheadX - PreviewWidth / 2, HeaderWidth + 4, Bounds.Width - PreviewWidth - 4);
         var top = RulerHeight + LaneHeight * 2 + 2;
         var height = PreviewHeight + 34;
@@ -733,7 +774,10 @@ public sealed class VirtualTimelineControl : Control
         {
             DrawText(context, "Preview", left + 8, top + 35, muted, 10);
         }
-        DrawText(context, FormatTime(_scrubSeconds), left + 7, top + PreviewHeight + 3, primary, 10);
+        var timeLabel = _isScrubbing
+            ? FormatTime(_scrubSeconds)
+            : $"Source {FormatTime(_hoverBlock!.SourceTime.TotalSeconds)}";
+        DrawText(context, timeLabel, left + 7, top + PreviewHeight + 3, primary, 10);
         if (!string.IsNullOrWhiteSpace(_previewStatus))
         {
             DrawText(context, _previewStatus, left + 7, top + PreviewHeight + 18, muted, 8);
@@ -752,9 +796,49 @@ public sealed class VirtualTimelineControl : Control
         ScrubPreviewRequested?.Invoke(this, new TimelineScrubEventArgs(_scrubSeconds));
     }
 
+    private void UpdateClipHover(Point point)
+    {
+        var inVideoLane = point.X >= HeaderWidth &&
+            point.Y >= RulerHeight &&
+            point.Y < RulerHeight + LaneHeight;
+        var block = inVideoLane ? FindBlockAt(point.X) : null;
+        if (block?.MediaSourceId is null)
+        {
+            ClearClipHover();
+            return;
+        }
+
+        if (_hoverBlock?.MediaSourceId == block.MediaSourceId &&
+            _hoverBlock.ProjectStart == block.ProjectStart)
+        {
+            return;
+        }
+
+        ClearClipHover();
+        _hoverBlock = block;
+        _previewStatus = "Loading cached source preview…";
+        ClipPreviewRequested?.Invoke(this, new TimelineClipPreviewEventArgs(block));
+        InvalidateVisual();
+    }
+
+    private void ClearClipHover()
+    {
+        if (_hoverBlock is null)
+        {
+            return;
+        }
+
+        _hoverBlock = null;
+        _previewBitmap?.Dispose();
+        _previewBitmap = null;
+        _previewStatus = string.Empty;
+        InvalidateVisual();
+    }
+
     private void BeginScrub(PointerPressedEventArgs e, Point point)
     {
         Focus();
+        ClearClipHover();
         _selectedGpxAnchorIndex = null;
         _isScrubbing = true;
         _scrubStartSeconds = PositionSeconds;
@@ -770,6 +854,7 @@ public sealed class VirtualTimelineControl : Control
     private void BeginClipDrag(PointerPressedEventArgs e, Point point, TimelineBlockViewModel block)
     {
         Focus();
+        ClearClipHover();
         _selectedGpxAnchorIndex = null;
         _dragBlock = block;
         _selectedMediaSourceId = block.MediaSourceId;
@@ -1149,6 +1234,11 @@ public sealed class VirtualTimelineControl : Control
 public sealed class TimelineScrubEventArgs(double projectSeconds) : EventArgs
 {
     public double ProjectSeconds { get; } = projectSeconds;
+}
+
+public sealed class TimelineClipPreviewEventArgs(TimelineBlockViewModel block) : EventArgs
+{
+    public TimelineBlockViewModel Block { get; } = block;
 }
 
 public sealed class TimelineIncidentEventArgs(Guid incidentId) : EventArgs

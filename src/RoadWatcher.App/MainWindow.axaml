@@ -20,7 +20,7 @@
       <Grid RowDefinitions="53,*">
         <TextBlock Margin="14,0" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" Text="RoadWatcher" />
         <StackPanel Grid.Row="1" Spacing="7" Margin="6,10">
-          <Button Classes="nav selected">
+          <Button Classes="nav selected" Focusable="False" IsHitTestVisible="False">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <materialIcons:MaterialIcon Kind="PlayCircleOutline" Width="20" Height="20" />
               <TextBlock VerticalAlignment="Center" Text="Workbench" />
@@ -38,19 +38,19 @@
               <TextBlock VerticalAlignment="Center" Text="Open" />
             </StackPanel>
           </Button>
-          <Button Classes="nav" Command="{Binding SaveProjectCommand}" ToolTip.Tip="Save the current project">
+          <Button Classes="nav" Command="{Binding SaveProjectCommand}" IsEnabled="{Binding HasOpenProject}" ToolTip.Tip="Save the current project">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <materialIcons:MaterialIcon Kind="ContentSaveOutline" Width="20" Height="20" />
               <TextBlock VerticalAlignment="Center" Text="Save" />
             </StackPanel>
           </Button>
-          <Button Classes="nav" Command="{Binding CloseProjectCommand}" ToolTip.Tip="Close the current project">
+          <Button Classes="nav" Command="{Binding CloseProjectCommand}" IsEnabled="{Binding HasOpenProject}" ToolTip.Tip="Close the current project">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <materialIcons:MaterialIcon Kind="FolderRemoveOutline" Width="20" Height="20" />
               <TextBlock VerticalAlignment="Center" Text="Close" />
             </StackPanel>
           </Button>
-          <Button Classes="nav" Command="{Binding ExportEvidenceCommand}" ToolTip.Tip="Export saved incidents" AutomationProperties.Name="Export evidence package">
+          <Button Classes="nav" Command="{Binding ExportEvidenceCommand}" IsEnabled="{Binding HasOpenProject}" ToolTip.Tip="Export saved incidents" AutomationProperties.Name="Export evidence package">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <materialIcons:MaterialIcon Kind="ExportVariant" Width="20" Height="20" />
               <TextBlock VerticalAlignment="Center" Text="Exports" />
@@ -58,17 +58,12 @@
           </Button>
           <Button Classes="nav"
                   Command="{Binding PrepareProxiesCommand}"
+                  IsEnabled="{Binding HasLoadedMedia}"
                   ToolTip.Tip="Generate bounded FFmpeg review proxies"
                   AutomationProperties.Name="Prepare cached media proxies">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <materialIcons:MaterialIcon Kind="MovieOutline" Width="20" Height="20" />
               <TextBlock VerticalAlignment="Center" Text="Proxies" />
-            </StackPanel>
-          </Button>
-          <Button Classes="nav">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="CogOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Settings" />
             </StackPanel>
           </Button>
         </StackPanel>
@@ -85,12 +80,14 @@
         <CheckBox Grid.Column="1"
                   VerticalAlignment="Center"
                   IsChecked="{Binding CopySourcesIntoProject}"
+                  IsEnabled="{Binding HasOpenProject}"
                   Content="Copy sources"
                   ToolTip.Tip="Store imported media and GPX under this project"
                   AutomationProperties.Name="Copy imported sources into project" />
         <Button Grid.Column="3"
                 VerticalAlignment="Center"
                 Click="OnImportRideClicked"
+                IsEnabled="{Binding HasOpenProject}"
                 AutomationProperties.Name="Import ride sources">
           <StackPanel Orientation="Horizontal" Spacing="7">
             <materialIcons:MaterialIcon Kind="FolderPlusOutline" Width="18" Height="18" />
@@ -104,7 +101,7 @@
           </StackPanel>
         </Button>
         <StackPanel Grid.Column="7" VerticalAlignment="Center" Spacing="3">
-          <TextBlock Foreground="{StaticResource AccentTeal}" Text="Project lifecycle active" />
+          <TextBlock Foreground="{StaticResource AccentTeal}" Text="{Binding ProjectStateText}" />
           <TextBlock Classes="muted" FontSize="10" Text="{Binding MissingSourceCount, StringFormat={}{0} missing source(s)}" />
         </StackPanel>
       </Grid>
@@ -112,8 +109,8 @@
 
     <!-- Video -->
     <Border Grid.Row="1" Grid.Column="1" Background="#020609" ClipToBounds="True">
-      <Grid RowDefinitions="42,*">
-        <Border Padding="13,8" Background="#D90A1A20" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1">
+      <Grid RowDefinitions="Auto,*">
+        <Border Padding="13,8" Background="#D90A1A20" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1" IsVisible="{Binding ShowTelemetryOverlay}">
           <Grid ColumnDefinitions="Auto,20,Auto,20,Auto,20,*">
             <StackPanel Orientation="Horizontal" Spacing="7">
               <materialIcons:MaterialIcon Kind="Speedometer" Width="17" Height="17" />
@@ -139,36 +136,36 @@
                                     Grid.Row="1"
                                     IsVisible="{Binding HasLoadedMedia}"
                                     MediaPlayer="{Binding MediaPlayer}" />
-        <Image Grid.Row="1"
-               IsVisible="{Binding ShowDemoFrame}"
-               Source="avares://RoadWatcher.App/Assets/cycling-evidence-frame.png"
-               Stretch="UniformToFill" />
+        <Border Grid.Row="1" IsVisible="{Binding ShowEmptyState}" Background="#061217">
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+            <TextBlock HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="No video loaded" />
+            <TextBlock HorizontalAlignment="Center" Classes="muted" Text="Create or open a project, then import ride sources." />
+          </StackPanel>
+        </Border>
       </Grid>
     </Border>
 
     <!-- Player controls -->
     <Border Grid.Row="2" Grid.Column="1" Classes="panel">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" Margin="9,0">
-        <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" ToolTip.Tip="{Binding PlayLabel}" AutomationProperties.Name="{Binding PlayLabel}">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto" Margin="9,0">
+        <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="{Binding PlayLabel}" AutomationProperties.Name="{Binding PlayLabel}">
           <materialIcons:MaterialIcon Kind="{Binding PlayIcon}" Width="23" Height="23" />
         </Button>
-        <Button Grid.Column="1" Classes="icon" Command="{Binding SeekBackCommand}" ToolTip.Tip="Back 10 seconds">
+        <Button Grid.Column="1" Classes="icon" Command="{Binding SeekBackCommand}" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="Back 10 seconds">
           <materialIcons:MaterialIcon Kind="Replay" Width="20" Height="20" />
         </Button>
-        <Button Grid.Column="2" Classes="icon" Command="{Binding SeekForwardCommand}" ToolTip.Tip="Forward 10 seconds">
+        <Button Grid.Column="2" Classes="icon" Command="{Binding SeekForwardCommand}" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="Forward 10 seconds">
           <materialIcons:MaterialIcon Kind="FastForward10" Width="20" Height="20" />
         </Button>
-        <TextBlock Grid.Column="3" Margin="8,0,12,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding CurrentTimeText}" />
-        <Slider Grid.Column="4" Margin="0,0,14,0" Minimum="0" Maximum="{Binding MaximumSeconds}" Value="{Binding CurrentSeconds, Mode=TwoWay}" AutomationProperties.Name="Project timeline position" />
-        <Button Grid.Column="5" Classes="icon" Command="{Binding CyclePlaybackRateCommand}" Content="{Binding PlaybackRateText}" AutomationProperties.Name="Cycle playback speed" />
-        <Button Grid.Column="6" Classes="icon" Command="{Binding CaptureFrameCommand}" ToolTip.Tip="Capture screenshot" AutomationProperties.Name="Capture current frame">
+        <TextBlock Grid.Column="3" Margin="8,0,8,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding CurrentTimeText}" ToolTip.Tip="Project time" />
+        <TextBlock Grid.Column="4" Margin="0,0,12,0" VerticalAlignment="Center" Classes="muted" FontFamily="Consolas" FontSize="9" Text="{Binding SourceTimeText}" />
+        <Slider Grid.Column="5" Margin="0,0,14,0" Minimum="0" Maximum="{Binding MaximumSeconds}" Value="{Binding CurrentSeconds, Mode=TwoWay}" IsEnabled="{Binding HasLoadedMedia}" AutomationProperties.Name="Project timeline position" />
+        <Button Grid.Column="6" Classes="icon" Command="{Binding CyclePlaybackRateCommand}" IsEnabled="{Binding HasLoadedMedia}" Content="{Binding PlaybackRateText}" AutomationProperties.Name="Cycle playback speed" />
+        <Button Grid.Column="7" Classes="icon" Command="{Binding CaptureFrameCommand}" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="Capture screenshot" AutomationProperties.Name="Capture current frame">
           <materialIcons:MaterialIcon Kind="CameraOutline" Width="20" Height="20" />
         </Button>
-        <Button Grid.Column="7" Classes="icon" Click="OnCropFrameClicked" ToolTip.Tip="Crop current frame" AutomationProperties.Name="Crop current frame">
+        <Button Grid.Column="8" Classes="icon" Click="OnCropFrameClicked" IsEnabled="{Binding HasLoadedMedia}" ToolTip.Tip="Crop current frame" AutomationProperties.Name="Crop current frame">
           <materialIcons:MaterialIcon Kind="Crop" Width="20" Height="20" />
-        </Button>
-        <Button Grid.Column="8" Classes="icon" ToolTip.Tip="Overlay layers">
-          <materialIcons:MaterialIcon Kind="LayersOutline" Width="20" Height="20" />
         </Button>
       </Grid>
     </Border>
@@ -177,9 +174,8 @@
     <GridSplitter Grid.Row="1" Grid.RowSpan="3" Grid.Column="2" Width="4" Background="#18343D" ResizeDirection="Columns" />
     <Border Grid.Row="1" Grid.RowSpan="2" Grid.Column="3" Classes="panel">
       <Grid RowDefinitions="50,*,Auto">
-        <Grid Margin="15,0" ColumnDefinitions="*,Auto">
+        <Grid Margin="15,0">
           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Context" />
-          <materialIcons:MaterialIcon Grid.Column="1" VerticalAlignment="Center" Kind="ChevronDoubleLeft" Width="21" Height="21" />
         </Grid>
         <Border Grid.Row="1" Margin="10,0" CornerRadius="6" ClipToBounds="True" Background="#0B222B">
           <mapsui:MapControl x:Name="ContextMap" />
@@ -215,22 +211,12 @@
             </Button.Flyout>
           </Button>
           <TextBlock FontWeight="SemiBold" Text="Overlay Layers" />
-          <CheckBox IsChecked="True">
+          <CheckBox IsChecked="{Binding IsTelemetryOverlayVisible}"
+                    IsEnabled="{Binding HasLoadedMedia}"
+                    AutomationProperties.Name="Show telemetry overlay">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <materialIcons:MaterialIcon Kind="Bike" Width="18" Height="18" />
               <TextBlock Text="Telemetry" />
-            </StackPanel>
-          </CheckBox>
-          <CheckBox>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <materialIcons:MaterialIcon Kind="CubeOutline" Width="18" Height="18" />
-              <TextBlock Text="Objects" />
-            </StackPanel>
-          </CheckBox>
-          <CheckBox>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <materialIcons:MaterialIcon Kind="RoadVariant" Width="18" Height="18" />
-              <TextBlock Text="Lanes" />
             </StackPanel>
           </CheckBox>
         </StackPanel>
@@ -241,12 +227,10 @@
     <GridSplitter Grid.Row="1" Grid.RowSpan="3" Grid.Column="4" Width="4" Background="#18343D" ResizeDirection="Columns" />
     <Border Grid.Row="1" Grid.RowSpan="3" Grid.Column="5" Classes="panel">
       <Grid RowDefinitions="50,*,Auto">
-        <Grid Margin="14,0" ColumnDefinitions="Auto,*,Auto">
-          <materialIcons:MaterialIcon VerticalAlignment="Center" Kind="ArrowLeft" Width="20" Height="20" />
-          <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="Incident inspector" />
-          <materialIcons:MaterialIcon Grid.Column="2" VerticalAlignment="Center" Kind="PinOutline" Width="20" Height="20" />
+        <Grid Margin="14,0">
+          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Incident inspector" />
         </Grid>
-        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsEnabled="{Binding HasIncidentDraft}">
           <StackPanel Margin="14,0,14,14" Spacing="8">
             <TextBlock Classes="muted" Text="Category" />
             <ComboBox ItemsSource="{Binding Categories}"
@@ -354,13 +338,14 @@
           </StackPanel>
         </ScrollViewer>
         <StackPanel Grid.Row="2" Margin="14,8,14,14" Spacing="8">
-          <Button Classes="primary" Command="{Binding MarkIncidentCommand}" HorizontalContentAlignment="Center" AutomationProperties.Name="Mark incident">
+          <Button Classes="primary" Command="{Binding MarkIncidentCommand}" IsEnabled="{Binding HasLoadedMedia}" HorizontalContentAlignment="Center" AutomationProperties.Name="Mark incident">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <materialIcons:MaterialIcon Kind="FlagOutline" Width="19" Height="19" />
               <TextBlock Text="Mark incident" />
             </StackPanel>
           </Button>
           <Button Command="{Binding SaveIncidentCommand}"
+                  IsEnabled="{Binding HasIncidentDraft}"
                   HorizontalContentAlignment="Center"
                   Content="{Binding SaveIncidentButtonText}"
                   AutomationProperties.Name="Save or update incident" />
@@ -374,11 +359,11 @@
         <Grid Margin="14,0" ColumnDefinitions="Auto,*,Auto">
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
             <TextBlock FontWeight="SemiBold" Text="Timeline" />
-            <Button Padding="8,4" Click="OnTimelineFitClicked" Content="Fit" ToolTip.Tip="Fit the complete ride" AutomationProperties.Name="Fit complete timeline" />
-            <Button Padding="8,4" Click="OnTimelineZoomOutClicked" Content="−" ToolTip.Tip="Zoom out" AutomationProperties.Name="Zoom timeline out" />
-            <Button Padding="8,4" Click="OnTimelineZoomInClicked" Content="+" ToolTip.Tip="Zoom in" AutomationProperties.Name="Zoom timeline in" />
-            <RadioButton GroupName="TimelineEditMode" IsChecked="True" Checked="OnTimelineReorderModeChecked" Content="Reorder" ToolTip.Tip="Drag clips to change their order" AutomationProperties.Name="Reorder timeline clips" />
-            <RadioButton GroupName="TimelineEditMode" Checked="OnTimelinePositionModeChecked" Content="Position" ToolTip.Tip="Drag clips freely to create or adjust gaps" AutomationProperties.Name="Position timeline clips" />
+            <Button Padding="8,4" IsEnabled="{Binding HasLoadedMedia}" Click="OnTimelineFitClicked" Content="Fit" ToolTip.Tip="Fit the complete ride" AutomationProperties.Name="Fit complete timeline" />
+            <Button Padding="8,4" IsEnabled="{Binding HasLoadedMedia}" Click="OnTimelineZoomOutClicked" Content="−" ToolTip.Tip="Zoom out" AutomationProperties.Name="Zoom timeline out" />
+            <Button Padding="8,4" IsEnabled="{Binding HasLoadedMedia}" Click="OnTimelineZoomInClicked" Content="+" ToolTip.Tip="Zoom in" AutomationProperties.Name="Zoom timeline in" />
+            <RadioButton GroupName="TimelineEditMode" IsEnabled="{Binding HasLoadedMedia}" IsChecked="True" Checked="OnTimelineReorderModeChecked" Content="Reorder" ToolTip.Tip="Drag clips to change their order" AutomationProperties.Name="Reorder timeline clips" />
+            <RadioButton GroupName="TimelineEditMode" IsEnabled="{Binding HasLoadedMedia}" Checked="OnTimelinePositionModeChecked" Content="Position" ToolTip.Tip="Drag clips freely to create or adjust gaps" AutomationProperties.Name="Position timeline clips" />
             <Button Padding="7,4" Command="{Binding UndoTimelineCommand}" IsEnabled="{Binding CanUndoTimeline}" Content="Undo" AutomationProperties.Name="Undo timeline edit" />
             <Button Padding="7,4" Command="{Binding RedoTimelineCommand}" IsEnabled="{Binding CanRedoTimeline}" Content="Redo" AutomationProperties.Name="Redo timeline edit" />
           </StackPanel>
@@ -403,13 +388,18 @@
                                          AutomationProperties.Name="Interactive project timeline" />
 
         <Grid Grid.Row="2" Margin="14,8" ColumnDefinitions="*,Auto">
-          <StackPanel Orientation="Horizontal" Spacing="10" ToolTip.Tip="Fixed GPX speed bands in km/h • a stop requires ≤1 km/h for at least 3 seconds">
-            <TextBlock Classes="muted" FontSize="9" Text="Speed" />
-            <TextBlock Foreground="#56B4E9" FontSize="9" Text="━ &lt;10" />
-            <TextBlock Foreground="#14C9C3" FontSize="9" Text="━ 10–20" />
-            <TextBlock Foreground="#FFAD18" FontSize="9" Text="━ 20–30" />
-            <TextBlock Foreground="#FF6B57" FontSize="9" Text="━ ≥30" />
-            <TextBlock Foreground="#D85CFF" FontSize="9" Text="● stop" />
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <StackPanel Orientation="Horizontal"
+                        Spacing="10"
+                        IsVisible="{Binding HasGpx}"
+                        ToolTip.Tip="Fixed GPX speed bands in km/h • a stop requires ≤1 km/h for at least 3 seconds">
+              <TextBlock Classes="muted" FontSize="9" Text="Speed" />
+              <TextBlock Foreground="#56B4E9" FontSize="9" Text="━ &lt;10" />
+              <TextBlock Foreground="#14C9C3" FontSize="9" Text="━ 10–20" />
+              <TextBlock Foreground="#FFAD18" FontSize="9" Text="━ 20–30" />
+              <TextBlock Foreground="#FF6B57" FontSize="9" Text="━ ≥30" />
+              <TextBlock Foreground="#D85CFF" FontSize="9" Text="● stop" />
+            </StackPanel>
             <TextBlock Classes="muted" FontSize="9" Text="◇ incident" />
             <TextBlock Foreground="{StaticResource AccentAmber}" FontSize="9" Text="▰ selected" />
           </StackPanel>
