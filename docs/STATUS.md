@@ -53,6 +53,7 @@ M08 — Timeline, map, and playback review UX: implementation has begun with the
 - Map review now distinguishes the opaque travelled GPX route from its 35%-opaque upcoming portion, using the same fixed speed gradient and live preview telemetry clock. Route plans remain bounded to 64 total features, while compact stops/current-location symbols no longer obscure the line. Release build passed with zero warnings and the shared full suite passed 107/107.
 - Clip handoff now starts a new LibVLC decoder before seeking, waits for the requested source frame, and gates outgoing decoder position/end callbacks. This prevents black output and zero-time resets when changing clips; isolated Release build passed with zero warnings and the shared full suite passed 109/109.
 - Playback speed is now a labelled 0.5×–5× standard slider instead of a cycle button. It snaps to half-speed increments through a shared Core policy and restores the last accepted rate if LibVLC rejects a selection; isolated Release build passed with zero warnings and the shared full suite passed 120/120.
+- Context-map styling now offers Night, Day, Satellite, and OSM modes. It swaps only the attributed, locally cached basemap while retaining the viewport and every GPX/road-context overlay; isolated Release build passed with zero warnings and the shared full suite passed 126/126.
 
 ## M07 closure record
 

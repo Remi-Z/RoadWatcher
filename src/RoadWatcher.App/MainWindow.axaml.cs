@@ -492,6 +492,44 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void OnMapStyleSelectionChanged(object? sender, SelectionChangedEventArgs eventArgs)
+    {
+        if (sender is not ComboBox
+            {
+                SelectedItem: ComboBoxItem { Tag: string requestedStyle }
+            } ||
+            !Enum.TryParse<ContextMapStyle>(requestedStyle, ignoreCase: true, out var style))
+        {
+            return;
+        }
+
+        ReplaceBaseMapLayer(style);
+    }
+
+    private void ReplaceBaseMapLayer(ContextMapStyle style, bool updateStatus = true)
+    {
+        if (_map is null)
+        {
+            return;
+        }
+
+        var currentBaseLayer = _map.Layers.OfType<TileLayer>().FirstOrDefault();
+        if (currentBaseLayer is not null)
+        {
+            _map.Layers.Remove(currentBaseLayer);
+        }
+
+        // Keep the basemap beneath every recorded/derived overlay. Replacing a
+        // layer does not mutate the navigator, so the reviewer retains the
+        // same route extent and live-map context while switching styles.
+        _map.Layers.Insert(0, CreateBaseMapLayer(style));
+        _map.RefreshGraphics();
+        if (updateStatus && DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.StatusText = $"Context map style: {ContextMapStyleCatalog.Get(style).DisplayName}";
+        }
+    }
+
     private void InitializeMap()
     {
         var mapControl = this.FindControl<MapControl>("ContextMap");
@@ -551,6 +589,31 @@ public sealed partial class MainWindow : Window
         map.Navigator.CenterOnAndZoomTo(centre, map.Navigator.Resolutions[16]);
         mapControl.Map = map;
         _map = map;
+        ReplaceBaseMapLayer(ContextMapStyle.Night, updateStatus: false);
+    }
+
+    private static TileLayer CreateBaseMapLayer(ContextMapStyle style)
+    {
+        var definition = ContextMapStyleCatalog.Get(style);
+        var cacheDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RoadWatcher",
+            "map-tiles",
+            definition.Style.ToString());
+        var cache = new BruTile.Cache.FileCache(
+            cacheDirectory,
+            "tile",
+            TimeSpan.FromDays(7));
+        var tileSource = new HttpTileSource(
+            new GlobalSphericalMercator(),
+            definition.UrlTemplate,
+            definition.Subdomains,
+            name: definition.DisplayName,
+            persistentCache: cache,
+            attribution: new Attribution(definition.AttributionText, definition.AttributionUrl),
+            configureHttpRequestMessage: request =>
+                request.Headers.UserAgent.ParseAdd(ContextMapStyleCatalog.TileUserAgent));
+        return new TileLayer(tileSource);
     }
 
     private void UpdateMapRoute(IReadOnlyList<TrackPoint> points)

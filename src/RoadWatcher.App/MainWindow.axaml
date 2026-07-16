@@ -184,8 +184,21 @@
     <GridSplitter Grid.Row="1" Grid.RowSpan="3" Grid.Column="2" Width="4" Background="#18343D" ResizeDirection="Columns" />
     <Border Grid.Row="1" Grid.RowSpan="2" Grid.Column="3" Classes="panel">
       <Grid RowDefinitions="50,*,Auto">
-        <Grid Margin="15,0">
+        <Grid Margin="15,0" ColumnDefinitions="*,Auto">
           <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Context" />
+          <ComboBox x:Name="MapStyleSelector"
+                    Grid.Column="1"
+                    Width="88"
+                    VerticalAlignment="Center"
+                    SelectedIndex="0"
+                    SelectionChanged="OnMapStyleSelectionChanged"
+                    ToolTip.Tip="Change the Context map style"
+                    AutomationProperties.Name="Context map style">
+            <ComboBoxItem Tag="Night" Content="Night" />
+            <ComboBoxItem Tag="Day" Content="Day" />
+            <ComboBoxItem Tag="Satellite" Content="Satellite" />
+            <ComboBoxItem Tag="OpenStreetMap" Content="OSM" />
+          </ComboBox>
         </Grid>
         <Border Grid.Row="1" Margin="10,0" CornerRadius="6" ClipToBounds="True" Background="#0B222B">
           <mapsui:MapControl x:Name="ContextMap" />
