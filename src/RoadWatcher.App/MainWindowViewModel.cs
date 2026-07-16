@@ -33,6 +33,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private ProjectDocument _project = new();
     private readonly List<EvidenceAsset> _pendingAttachments = [];
     private readonly SemaphoreSlim _mediaTransitionLock = new(1, 1);
+    private readonly PlaybackHandoffGuard _playbackHandoff = new();
     private ILocationResolver? _locationResolver;
     private IVirtualTimeline _virtualTimeline = new VirtualTimeline([]);
     private TimelineSegment? _activeSegment;
@@ -274,7 +275,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _mediaEngine = new LibVlcMediaEngine();
         _mediaEngine.PositionChanged += (_, position) => Dispatcher.UIThread.Post(() =>
         {
-            if (_activeSegment is null || !IsPlaying)
+            if (_playbackHandoff.IsTransitioning || _activeSegment is null || !IsPlaying)
             {
                 return;
             }
@@ -283,7 +284,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             CurrentSeconds = (_activeSegment.ProjectStart + (position - _activeSegment.SourceStart)).TotalSeconds;
             _updatingFromMedia = false;
         });
-        _mediaEngine.EndReached += (_, _) => Dispatcher.UIThread.Post(() => _ = AdvanceAfterSegmentAsync());
+        _mediaEngine.EndReached += (_, _) =>
+        {
+            var handoffVersion = _playbackHandoff.CurrentVersion;
+            if (!_playbackHandoff.CanHandleEnd(handoffVersion))
+            {
+                return;
+            }
+
+            var completed = _activeSegment;
+            Dispatcher.UIThread.Post(() => _ = AdvanceAfterSegmentAsync(completed, handoffVersion));
+        };
         _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Normal, (_, _) =>
         {
             if (IsPlaying && _activeSegment is null && _virtualTimeline.Duration > TimeSpan.Zero)
@@ -1661,9 +1672,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         CancellationToken cancellationToken = default)
     {
         var seekVersion = Interlocked.Increment(ref _timelineSeekVersion);
-        await _mediaTransitionLock.WaitAsync(cancellationToken);
+        var handoffVersion = _playbackHandoff.BeginTransition();
+        var transitionLockHeld = false;
         try
         {
+            await _mediaTransitionLock.WaitAsync(cancellationToken);
+            transitionLockHeld = true;
             if (seekVersion != Volatile.Read(ref _timelineSeekVersion))
             {
                 return;
@@ -1701,12 +1715,18 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             var playbackSource = usesProxy
                 ? source with { Path = proxyPath! }
                 : source;
-            if (_loadedMediaSourceId != source.Id || _loadedMediaUsesProxy != usesProxy)
+            var sourceChanged = _loadedMediaSourceId != source.Id || _loadedMediaUsesProxy != usesProxy;
+            var shouldResumePlayback = resumePlayback && IsPlaying;
+            if (sourceChanged)
             {
-                await _mediaEngine.LoadAsync(playbackSource, cancellationToken);
+                await _mediaEngine.LoadAndSeekAsync(
+                    playbackSource,
+                    position.SourceTime,
+                    shouldResumePlayback,
+                    PlaybackRate,
+                    cancellationToken);
                 _loadedMediaSourceId = source.Id;
                 _loadedMediaUsesProxy = usesProxy;
-                _mediaEngine.SetPlaybackRate(PlaybackRate);
             }
             if (usesProxy)
             {
@@ -1719,11 +1739,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             _activeSegment = segment;
-            _mediaEngine.Seek(position.SourceTime);
+            if (!sourceChanged)
+            {
+                _mediaEngine.Seek(position.SourceTime);
+            }
             LoadedMediaName = usesProxy
                 ? $"{source.DisplayName} • cached proxy"
                 : source.DisplayName;
-            if (resumePlayback && IsPlaying)
+            if (!sourceChanged && shouldResumePlayback)
             {
                 _mediaEngine.Play();
             }
@@ -1741,13 +1764,21 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            _mediaTransitionLock.Release();
+            _playbackHandoff.CompleteTransition(handoffVersion);
+            if (transitionLockHeld)
+            {
+                _mediaTransitionLock.Release();
+            }
         }
     }
 
-    private async Task AdvanceAfterSegmentAsync()
+    private async Task AdvanceAfterSegmentAsync(
+        TimelineSegment? completed,
+        long handoffVersion)
     {
-        if (_activeSegment is not { } completed)
+        if (completed is null ||
+            !_playbackHandoff.CanHandleEnd(handoffVersion) ||
+            _activeSegment != completed)
         {
             return;
         }

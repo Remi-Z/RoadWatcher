@@ -48,6 +48,39 @@ public sealed partial class LibVlcMediaEngine : IMediaEngine, IDisposable
         _media = nextMedia;
     }
 
+    /// <summary>
+    /// Starts a new decoder before seeking. Assigning a new LibVLC media item
+    /// and immediately setting <see cref="MediaPlayer.Time"/> can be ignored
+    /// while its video output is still being created, which leaves a black
+    /// frame or restarts the clip at zero on the next Play.
+    /// </summary>
+    public async Task LoadAndSeekAsync(
+        MediaSource source,
+        TimeSpan sourceTime,
+        bool resumePlayback,
+        double playbackRate,
+        CancellationToken cancellationToken = default)
+    {
+        await LoadAsync(source, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Set the requested time before and after decoder readiness. The first
+        // call is a useful hint for fast-open media; the second is authoritative
+        // once LibVLC has attached a decoder/video output.
+        Seek(sourceTime);
+        MediaPlayer.Play();
+        await WaitForDecoderReadyAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        SetPlaybackRate(playbackRate);
+        Seek(sourceTime);
+        await WaitForSeekAsync(sourceTime, cancellationToken);
+        if (!resumePlayback)
+        {
+            MediaPlayer.SetPause(true);
+        }
+    }
+
     public async Task<MediaProbe> ProbeAsync(string path, CancellationToken cancellationToken = default)
     {
         using var media = new Media(_libVlc, new Uri(path));
@@ -143,6 +176,53 @@ public sealed partial class LibVlcMediaEngine : IMediaEngine, IDisposable
         if (MediaPlayer.SetRate((float)rate) != 0)
         {
             throw new InvalidOperationException($"LibVLC could not set playback rate to {rate:0.0}×.");
+        }
+    }
+
+    private async Task WaitForDecoderReadyAsync(CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(1.5);
+        DateTimeOffset? playbackStartedAt = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (MediaPlayer.VoutCount > 0)
+            {
+                return;
+            }
+
+            if (MediaPlayer.IsPlaying)
+            {
+                playbackStartedAt ??= DateTimeOffset.UtcNow;
+                // Some render hosts do not expose VoutCount even though the
+                // decoder is ready. Give that state a short settle interval
+                // rather than delaying every clip handoff until the timeout.
+                if (DateTimeOffset.UtcNow - playbackStartedAt >= TimeSpan.FromMilliseconds(150))
+                {
+                    return;
+                }
+            }
+
+            await Task.Delay(25, cancellationToken);
+        }
+    }
+
+    private async Task WaitForSeekAsync(TimeSpan sourceTime, CancellationToken cancellationToken)
+    {
+        var requestedMilliseconds = (long)Math.Max(0, sourceTime.TotalMilliseconds);
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(0.75);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (MediaPlayer.Time >= 0 && Math.Abs(MediaPlayer.Time - requestedMilliseconds) <= 250)
+            {
+                // Let the output present the decoded seek target before a
+                // paused handoff freezes the frame.
+                await Task.Delay(50, cancellationToken);
+                return;
+            }
+
+            await Task.Delay(25, cancellationToken);
         }
     }
 

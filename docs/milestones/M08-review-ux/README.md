@@ -50,10 +50,16 @@ Implement the synchronized-review improvements requested for the virtual timelin
 - A pure, binary-search GPX route-progress planner splits the active segment at its interpolated coordinate, including correct before/after-coverage and exact-sample behaviour. The map only rebuilds its bounded route features when the active GPX segment changes.
 - The two map route layers share the existing 64-feature ceiling: while a position is available each receives at most 32 features; when GPX is out of coverage the single visible route keeps the full 64-feature budget. Compact 20-DIP stop and 14-DIP current-location symbols no longer obscure the route.
 
+## Slice 8 — decoder-ready clip handoff
+
+- Changing source clips now starts and settles the new LibVLC decoder before seeking to the requested source time. A paused seek keeps the decoded target frame rather than leaving a black output or returning to clip zero on the next Play.
+- Playback handoff callbacks are version-gated. Position updates and end-of-clip signals from an outgoing decoder cannot overwrite the newly selected project segment or advance it spuriously during a transition.
+- The handoff guard is unit-tested for stale-completion and stale-end-callback cases. Native visual acceptance remains to be captured with the existing multi-clip/4K reviewer fixture; the active reviewer process was deliberately not interrupted.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed with 0 warnings and 0 errors.
-- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, 73/73 after the live-preview integration, 91/91 after the continuous-speed/unknown-telemetry slice, 101/101 after the wheel-navigation slice, and 107/107 after live map-route progress.
+- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-handoff\bin\` — passed 68/68 for the committed metadata slice, then 72/72 after the GPX-session core, 73/73 after the live-preview integration, 91/91 after the continuous-speed/unknown-telemetry slice, 101/101 after the wheel-navigation slice, 107/107 after live map-route progress, and 109/109 after the decoder-ready handoff. The alternate output path avoids a locked DLL in the active reviewer process.
 - The primary viewport test covers a -15 to +75 second visual range, pointer mapping, and pan clamping after zoom.
 - The added viewport-domain test verifies that a drag-time workspace expansion preserves the current zoom and visible offset rather than resetting to Fit.
 - Metadata parser fallbacks, trusted-gap layout, later-import collision/manual-layout protection, confidence selection, timeline edit preservation, JSON round-trip, and schema-v1 optional-field compatibility are unit tested. A local `ffprobe` read is bounded to five seconds and failure remains advisory.
