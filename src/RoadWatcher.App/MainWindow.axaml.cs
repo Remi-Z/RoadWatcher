@@ -50,6 +50,9 @@ public sealed partial class MainWindow : Window
             timeline.ClipDragStarted += OnTimelineClipDragStarted;
             timeline.ClipEditCommitted += OnTimelineClipEditCommitted;
             timeline.ClipEditCanceled += OnTimelineClipEditCanceled;
+            timeline.GpxAnchorDragStarted += OnTimelineGpxAnchorDragStarted;
+            timeline.GpxAnchorEditCommitted += OnTimelineGpxAnchorEditCommitted;
+            timeline.GpxAnchorEditCanceled += OnTimelineGpxAnchorEditCanceled;
         }
         InitializeMap();
         Closed += (_, _) =>
@@ -367,6 +370,36 @@ public sealed partial class MainWindow : Window
         if (DataContext is MainWindowViewModel viewModel)
         {
             viewModel.CancelTimelineClipEdit();
+        }
+    }
+
+    private void OnTimelineGpxAnchorDragStarted(object? sender, EventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.BeginTimelineGpxAnchorEdit();
+        }
+    }
+
+    private async void OnTimelineGpxAnchorEditCommitted(
+        object? sender,
+        TimelineGpxAnchorEditEventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            await viewModel.ApplyTimelineGpxAnchorEditAsync(
+                eventArgs.AnchorIndex,
+                eventArgs.GpxSourceId,
+                eventArgs.GpxTime,
+                eventArgs.ProjectTime);
+        }
+    }
+
+    private void OnTimelineGpxAnchorEditCanceled(object? sender, EventArgs eventArgs)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.CancelTimelineGpxAnchorEdit();
         }
     }
 

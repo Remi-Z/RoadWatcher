@@ -49,6 +49,27 @@ public sealed class GpxTrackServiceTests
     }
 
     [Fact]
+    public void Inverse_mapping_projects_gpx_coverage_with_clock_drift()
+    {
+        var sourceId = Guid.NewGuid();
+        var start = DateTimeOffset.Parse("2026-07-12T14:00:00-04:00");
+        var mapper = new GpxTimelineMapper(
+        [
+            new SyncAnchor(sourceId, TimeSpan.FromSeconds(10), start.AddSeconds(5)),
+            new SyncAnchor(sourceId, TimeSpan.FromSeconds(70), start.AddSeconds(71))
+        ]);
+
+        Assert.InRange(
+            Math.Abs((mapper.MapToProjectTime(start) - TimeSpan.FromSeconds(5.4545455)).Ticks),
+            0,
+            1);
+        Assert.InRange(
+            Math.Abs((mapper.MapToProjectTime(start.AddSeconds(65)) - TimeSpan.FromSeconds(64.5454545)).Ticks),
+            0,
+            1);
+    }
+
+    [Fact]
     public void Two_sync_anchors_reject_identical_project_times()
     {
         var sourceId = Guid.NewGuid();
@@ -59,6 +80,20 @@ public sealed class GpxTrackServiceTests
         ]);
 
         Assert.Throws<InvalidOperationException>(() => mapper.MapToGpxTime(TimeSpan.FromSeconds(4)));
+        Assert.Throws<InvalidOperationException>(() => mapper.MapToProjectTime(DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void Two_sync_anchors_reject_reversed_gpx_time()
+    {
+        var sourceId = Guid.NewGuid();
+        var mapper = new GpxTimelineMapper(
+        [
+            new SyncAnchor(sourceId, TimeSpan.Zero, DateTimeOffset.Parse("2026-07-12T14:00:01Z")),
+            new SyncAnchor(sourceId, TimeSpan.FromSeconds(5), DateTimeOffset.Parse("2026-07-12T14:00:00Z"))
+        ]);
+
+        Assert.Throws<InvalidOperationException>(() => mapper.MapToGpxTime(TimeSpan.Zero));
     }
 
     [Fact]

@@ -50,6 +50,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _loadedMediaUsesProxy;
     private bool _timelineScrubWasPlaying;
     private bool _timelineClipEditWasPlaying;
+    private bool _timelineGpxEditWasPlaying;
     private readonly Stack<TimelineUndoEntry> _timelineUndo = [];
     private readonly Stack<TimelineUndoEntry> _timelineRedo = [];
 
@@ -215,6 +216,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _canRedoTimeline;
 
     [ObservableProperty]
+    private double _gpxCoverageStartSeconds;
+
+    [ObservableProperty]
+    private double _gpxCoverageEndSeconds;
+
+    [ObservableProperty]
+    private IReadOnlyList<GpxAnchorViewModel> _gpxTimelineAnchors = [];
+
+    [ObservableProperty]
     private string[] _timelineRulerLabels = ["00:00:00", "00:00:00", "00:00:00", "00:00:00", "00:00:00"];
 
     public MainWindowViewModel()
@@ -342,6 +352,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _gpxTimelineMapper = null;
         _locationResolver = null;
         HasGpx = false;
+        GpxCoverageStartSeconds = 0;
+        GpxCoverageEndSeconds = 0;
+        GpxTimelineAnchors = [];
         GpxOffsetSeconds = 0;
         GpxAnchorTimeText = string.Empty;
         GpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
@@ -486,6 +499,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             GpxPoints = [];
             _gpxTimelineMapper = null;
             HasGpx = false;
+            GpxCoverageStartSeconds = 0;
+            GpxCoverageEndSeconds = 0;
+            GpxTimelineAnchors = [];
             GpxOffsetSeconds = 0;
             GpxAnchorTimeText = string.Empty;
             GpxSyncStatusText = "Import a GPX track to synchronize telemetry.";
@@ -807,6 +823,62 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         StatusText = status ?? "Timeline edit canceled";
     }
 
+    public void BeginTimelineGpxAnchorEdit()
+    {
+        _timelineGpxEditWasPlaying = IsPlaying;
+        if (IsPlaying)
+        {
+            IsPlaying = false;
+            _mediaEngine.Pause();
+        }
+        StatusText = "Adjusting GPX synchronization • release to apply or press Escape to cancel";
+    }
+
+    public async Task ApplyTimelineGpxAnchorEditAsync(
+        int anchorIndex,
+        Guid gpxSourceId,
+        DateTimeOffset gpxTime,
+        TimeSpan projectTime)
+    {
+        var gpx = _project.GpxSources.FirstOrDefault(source => source.Id == gpxSourceId);
+        var anchors = _project.Timeline.SyncAnchors
+            .Where(anchor => anchor.GpxSourceId == gpxSourceId)
+            .OrderBy(anchor => anchor.ProjectTime)
+            .Take(2)
+            .ToArray();
+        if (gpx is null || anchorIndex < 0 || anchorIndex >= anchors.Length ||
+            anchors[anchorIndex].GpxTime != gpxTime)
+        {
+            CancelTimelineGpxAnchorEdit("GPX anchor edit rejected: the selected anchor is no longer available.");
+            return;
+        }
+
+        anchors[anchorIndex] = anchors[anchorIndex] with { ProjectTime = projectTime };
+        var applied = await PersistGpxAnchorsAsync(gpx, anchors);
+        var resumePlayback = _timelineGpxEditWasPlaying;
+        _timelineGpxEditWasPlaying = false;
+        if (resumePlayback)
+        {
+            IsPlaying = true;
+            await SeekProjectTimeAsync(TimeSpan.FromSeconds(CurrentSeconds), resumePlayback: true);
+        }
+        if (applied)
+        {
+            StatusText = $"GPX anchor {anchorIndex + 1} moved to project {projectTime:hh\\:mm\\:ss\\.fff} • saved";
+        }
+    }
+
+    public void CancelTimelineGpxAnchorEdit(string? status = null)
+    {
+        if (_timelineGpxEditWasPlaying)
+        {
+            _timelineGpxEditWasPlaying = false;
+            IsPlaying = true;
+            _mediaEngine.Play();
+        }
+        StatusText = status ?? "GPX anchor edit canceled";
+    }
+
     [RelayCommand]
     private async Task UndoTimelineAsync()
     {
@@ -879,6 +951,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _virtualTimeline = new VirtualTimeline(_project.Timeline.Segments);
         MaximumSeconds = Math.Max(1, _virtualTimeline.Duration.TotalSeconds);
         RebuildTimelineDisplay();
+        if (GetActiveGpxSource() is { } gpx)
+        {
+            ConfigureGpxSynchronization(
+                gpx,
+                _project.Timeline.SyncAnchors
+                    .Where(anchor => anchor.GpxSourceId == gpx.Id)
+                    .ToArray());
+        }
         var clamped = TimeSpan.FromSeconds(Math.Clamp(playhead.TotalSeconds, 0, MaximumSeconds));
         _updatingFromMedia = true;
         CurrentSeconds = clamped.TotalSeconds;
@@ -1314,7 +1394,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         await PersistGpxAnchorsAsync(gpx, [first]);
     }
 
-    private async Task PersistGpxAnchorsAsync(
+    private async Task<bool> PersistGpxAnchorsAsync(
         GpxSource gpx,
         IReadOnlyList<SyncAnchor> anchors)
     {
@@ -1327,18 +1407,56 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         catch (Exception exception)
         {
             GpxSyncStatusText = $"Synchronization not applied: {exception.Message}";
-            return;
+            StatusText = GpxSyncStatusText;
+            return false;
         }
 
-        _project.Timeline.SyncAnchors.RemoveAll(anchor => anchor.GpxSourceId == gpx.Id);
-        _project.Timeline.SyncAnchors.AddRange(ordered);
-        ConfigureGpxSynchronization(gpx, ordered);
-        UpdateTelemetry(CurrentSeconds);
+        var current = _project.Timeline.SyncAnchors
+            .Where(anchor => anchor.GpxSourceId == gpx.Id)
+            .OrderBy(anchor => anchor.ProjectTime)
+            .ToArray();
+        if (current.SequenceEqual(ordered))
+        {
+            StatusText = "GPX synchronization unchanged";
+            return false;
+        }
+
+        var candidate = _project with
+        {
+            Timeline = new TimelineDefinition
+            {
+                Segments = [.. _project.Timeline.Segments],
+                SyncAnchors =
+                [
+                    .. _project.Timeline.SyncAnchors.Where(anchor => anchor.GpxSourceId != gpx.Id),
+                    .. ordered
+                ]
+            }
+        };
         if (ProjectDirectory is not null)
         {
-            await _projectLifecycle.SaveAsync(_project, ProjectDirectory);
+            try
+            {
+                await _projectLifecycle.SaveAsync(candidate, ProjectDirectory);
+            }
+            catch (Exception exception)
+            {
+                StatusText = $"GPX synchronization could not be saved: {exception.Message}";
+                return false;
+            }
         }
+
+        _timelineUndo.Push(new TimelineUndoEntry(
+            TimelineEditor.Capture(_project),
+            TimeSpan.FromSeconds(CurrentSeconds)));
+        TrimUndoStack(_timelineUndo);
+        _timelineRedo.Clear();
+        _project = candidate;
+        UpdateTimelineHistoryState();
+        ConfigureGpxSynchronization(gpx, ordered);
+        UpdateTelemetry(CurrentSeconds);
         StatusText = $"GPX synchronization saved • {GpxSyncStatusText}";
+        return true;
     }
 
     private void ConfigureGpxSynchronization(
@@ -1350,6 +1468,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             : [new SyncAnchor(gpx.Id, TimeSpan.Zero, gpx.Points[0].RecordedAt)];
         _gpxTimelineMapper = new GpxTimelineMapper(effective);
         HasGpx = true;
+        GpxCoverageStartSeconds = _gpxTimelineMapper.MapToProjectTime(gpx.Points[0].RecordedAt).TotalSeconds;
+        GpxCoverageEndSeconds = _gpxTimelineMapper.MapToProjectTime(gpx.Points[^1].RecordedAt).TotalSeconds;
+        GpxTimelineAnchors = effective
+            .Select((anchor, index) => new GpxAnchorViewModel(
+                index,
+                anchor.GpxSourceId,
+                anchor.ProjectTime,
+                anchor.GpxTime))
+            .ToArray();
         var first = effective[0];
         GpxOffsetSeconds = (first.GpxTime - (gpx.Points[0].RecordedAt + first.ProjectTime)).TotalSeconds;
         if (effective.Length == 1)

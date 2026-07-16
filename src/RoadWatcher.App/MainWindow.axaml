@@ -391,10 +391,13 @@
                                          Blocks="{Binding TimelineBlocks}"
                                          Incidents="{Binding IncidentMarkers}"
                                          HasGpx="{Binding HasGpx}"
+                                         GpxCoverageStartSeconds="{Binding GpxCoverageStartSeconds}"
+                                         GpxCoverageEndSeconds="{Binding GpxCoverageEndSeconds}"
+                                         GpxAnchors="{Binding GpxTimelineAnchors}"
                                          HasSelectedIncident="{Binding HasSelectedIncident}"
                                          SelectedIncidentStartSeconds="{Binding SelectedIncidentStartSeconds}"
                                          SelectedIncidentEndSeconds="{Binding SelectedIncidentEndSeconds}"
-                                         ToolTip.Tip="Shift+wheel zoom • wheel pan • drag the amber playback head"
+                                         ToolTip.Tip="Shift+wheel zoom • wheel pan • drag clips/GPX anchors • Alt+Arrow nudges nearest GPX anchor"
                                          AutomationProperties.Name="Interactive project timeline" />
 
         <Grid Grid.Row="2" Margin="14,8" ColumnDefinitions="*,Auto">
