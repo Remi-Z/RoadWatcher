@@ -74,8 +74,18 @@ public sealed record AnalysisWindow(TimeSpan Start, TimeSpan End, IReadOnlyList<
 
 public interface IEvidenceExporter
 {
-    Task<ExportResult> ExportAsync(ProjectDocument project, string destinationDirectory, CancellationToken cancellationToken = default);
+    Task<ExportResult> ExportAsync(
+        ProjectDocument project,
+        string destinationDirectory,
+        CancellationToken cancellationToken = default,
+        EvidenceExportOptions? options = null);
 }
+
+/// <summary>
+/// Explicit export choices that are not part of the canonical evidence package.
+/// Advisory road context is excluded unless a reviewer asks to include it.
+/// </summary>
+public sealed record EvidenceExportOptions(bool IncludeRoadContextSnapshot = false);
 
 public sealed record ExportResult(string PackageDirectory, string ManifestPath, IReadOnlyList<string> Files);
 
@@ -148,7 +158,8 @@ public sealed record MediaProxyRequest(
     string SourcePath,
     string DestinationPath,
     Guid SourceMediaId,
-    int MaximumWidth = 1920);
+    int MaximumWidth = 1920,
+    TimeSpan? SourceDuration = null);
 
 public sealed record DerivedMediaProxy(
     string Path,
@@ -156,6 +167,73 @@ public sealed record DerivedMediaProxy(
     string Version,
     Guid SourceMediaId,
     string Command);
+
+/// <summary>
+/// A process-independent description of FFmpeg work. The queue is shared by
+/// thumbnails, proxies and review exports so a busy project never creates an
+/// unbounded set of video encoders.
+/// </summary>
+public enum FfmpegJobOperation
+{
+    Proxy,
+    Thumbnail,
+    ReviewClip
+}
+
+public enum FfmpegJobState
+{
+    Queued,
+    Running,
+    Completed,
+    Failed,
+    Cancelled
+}
+
+public sealed record FfmpegJobRequest(
+    FfmpegJobOperation Operation,
+    string SourcePath,
+    string DestinationPath,
+    string DisplayName,
+    IReadOnlyList<string> Arguments,
+    TimeSpan? SourceDuration = null,
+    string? ExecutablePath = null);
+
+public sealed record FfmpegJobSnapshot(
+    Guid Id,
+    FfmpegJobOperation Operation,
+    string DisplayName,
+    string SourceName,
+    string DestinationName,
+    FfmpegJobState State,
+    double? Progress,
+    DateTimeOffset EnqueuedAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? CompletedAt,
+    string? Error);
+
+public sealed record FfmpegJobResult(int ExitCode, string StandardError);
+
+public interface IFfmpegJobQueue : IDisposable
+{
+    event EventHandler? JobsChanged;
+    IReadOnlyList<FfmpegJobSnapshot> Jobs { get; }
+    Task<FfmpegJobResult> EnqueueAsync(FfmpegJobRequest request, CancellationToken cancellationToken = default);
+    void Cancel(Guid jobId);
+    void CancelAll();
+}
+
+/// <summary>
+/// Signals a deliberate cancellation after the encoder process and its
+/// temporary output have been cleaned up. It is distinct from a caller token
+/// cancellation so an export can preserve canonical files and record a
+/// reviewer-visible warning.
+/// </summary>
+public sealed class FfmpegJobCanceledException : Exception
+{
+    public FfmpegJobCanceledException(string message) : base(message)
+    {
+    }
+}
 
 public interface IProjectStore
 {

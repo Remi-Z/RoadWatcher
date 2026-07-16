@@ -31,19 +31,33 @@ public sealed class EvidencePackageExporter : IEvidenceExporter
     public async Task<ExportResult> ExportAsync(
         ProjectDocument project,
         string destinationDirectory,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        EvidenceExportOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(project);
         var packageDirectory = Path.GetFullPath(destinationDirectory);
         Directory.CreateDirectory(packageDirectory);
 
         var exportedFiles = new List<ExportedPayload>();
+        var roadContextWarnings = new List<string>();
+        var includedRoadContext = options?.IncludeRoadContextSnapshot == true
+            ? await ExportRoadContextSnapshotAsync(project, packageDirectory, exportedFiles, roadContextWarnings, cancellationToken)
+            : null;
+        // The project copy must not carry a dangling reference to advisory data that was not
+        // explicitly included (or could not be hash-verified) in this evidence package.
+        var projectForExport = includedRoadContext is null
+            ? project with { RoadContext = null }
+            : project;
         var projectPath = Path.Combine(packageDirectory, "project.json");
-        await WriteJsonAsync(projectPath, project, cancellationToken);
+        await WriteJsonAsync(projectPath, projectForExport, cancellationToken);
         exportedFiles.Add(new ExportedPayload(projectPath, "project"));
 
         var summaryPath = Path.Combine(packageDirectory, "incident-summary.html");
-        await File.WriteAllTextAsync(summaryPath, BuildSummary(project), new UTF8Encoding(false), cancellationToken);
+        await File.WriteAllTextAsync(
+            summaryPath,
+            BuildSummary(project, includedRoadContext),
+            new UTF8Encoding(false),
+            cancellationToken);
         exportedFiles.Add(new ExportedPayload(summaryPath, "summary"));
 
         var evidenceDirectory = Path.Combine(packageDirectory, "evidence");
@@ -72,6 +86,7 @@ public sealed class EvidencePackageExporter : IEvidenceExporter
 
         await ExportGpxExcerptsAsync(project, packageDirectory, exportedFiles, cancellationToken);
         await ExportReviewClipsAsync(project, packageDirectory, exportedFiles, cancellationToken);
+        await WriteRoadContextWarningsAsync(packageDirectory, exportedFiles, roadContextWarnings, cancellationToken);
 
         var manifestPath = Path.Combine(packageDirectory, "manifest.json");
         var entries = new List<ManifestEntry>(exportedFiles.Count);
@@ -105,6 +120,75 @@ public sealed class EvidencePackageExporter : IEvidenceExporter
         await WriteJsonAsync(manifestPath, manifest, cancellationToken);
 
         return new ExportResult(packageDirectory, manifestPath, [.. exportedFiles.Select(item => item.Path), manifestPath]);
+    }
+
+    private async Task<RoadContextSnapshotReference?> ExportRoadContextSnapshotAsync(
+        ProjectDocument project,
+        string packageDirectory,
+        List<ExportedPayload> exportedFiles,
+        List<string> exportWarnings,
+        CancellationToken cancellationToken)
+    {
+        var reference = project.RoadContext;
+        var validation = await new RoadContextSnapshotStore()
+            .ValidateAsync(_projectDirectory, reference, cancellationToken);
+        if (!validation.IsValid)
+        {
+            exportWarnings.Add(
+                $"Road Context snapshot was requested but unavailable: {validation.Error ?? "unknown validation failure"}");
+            return null;
+        }
+
+        var destinationDirectory = Path.Combine(packageDirectory, "road-context", "snapshots");
+        Directory.CreateDirectory(destinationDirectory);
+        var destinationPath = Path.Combine(destinationDirectory, Path.GetFileName(validation.SnapshotPath!));
+        try
+        {
+            File.Copy(validation.SnapshotPath!, destinationPath, overwrite: true);
+            var copiedHash = await CalculateSha256Async(destinationPath, cancellationToken);
+            if (!copiedHash.Equals(reference!.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                TryDeleteExportFile(destinationPath);
+                exportWarnings.Add(
+                    "Road Context snapshot was requested but changed before its exported copy could be verified.");
+                return null;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            TryDeleteExportFile(destinationPath);
+            exportWarnings.Add($"Road Context snapshot could not be copied: {exception.Message}");
+            return null;
+        }
+
+        exportedFiles.Add(new ExportedPayload(
+            destinationPath,
+            "road-context-snapshot",
+            Derivation: "Advisory road-context reference data only; not evidence or a legal determination."));
+        return reference;
+    }
+
+    private static async Task WriteRoadContextWarningsAsync(
+        string packageDirectory,
+        List<ExportedPayload> exportedFiles,
+        IReadOnlyList<string> roadContextWarnings,
+        CancellationToken cancellationToken)
+    {
+        if (roadContextWarnings.Count == 0)
+        {
+            return;
+        }
+
+        var warningPath = Path.Combine(packageDirectory, "road-context-warnings.txt");
+        await File.WriteAllLinesAsync(warningPath, roadContextWarnings, new UTF8Encoding(false), cancellationToken);
+        exportedFiles.Add(new ExportedPayload(
+            warningPath,
+            "export-warnings",
+            Derivation: "One or more optional export payloads were unavailable or could not be verified."));
     }
 
     private async Task ExportReviewClipsAsync(
@@ -363,6 +447,21 @@ public sealed class EvidencePackageExporter : IEvidenceExporter
         return fullPath;
     }
 
+    private static void TryDeleteExportFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A partial optional reference copy is harmless; its warning remains manifested.
+        }
+    }
+
     private static async Task WriteJsonAsync<T>(string path, T value, CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
@@ -377,7 +476,9 @@ public sealed class EvidencePackageExporter : IEvidenceExporter
         return Convert.ToHexStringLower(hash);
     }
 
-    private static string BuildSummary(ProjectDocument project)
+    private static string BuildSummary(
+        ProjectDocument project,
+        RoadContextSnapshotReference? includedRoadContext = null)
     {
         var html = HtmlEncoder.Default;
         var builder = new StringBuilder("""
@@ -389,7 +490,7 @@ public sealed class EvidencePackageExporter : IEvidenceExporter
               <title>RoadWatcher incident summary</title>
               <style>
                 body{font:15px/1.5 system-ui,sans-serif;max-width:920px;margin:40px auto;padding:0 24px;color:#17252b}
-                h1{margin-bottom:4px} .meta{color:#53666d} article{border:1px solid #cbd5d8;border-radius:8px;padding:20px;margin:22px 0}
+                h1{margin-bottom:4px} .meta{color:#53666d} article,.road-context{border:1px solid #cbd5d8;border-radius:8px;padding:20px;margin:22px 0}
                 dt{font-weight:700;margin-top:10px} dd{margin-left:0} code{font-size:13px} footer{margin-top:36px;color:#53666d}
               </style>
             </head>
@@ -398,6 +499,23 @@ public sealed class EvidencePackageExporter : IEvidenceExporter
         builder.Append("<h1>").Append(html.Encode(project.Title)).AppendLine("</h1>");
         builder.Append("<p class=\"meta\">Project ").Append(project.ProjectId).Append(" · ")
             .Append(project.Incidents.Count).AppendLine(" incident(s)</p>");
+
+        if (includedRoadContext is not null)
+        {
+            builder.AppendLine("<aside class=\"road-context\"><strong>Road Context snapshot — reference only; not evidence or a legal determination.</strong><dl>");
+            AppendField(builder, "Fetched", includedRoadContext.FetchedAt.ToString("yyyy-MM-dd HH:mm zzz"), html);
+            AppendField(builder, "Features", includedRoadContext.FeatureCount.ToString(), html);
+            var attribution = (includedRoadContext.Sources ?? [])
+                .Where(source => source is not null)
+                .Select(source => string.IsNullOrWhiteSpace(source.Dataset)
+                    ? source.Attribution
+                    : $"{source.Dataset}: {source.Attribution}")
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            AppendField(builder, "Attribution", string.Join("; ", attribution), html);
+            builder.AppendLine("</dl></aside>");
+        }
 
         foreach (var incident in project.Incidents.OrderBy(item => item.ProjectStart))
         {

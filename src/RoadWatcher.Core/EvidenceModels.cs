@@ -13,6 +13,62 @@ public sealed record ProjectDocument
     public TimelineDefinition Timeline { get; init; } = new();
     public List<Incident> Incidents { get; init; } = [];
     public List<AnalysisRun> AnalysisRuns { get; init; } = [];
+    /// <summary>
+    /// Optional, advisory road-context snapshot metadata. The bulky geometry is
+    /// deliberately stored outside project.json and is never evidence.
+    /// </summary>
+    public RoadContextSnapshotReference? RoadContext { get; init; }
+}
+
+/// <summary>
+/// A durable reference to an immutable, project-local road-context snapshot.
+/// These properties intentionally avoid constructor validation: a missing,
+/// corrupt, or malformed optional reference must not prevent a schema-v1
+/// project from opening. <c>RoadContextSnapshotStore</c> validates a reference
+/// before it is read, copied, or replaced.
+/// </summary>
+public sealed record RoadContextSnapshotReference
+{
+    public Guid SnapshotId { get; init; }
+    public string RelativePath { get; init; } = string.Empty;
+    public string Sha256 { get; init; } = string.Empty;
+    public DateTimeOffset FetchedAt { get; init; }
+    public DateTimeOffset? RefreshAfter { get; init; }
+    public RoadContextQuerySummary? Query { get; init; }
+    public int FeatureCount { get; init; }
+    public IReadOnlyList<RoadContextSnapshotSource> Sources { get; init; } = [];
+    public IReadOnlyList<RoadContextProviderReport> Providers { get; init; } = [];
+}
+
+/// <summary>
+/// Compact query metadata retained with a snapshot reference. It intentionally
+/// captures only the queried envelope rather than duplicating every GPX point.
+/// </summary>
+public sealed record RoadContextQuerySummary
+{
+    public Guid GpxSourceId { get; init; }
+    public double South { get; init; }
+    public double West { get; init; }
+    public double North { get; init; }
+    public double East { get; init; }
+    public DateTimeOffset? RecordingStart { get; init; }
+    public DateTimeOffset? RecordingEnd { get; init; }
+    public double CorridorMetres { get; init; }
+}
+
+/// <summary>
+/// Attribution needed to understand an advisory snapshot without opening its
+/// full feature payload. Feature-level provenance remains in the snapshot.
+/// </summary>
+public sealed record RoadContextSnapshotSource
+{
+    public string Provider { get; init; } = string.Empty;
+    public string Dataset { get; init; } = string.Empty;
+    public string SourceUrl { get; init; } = string.Empty;
+    public RoadContextAuthority Authority { get; init; }
+    public string Attribution { get; init; } = string.Empty;
+    public string? Licence { get; init; }
+    public DateTimeOffset? PublishedAt { get; init; }
 }
 
 public sealed record MediaSource(
