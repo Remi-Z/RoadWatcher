@@ -510,6 +510,19 @@
                       SelectedItem="{Binding VehicleColor}"
                       AutomationProperties.Name="Vehicle colour" />
 
+            <TextBlock Margin="0,8,0,0" Classes="muted" Text="Vehicle make &amp; type" />
+            <Grid ColumnDefinitions="*,*">
+              <TextBox Margin="0,0,4,0"
+                       Watermark="Brand / make"
+                       Text="{Binding VehicleMake}"
+                       AutomationProperties.Name="Vehicle make" />
+              <TextBox Grid.Column="1"
+                       Margin="4,0,0,0"
+                       Watermark="Type / model"
+                       Text="{Binding VehicleModel}"
+                       AutomationProperties.Name="Vehicle type or model" />
+            </Grid>
+
             <TextBlock Margin="0,8,0,0" Classes="muted" Text="Confidence" />
             <Grid ColumnDefinitions="62,*" RowDefinitions="32,32">
               <TextBlock VerticalAlignment="Center" Text="Plate" />

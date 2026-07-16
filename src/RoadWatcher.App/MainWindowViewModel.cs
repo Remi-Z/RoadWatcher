@@ -144,6 +144,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private string _vehicleColor = "Other";
 
     [ObservableProperty]
+    private string _vehicleMake = string.Empty;
+
+    [ObservableProperty]
+    private string _vehicleModel = string.Empty;
+
+    [ObservableProperty]
     private string _selectedProvince = "ON";
 
     [ObservableProperty]
@@ -3430,6 +3436,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         PlateNumber = string.Empty;
         SelectedProvince = "ON";
         VehicleColor = "Other";
+        VehicleMake = string.Empty;
+        VehicleModel = string.Empty;
         PlateConfidence = Confidence.Low;
         EventConfidence = Confidence.Low;
         AreVehicleValuesConfirmed = false;
@@ -3530,6 +3538,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         PlateNumber = incident.Vehicle?.PlateNumber ?? string.Empty;
         SelectedProvince = incident.Vehicle?.Province ?? "ON";
         VehicleColor = incident.Vehicle?.Colour ?? "Other";
+        VehicleMake = incident.Vehicle?.Make ?? string.Empty;
+        VehicleModel = incident.Vehicle?.Model ?? string.Empty;
         PlateConfidence = incident.Vehicle?.PlateConfidence ?? Confidence.Low;
         EventConfidence = incident.Vehicle?.EventConfidence ?? Confidence.Low;
         AreVehicleValuesConfirmed = incident.Vehicle?.UserConfirmed ?? false;
@@ -3685,8 +3695,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 PlateNumber,
                 SelectedProvince,
                 VehicleColor,
-                null,
-                null,
+                NullIfWhiteSpace(VehicleMake),
+                NullIfWhiteSpace(VehicleModel),
                 PlateConfidence,
                 EventConfidence,
                 AreVehicleValuesConfirmed),

@@ -30,6 +30,15 @@ public sealed class IncidentAndRecognitionTests
                     "Toronto, Ontario",
                     true,
                     "OpenStreetMap Nominatim"),
+                Vehicle = new VehicleObservation(
+                    "CRBX 294",
+                    "ON",
+                    "Dark blue",
+                    "Honda",
+                    "Civic sedan",
+                    Confidence.High,
+                    Confidence.Medium,
+                    true),
                 Notes = "Vehicle occupied the marked lane.",
                 Attachments =
                 [
@@ -54,6 +63,8 @@ public sealed class IncidentAndRecognitionTests
             Assert.Equal(sourceId, incident.MediaSourceId);
             Assert.Equal(TimeSpan.FromSeconds(25), incident.SourceTime);
             Assert.Equal("OpenStreetMap Nominatim", incident.Location?.Provider);
+            Assert.Equal("Honda", incident.Vehicle?.Make);
+            Assert.Equal("Civic sedan", incident.Vehicle?.Model);
             var attachment = Assert.Single(incident.Attachments);
             Assert.Equal("assets/frame.png", attachment.RelativePath);
             Assert.Equal(TimeSpan.FromSeconds(30), attachment.ProjectTime);

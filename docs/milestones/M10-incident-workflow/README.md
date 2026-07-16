@@ -10,9 +10,15 @@ Improve the reviewer workflow around individual and multiple incident records be
 - The automatically selected intersection remains unconfirmed and editable. If no mapped junction is available, the existing manual/Nominatim address path remains unchanged.
 - `RoadContextRoadLocator.ResolveForIncident` keeps a strict near-road requirement for the primary road while considering a secondary crossing road out to 100 m. This avoids changing the playback label while accurately identifying an upcoming/nearby junction for the saved record.
 
+## Slice 2 — vehicle make and type
+
+- The inspector now adds **Brand / make** and **Type / model** fields next to the existing plate, colour, confidence, and confirmation controls.
+- Values load from saved incidents, persist through `VehicleObservation`, and are already shown in the canonical evidence-export vehicle summary. Empty values remain optional for evidence that cannot support a make/model identification.
+
 ## Verification
 
 - `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore --filter FullyQualifiedName~RoadContextModelsTests -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-m10-intersection-final\bin\` — passed 9/9.
+- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj --configuration Release --no-restore --filter FullyQualifiedName~IncidentAndRecognitionTests.Project_store_round_trips_incident_provenance_and_attachment -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-m10-vehicle\bin\` — passed 1/1.
 
 ## Screenshot state
 

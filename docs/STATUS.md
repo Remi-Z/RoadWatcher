@@ -78,6 +78,8 @@ M10 — Incident workflow: implementing intersection-first locations, richer veh
 
 - Incident locations now prefer a genuine road-context junction name (for example, `Apple St & Banada Ave`) whenever the recorded point is on a named road and within 100 m of its mapped intersection. The live playback HUD keeps its tighter 35 m intersection threshold, and the reviewer can still edit or confirm every incident location manually.
 - The focused Road-context model suite passed 9/9 after the new 100 m preference behavior, including a regression case outside the live-HUD threshold.
+- The incident inspector now captures vehicle make/brand and type/model alongside plate, jurisdiction, colour, and confidence. Both values round-trip through project persistence and are already included in the canonical HTML export's vehicle summary.
+- The focused incident persistence regression passed 1/1 after the make/type edit.
 
 ## M07 closure record
 
