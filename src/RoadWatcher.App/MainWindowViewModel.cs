@@ -562,6 +562,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public WorkbenchPanePlacement MapPanePlacement => _workbenchLayout.PlacementFor(WorkbenchPane.Map);
     public WorkbenchPanePlacement InspectorPanePlacement => _workbenchLayout.PlacementFor(WorkbenchPane.Inspector);
     public WorkbenchPanePlacement TimelinePanePlacement => _workbenchLayout.PlacementFor(WorkbenchPane.Timeline);
+    public WorkbenchSlot GetWorkbenchSlot(WorkbenchPane pane) => _workbenchLayout.SlotOf(pane);
     public bool HasOpenProject => ProjectDirectory is not null;
     public string ProjectStateText => HasOpenProject ? "Project open" : "No project open";
     public MediaPlayer MediaPlayer => _mediaEngine.MediaPlayer;

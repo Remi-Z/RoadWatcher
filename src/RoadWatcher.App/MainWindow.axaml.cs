@@ -33,6 +33,8 @@ namespace RoadWatcher.App;
 
 public sealed partial class MainWindow : Window
 {
+    private static readonly DataFormat<string> WorkbenchPaneDataFormat =
+        DataFormat.CreateStringApplicationFormat("roadwatcher.workbench-pane");
     private Map? _map;
     private MemoryLayer? _routeLayer;
     private MemoryLayer? _futureRouteLayer;
@@ -75,6 +77,8 @@ public sealed partial class MainWindow : Window
         viewModel.TelemetryCleared += (_, _) => Dispatcher.UIThread.Post(ClearMapPosition);
         viewModel.RoadContextChanged += (_, presentation) => Dispatcher.UIThread.Post(() => UpdateRoadContext(presentation));
         viewModel.PreferredMapStyleChanged += style => Dispatcher.UIThread.Post(() => ApplyPreferredMapStyle(style));
+        viewModel.ThemeModeChanged += mode => Dispatcher.UIThread.Post(() =>
+            (Avalonia.Application.Current as App)?.ApplyThemeMode(mode));
         DataContext = viewModel;
         var timeline = this.FindControl<VirtualTimelineControl>("TimelineSurface");
         if (timeline is not null)
@@ -126,6 +130,78 @@ public sealed partial class MainWindow : Window
         {
             viewModel.StatusText = $"Project open failed: {exception.Message}";
         }
+    }
+
+    private async void OnWorkspacePaneHeaderPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (sender is not Control { Tag: string paneName } ||
+            !eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed ||
+            !Enum.TryParse<WorkbenchPane>(paneName, ignoreCase: true, out var pane))
+        {
+            return;
+        }
+
+        var data = new DataTransfer();
+        data.Add(DataTransferItem.Create(WorkbenchPaneDataFormat, pane.ToString()));
+        await DragDrop.DoDragDropAsync(eventArgs, data, DragDropEffects.Move);
+        eventArgs.Handled = true;
+    }
+
+    private void OnWorkspacePaneDragEnter(object? sender, DragEventArgs eventArgs) =>
+        UpdateWorkspaceDropTarget(sender, eventArgs);
+
+    private void OnWorkspacePaneDragOver(object? sender, DragEventArgs eventArgs) =>
+        UpdateWorkspaceDropTarget(sender, eventArgs);
+
+    private static void OnWorkspacePaneDragLeave(object? sender, DragEventArgs eventArgs)
+    {
+        if (sender is Control target)
+        {
+            target.Classes.Set("pane-drop-target", false);
+        }
+    }
+
+    private void OnWorkspacePaneDrop(object? sender, DragEventArgs eventArgs)
+    {
+        if (sender is not Control { Tag: string slotPaneName } target ||
+            DataContext is not MainWindowViewModel viewModel ||
+            !TryReadWorkbenchPane(eventArgs, out var pane) ||
+            !Enum.TryParse<WorkbenchPane>(slotPaneName, ignoreCase: true, out var targetPane))
+        {
+            return;
+        }
+
+        target.Classes.Set("pane-drop-target", false);
+        if (pane != targetPane)
+        {
+            viewModel.MoveWorkbenchPane(pane, viewModel.GetWorkbenchSlot(targetPane));
+        }
+
+        eventArgs.DragEffects = DragDropEffects.Move;
+        eventArgs.Handled = true;
+    }
+
+    private static void UpdateWorkspaceDropTarget(object? sender, DragEventArgs eventArgs)
+    {
+        if (sender is not Control { Tag: string targetName } target ||
+            !TryReadWorkbenchPane(eventArgs, out var sourcePane) ||
+            !Enum.TryParse<WorkbenchPane>(targetName, ignoreCase: true, out var targetPane))
+        {
+            eventArgs.DragEffects = DragDropEffects.None;
+            return;
+        }
+
+        var allowed = sourcePane != targetPane;
+        target.Classes.Set("pane-drop-target", allowed);
+        eventArgs.DragEffects = allowed ? DragDropEffects.Move : DragDropEffects.None;
+        eventArgs.Handled = true;
+    }
+
+    private static bool TryReadWorkbenchPane(DragEventArgs eventArgs, out WorkbenchPane pane)
+    {
+        pane = default;
+        return eventArgs.DataTransfer.TryGetValue(WorkbenchPaneDataFormat) is string paneName &&
+            Enum.TryParse(paneName, ignoreCase: true, out pane);
     }
 
     private async void OnCreateProjectClicked(object? sender, RoutedEventArgs eventArgs)

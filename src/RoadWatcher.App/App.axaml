@@ -4,9 +4,8 @@
              x:Class="RoadWatcher.App.App"
              RequestedThemeVariant="Dark">
   <Application.Styles>
-    <FluentTheme />
+    <FluentTheme DensityStyle="Compact" />
     <materialIcons:MaterialIconStyles />
     <StyleInclude Source="avares://RoadWatcher.App/Styles.axaml" />
   </Application.Styles>
 </Application>
-

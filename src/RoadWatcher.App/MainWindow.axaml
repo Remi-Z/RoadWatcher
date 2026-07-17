@@ -14,83 +14,51 @@
         MinHeight="700"
         FontSize="11"
         WindowStartupLocation="CenterScreen">
-  <Grid ColumnDefinitions="110,*,3,235,3,235" RowDefinitions="53,*,42,304">
+  <Grid x:Name="WorkbenchGrid" ColumnDefinitions="76,*,4,*,4,320" RowDefinitions="56,*,4,280">
     <!-- Navigation -->
-    <Border Grid.RowSpan="4" Grid.Column="0" Background="#081A22" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,1,0">
-      <Grid RowDefinitions="53,*">
-        <TextBlock Margin="14,0" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" Text="RoadWatcher" />
-        <StackPanel Grid.Row="1" Spacing="7" Margin="6,10">
-          <Button Classes="nav selected" Focusable="False" IsHitTestVisible="False">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="PlayCircleOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Workbench" />
-            </StackPanel>
+    <Border Grid.RowSpan="4" Grid.Column="0" Classes="navigation-rail">
+      <Grid RowDefinitions="56,*,Auto">
+        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="16" FontWeight="SemiBold" Text="RW" ToolTip.Tip="RoadWatcher" />
+        <StackPanel Grid.Row="1" Spacing="4" Margin="8,12">
+          <Button Classes="nav selected" Focusable="False" IsHitTestVisible="False" ToolTip.Tip="Workbench">
+            <materialIcons:MaterialIcon Kind="PlayCircleOutline" Width="22" Height="22" />
           </Button>
-          <Button Classes="nav" Click="OnCreateProjectClicked" ToolTip.Tip="Create a .roadwatcher project">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="FolderPlusOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="New" />
-            </StackPanel>
+          <Button Classes="nav" Click="OnCreateProjectClicked" ToolTip.Tip="Create project">
+            <materialIcons:MaterialIcon Kind="FolderPlusOutline" Width="21" Height="21" />
           </Button>
-          <Button Classes="nav" Click="OnOpenProjectClicked" ToolTip.Tip="Open a .roadwatcher project">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Open" />
-            </StackPanel>
+          <Button Classes="nav" Click="OnOpenProjectClicked" ToolTip.Tip="Open project">
+            <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="21" Height="21" />
           </Button>
-          <Button Classes="nav" Command="{Binding SaveProjectCommand}" IsEnabled="{Binding HasOpenProject}" ToolTip.Tip="Save the current project">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="ContentSaveOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Save" />
-            </StackPanel>
+          <Button Classes="nav" Command="{Binding SaveProjectCommand}" IsEnabled="{Binding HasOpenProject}" ToolTip.Tip="Save project">
+            <materialIcons:MaterialIcon Kind="ContentSaveOutline" Width="21" Height="21" />
           </Button>
-          <Button Classes="nav" Command="{Binding CloseProjectCommand}" IsEnabled="{Binding HasOpenProject}" ToolTip.Tip="Close the current project">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="FolderRemoveOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Close" />
-            </StackPanel>
+          <Button Classes="nav" Command="{Binding CloseProjectCommand}" IsEnabled="{Binding HasOpenProject}" ToolTip.Tip="Close project">
+            <materialIcons:MaterialIcon Kind="FolderRemoveOutline" Width="21" Height="21" />
           </Button>
-          <Button Classes="nav" Command="{Binding ExportEvidenceCommand}" IsEnabled="{Binding HasOpenProject}" ToolTip.Tip="Export saved incidents" AutomationProperties.Name="Export evidence package">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="ExportVariant" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Exports" />
-            </StackPanel>
+          <Button Classes="nav" Command="{Binding ExportEvidenceCommand}" IsEnabled="{Binding HasOpenProject}" ToolTip.Tip="Export evidence" AutomationProperties.Name="Export evidence package">
+            <materialIcons:MaterialIcon Kind="ExportVariant" Width="21" Height="21" />
           </Button>
           <Button Classes="nav"
                   Command="{Binding PrepareProxiesCommand}"
                   IsEnabled="{Binding CanPrepareProxies}"
-                  ToolTip.Tip="Use supplied .LRV previews or generate bounded FFmpeg review proxies"
+                  ToolTip.Tip="Prepare review previews"
                   AutomationProperties.Name="Prepare review previews">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="MovieOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Previews" />
-            </StackPanel>
+            <materialIcons:MaterialIcon Kind="MovieOutline" Width="21" Height="21" />
           </Button>
           <Button Classes="nav"
                   Command="{Binding OpenIncidentLibraryCommand}"
                   IsEnabled="{Binding HasOpenProject}"
-                  ToolTip.Tip="Review and batch-edit saved incidents"
+                  ToolTip.Tip="Incident library"
                   AutomationProperties.Name="Open incident library">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="FormatListBulleted" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Incidents" />
-            </StackPanel>
+            <materialIcons:MaterialIcon Kind="FormatListBulleted" Width="21" Height="21" />
           </Button>
-          <Button Classes="nav"
-                  Command="{Binding ToggleJobsDrawerCommand}"
-                  ToolTip.Tip="Open FFmpeg jobs">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="ProgressWrench" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Jobs" />
-            </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Row="2" Spacing="4" Margin="8,12">
+          <Button Classes="nav" Command="{Binding ToggleJobsDrawerCommand}" ToolTip.Tip="Jobs">
+            <materialIcons:MaterialIcon Kind="ProgressWrench" Width="21" Height="21" />
           </Button>
-          <Button Classes="nav"
-                  Command="{Binding OpenSettingsCommand}"
-                  ToolTip.Tip="App settings and local service status">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-              <materialIcons:MaterialIcon Kind="CogOutline" Width="20" Height="20" />
-              <TextBlock VerticalAlignment="Center" Text="Settings" />
-            </StackPanel>
+          <Button Classes="nav" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings">
+            <materialIcons:MaterialIcon Kind="CogOutline" Width="21" Height="21" />
           </Button>
         </StackPanel>
       </Grid>
@@ -133,8 +101,32 @@
       </Grid>
     </Border>
 
-    <!-- Video -->
-    <Border Grid.Row="1" Grid.Column="1" Background="#020609" ClipToBounds="True">
+    <!-- Video: the native LibVLC child remains in this stable host while the host changes grid slots. -->
+    <Grid x:Name="VideoPane"
+          Grid.Row="{Binding VideoPanePlacement.Row}"
+          Grid.Column="{Binding VideoPanePlacement.Column}"
+          Grid.RowSpan="{Binding VideoPanePlacement.RowSpan}"
+          Grid.ColumnSpan="{Binding VideoPanePlacement.ColumnSpan}"
+          RowDefinitions="32,*,42"
+          Classes="workbench-pane"
+          Tag="Video"
+          DragDrop.AllowDrop="True"
+          DragDrop.DragEnter="OnWorkspacePaneDragEnter"
+          DragDrop.DragOver="OnWorkspacePaneDragOver"
+          DragDrop.DragLeave="OnWorkspacePaneDragLeave"
+          DragDrop.Drop="OnWorkspacePaneDrop">
+      <Border Grid.Row="0" Classes="pane-header">
+        <Grid Margin="10,0" ColumnDefinitions="Auto,*,Auto">
+          <Border Tag="Video" Classes="pane-drag-handle" PointerPressed="OnWorkspacePaneHeaderPointerPressed" ToolTip.Tip="Drag Video to another workbench slot">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <materialIcons:MaterialIcon Kind="Drag" Width="16" Height="16" />
+              <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Video" />
+            </StackPanel>
+          </Border>
+          <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="Review surface" />
+        </Grid>
+      </Border>
+    <Border Grid.Row="1" Background="#020609" ClipToBounds="True">
       <Grid RowDefinitions="Auto,*">
         <Border Padding="13,8" Background="#D90A1A20" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1" IsVisible="{Binding ShowTelemetryOverlay}">
           <Grid ColumnDefinitions="Auto,20,Auto,20,Auto,20,*">
@@ -221,7 +213,7 @@
     </Border>
 
     <!-- Player controls -->
-    <Border Grid.Row="2" Grid.Column="1" Classes="panel">
+    <Border Grid.Row="2" Classes="panel">
       <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto" Margin="9,0">
         <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="{Binding PlayLabel}" AutomationProperties.Name="{Binding PlayLabel}">
           <materialIcons:MaterialIcon Kind="{Binding PlayIcon}" Width="23" Height="23" />
@@ -291,13 +283,34 @@
         </Button>
       </Grid>
     </Border>
+    </Grid>
+
+    <!-- Workbench grid splitters. Pane assignment only moves stable hosts, never child controls. -->
+    <GridSplitter Grid.Row="1" Grid.Column="2" Width="4" Classes="workbench-splitter" ResizeDirection="Columns" />
+    <GridSplitter Grid.Row="1" Grid.Column="4" Width="4" Classes="workbench-splitter" ResizeDirection="Columns" />
+    <GridSplitter Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Height="4" Classes="workbench-splitter" ResizeDirection="Rows" />
 
     <!-- Context dock -->
-    <GridSplitter Grid.Row="1" Grid.RowSpan="3" Grid.Column="2" Width="4" Background="#18343D" ResizeDirection="Columns" />
-    <Border Grid.Row="1" Grid.RowSpan="2" Grid.Column="3" Classes="panel">
+    <Border x:Name="MapPane"
+            Grid.Row="{Binding MapPanePlacement.Row}"
+            Grid.Column="{Binding MapPanePlacement.Column}"
+            Grid.RowSpan="{Binding MapPanePlacement.RowSpan}"
+            Grid.ColumnSpan="{Binding MapPanePlacement.ColumnSpan}"
+            Classes="panel workbench-pane"
+            Tag="Map"
+            DragDrop.AllowDrop="True"
+            DragDrop.DragEnter="OnWorkspacePaneDragEnter"
+            DragDrop.DragOver="OnWorkspacePaneDragOver"
+            DragDrop.DragLeave="OnWorkspacePaneDragLeave"
+            DragDrop.Drop="OnWorkspacePaneDrop">
       <Grid RowDefinitions="50,*,Auto">
         <Grid Margin="15,0" ColumnDefinitions="*,Auto">
-          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Context" />
+          <Border Tag="Map" Classes="pane-drag-handle" PointerPressed="OnWorkspacePaneHeaderPointerPressed" ToolTip.Tip="Drag Map to another workbench slot">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <materialIcons:MaterialIcon Kind="Drag" Width="16" Height="16" />
+              <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Map" />
+            </StackPanel>
+          </Border>
           <ComboBox x:Name="MapStyleSelector"
                     Grid.Column="1"
                     Width="88"
@@ -464,11 +477,26 @@
     </Border>
 
     <!-- Inspector -->
-    <GridSplitter Grid.Row="1" Grid.RowSpan="3" Grid.Column="4" Width="4" Background="#18343D" ResizeDirection="Columns" />
-    <Border Grid.Row="1" Grid.RowSpan="3" Grid.Column="5" Classes="panel">
+    <Border x:Name="InspectorPane"
+            Grid.Row="{Binding InspectorPanePlacement.Row}"
+            Grid.Column="{Binding InspectorPanePlacement.Column}"
+            Grid.RowSpan="{Binding InspectorPanePlacement.RowSpan}"
+            Grid.ColumnSpan="{Binding InspectorPanePlacement.ColumnSpan}"
+            Classes="panel workbench-pane"
+            Tag="Inspector"
+            DragDrop.AllowDrop="True"
+            DragDrop.DragEnter="OnWorkspacePaneDragEnter"
+            DragDrop.DragOver="OnWorkspacePaneDragOver"
+            DragDrop.DragLeave="OnWorkspacePaneDragLeave"
+            DragDrop.Drop="OnWorkspacePaneDrop">
       <Grid RowDefinitions="50,*,Auto">
         <Grid Margin="14,0">
-          <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Incident inspector" />
+          <Border Tag="Inspector" Classes="pane-drag-handle" PointerPressed="OnWorkspacePaneHeaderPointerPressed" ToolTip.Tip="Drag Incident inspector to another workbench slot">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <materialIcons:MaterialIcon Kind="Drag" Width="16" Height="16" />
+              <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Incident inspector" />
+            </StackPanel>
+          </Border>
         </Grid>
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsEnabled="{Binding HasIncidentDraft}">
           <StackPanel Margin="14,0,14,14" Spacing="8">
@@ -622,11 +650,27 @@
     </Border>
 
     <!-- Timeline -->
-    <Border Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Classes="panel">
+    <Border x:Name="TimelinePane"
+            Grid.Row="{Binding TimelinePanePlacement.Row}"
+            Grid.Column="{Binding TimelinePanePlacement.Column}"
+            Grid.RowSpan="{Binding TimelinePanePlacement.RowSpan}"
+            Grid.ColumnSpan="{Binding TimelinePanePlacement.ColumnSpan}"
+            Classes="panel workbench-pane"
+            Tag="Timeline"
+            DragDrop.AllowDrop="True"
+            DragDrop.DragEnter="OnWorkspacePaneDragEnter"
+            DragDrop.DragOver="OnWorkspacePaneDragOver"
+            DragDrop.DragLeave="OnWorkspacePaneDragLeave"
+            DragDrop.Drop="OnWorkspacePaneDrop">
       <Grid RowDefinitions="42,*,29">
         <Grid Margin="14,0" ColumnDefinitions="Auto,*,Auto">
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
-            <TextBlock FontWeight="SemiBold" Text="Timeline" />
+            <Border Tag="Timeline" Classes="pane-drag-handle" PointerPressed="OnWorkspacePaneHeaderPointerPressed" ToolTip.Tip="Drag Timeline to another workbench slot">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <materialIcons:MaterialIcon Kind="Drag" Width="16" Height="16" />
+                <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Timeline" />
+              </StackPanel>
+            </Border>
             <Button Padding="8,4" IsEnabled="{Binding HasLoadedMedia}" Click="OnTimelineFitClicked" Content="Fit" ToolTip.Tip="Fit the complete ride" AutomationProperties.Name="Fit complete timeline" />
             <Button Padding="8,4" IsEnabled="{Binding HasLoadedMedia}" Click="OnTimelineZoomOutClicked" Content="−" ToolTip.Tip="Zoom out" AutomationProperties.Name="Zoom timeline out" />
             <Button Padding="8,4" IsEnabled="{Binding HasLoadedMedia}" Click="OnTimelineZoomInClicked" Content="+" ToolTip.Tip="Zoom in" AutomationProperties.Name="Zoom timeline in" />
@@ -968,6 +1012,25 @@
                     <Button Margin="0,0,8,8" Command="{Binding ClearProxyCacheCommand}" Content="Clear proxies" />
                     <Button Margin="0,0,8,8" Command="{Binding ClearMapCacheCommand}" Content="Clear map tiles" />
                   </WrapPanel>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="panel" Padding="14">
+                <StackPanel Spacing="10">
+                  <TextBlock FontWeight="SemiBold" Text="Appearance and workspace" />
+                  <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto" RowSpacing="8">
+                    <TextBlock VerticalAlignment="Center" Classes="muted" Text="Appearance" />
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding SettingsThemeModes}"
+                              SelectedItem="{Binding SettingsThemeMode, Mode=TwoWay}"
+                              ToolTip.Tip="Choose Dark, Light, or System appearance" />
+                    <TextBlock Grid.Row="1" VerticalAlignment="Center" Classes="muted" Text="Docked panes" />
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                      <Button Command="{Binding ResetWorkspaceLayoutCommand}" Content="Reset layout" />
+                      <TextBlock VerticalAlignment="Center" Classes="muted" FontSize="10" Text="Drag a pane heading to swap its dock." />
+                    </StackPanel>
+                  </Grid>
+                  <TextBlock Classes="muted" FontSize="10" TextWrapping="Wrap" Text="The appearance and layout are stored only for this workstation; projects and exports are unchanged." />
                 </StackPanel>
               </Border>
 

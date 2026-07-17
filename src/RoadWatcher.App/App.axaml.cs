@@ -1,12 +1,27 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
 
 namespace RoadWatcher.App;
 
 public sealed partial class App : Application
 {
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+        ApplyThemeMode(RoadWatcherRuntime.Settings.ThemeMode);
+    }
+
+    public void ApplyThemeMode(ApplicationThemeMode mode)
+    {
+        RequestedThemeVariant = mode switch
+        {
+            ApplicationThemeMode.Light => ThemeVariant.Light,
+            ApplicationThemeMode.System => ThemeVariant.Default,
+            _ => ThemeVariant.Dark
+        };
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
