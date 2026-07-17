@@ -73,6 +73,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly Stack<TimelineUndoEntry> _timelineRedo = [];
     private RoadContextSnapshot? _roadContextSnapshot;
     private string? _lastRoadContextPresentationKey;
+    private WorkbenchLayout _workbenchLayout = WorkbenchLayout.Default;
 
     private const int MaximumRoadContextRoutePoints = 1_000;
     private static readonly RoadContextBounds OntarioCoverageBounds = new(41.5, -95.5, 56.9, -74.0);
@@ -441,6 +442,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private string _settingsMapStyle = ContextMapStyle.Night.ToString();
 
     [ObservableProperty]
+    private string _settingsThemeMode = ApplicationThemeMode.Dark.ToString();
+
+    [ObservableProperty]
     private string _settingsFfmpegStatus = "Not checked";
 
     [ObservableProperty]
@@ -546,12 +550,18 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public int QueuedFfmpegJobCount => FfmpegJobsSnapshot.Count(job => job.State == FfmpegJobState.Queued);
     public string[] SettingsLogLevels => Enum.GetNames<RoadWatcherLogLevel>();
     public string[] SettingsMapStyles => Enum.GetNames<ContextMapStyle>();
+    public string[] SettingsThemeModes => Enum.GetNames<ApplicationThemeMode>();
     public string AppVersionText => RoadWatcherRuntime.AppVersion;
     public string SettingsProjectState => ProjectStateText;
     public string SettingsVlcStatus => "Available";
     public string SettingsLogPath => RoadWatcherRuntime.LogPathHint;
 
     public event Action<ContextMapStyle>? PreferredMapStyleChanged;
+    public event Action<ApplicationThemeMode>? ThemeModeChanged;
+    public WorkbenchPanePlacement VideoPanePlacement => _workbenchLayout.PlacementFor(WorkbenchPane.Video);
+    public WorkbenchPanePlacement MapPanePlacement => _workbenchLayout.PlacementFor(WorkbenchPane.Map);
+    public WorkbenchPanePlacement InspectorPanePlacement => _workbenchLayout.PlacementFor(WorkbenchPane.Inspector);
+    public WorkbenchPanePlacement TimelinePanePlacement => _workbenchLayout.PlacementFor(WorkbenchPane.Timeline);
     public bool HasOpenProject => ProjectDirectory is not null;
     public string ProjectStateText => HasOpenProject ? "Project open" : "No project open";
     public MediaPlayer MediaPlayer => _mediaEngine.MediaPlayer;
@@ -4655,6 +4665,11 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             StatusText = "Choose a valid map style.";
             return;
         }
+        if (!Enum.TryParse<ApplicationThemeMode>(SettingsThemeMode, ignoreCase: true, out var themeMode))
+        {
+            StatusText = "Choose a valid appearance mode.";
+            return;
+        }
 
         var executable = UseManualFfmpegPath && !string.IsNullOrWhiteSpace(SettingsFfmpegPath)
             ? SettingsFfmpegPath.Trim()
@@ -4666,13 +4681,16 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 LogLevel = logLevel,
                 UseManualFfmpegPath = executable is not null,
                 FfmpegExecutablePath = executable,
-                PreferredMapStyle = mapStyle
+                PreferredMapStyle = mapStyle,
+                ThemeMode = themeMode,
+                WorkbenchLayout = _workbenchLayout
             });
             _proxyAvailability = null;
             _thumbnailAvailability = null;
             _thumbnailGenerator = new FfmpegMediaThumbnailGenerator(_ffmpegJobs, ResolveSettingsFfmpegExecutable());
             _proxyGenerator = new FfmpegMediaProxyGenerator(_ffmpegJobs, ResolveSettingsFfmpegExecutable());
             PreferredMapStyleChanged?.Invoke(mapStyle);
+            ThemeModeChanged?.Invoke(themeMode);
             StatusText = "App settings saved locally; project evidence was not changed.";
         }
         catch (Exception exception)
@@ -4686,6 +4704,27 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         SettingsMapStyle = style.ToString();
         SaveSettings();
+    }
+
+    public void MoveWorkbenchPane(WorkbenchPane pane, WorkbenchSlot destination)
+    {
+        var updated = _workbenchLayout.MoveInto(pane, destination);
+        if (updated == _workbenchLayout)
+        {
+            return;
+        }
+
+        _workbenchLayout = updated;
+        NotifyWorkbenchLayoutChanged();
+        PersistWorkbenchLayout("Workbench layout saved locally.");
+    }
+
+    [RelayCommand]
+    private void ResetWorkbenchLayout()
+    {
+        _workbenchLayout = WorkbenchLayout.Default;
+        NotifyWorkbenchLayoutChanged();
+        PersistWorkbenchLayout("Workbench layout reset locally.");
     }
 
     [RelayCommand]
@@ -4755,6 +4794,30 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         UseManualFfmpegPath = settings.UseManualFfmpegPath;
         SettingsFfmpegPath = settings.FfmpegExecutablePath ?? string.Empty;
         SettingsMapStyle = settings.PreferredMapStyle.ToString();
+        SettingsThemeMode = settings.ThemeMode.ToString();
+        _workbenchLayout = WorkbenchLayout.Normalize(settings.WorkbenchLayout);
+    }
+
+    private void NotifyWorkbenchLayoutChanged()
+    {
+        OnPropertyChanged(nameof(VideoPanePlacement));
+        OnPropertyChanged(nameof(MapPanePlacement));
+        OnPropertyChanged(nameof(InspectorPanePlacement));
+        OnPropertyChanged(nameof(TimelinePanePlacement));
+    }
+
+    private void PersistWorkbenchLayout(string successMessage)
+    {
+        try
+        {
+            RoadWatcherRuntime.SaveSettings(RoadWatcherRuntime.Settings with { WorkbenchLayout = _workbenchLayout });
+            StatusText = successMessage;
+        }
+        catch (Exception exception)
+        {
+            Log.Error(exception, "Could not persist the workbench layout");
+            StatusText = "Workbench layout could not be saved; see the app log.";
+        }
     }
 
     private string ResolveSettingsFfmpegExecutable() =>

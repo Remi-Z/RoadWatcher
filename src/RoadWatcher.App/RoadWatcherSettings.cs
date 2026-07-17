@@ -22,6 +22,8 @@ public sealed record RoadWatcherSettings
     public bool UseManualFfmpegPath { get; init; }
     public string? FfmpegExecutablePath { get; init; }
     public ContextMapStyle PreferredMapStyle { get; init; } = ContextMapStyle.Night;
+    public ApplicationThemeMode ThemeMode { get; init; } = ApplicationThemeMode.Dark;
+    public WorkbenchLayout WorkbenchLayout { get; init; } = WorkbenchLayout.Default;
 }
 
 public sealed class RoadWatcherSettingsStore
@@ -45,8 +47,9 @@ public sealed class RoadWatcherSettingsStore
                 return new RoadWatcherSettings();
             }
 
-            return JsonSerializer.Deserialize<RoadWatcherSettings>(File.ReadAllText(SettingsPath), JsonOptions)
+            var settings = JsonSerializer.Deserialize<RoadWatcherSettings>(File.ReadAllText(SettingsPath), JsonOptions)
                 ?? new RoadWatcherSettings();
+            return Normalize(settings);
         }
         catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
         {
@@ -54,6 +57,12 @@ public sealed class RoadWatcherSettingsStore
             return new RoadWatcherSettings();
         }
     }
+
+    private static RoadWatcherSettings Normalize(RoadWatcherSettings settings) => settings with
+    {
+        ThemeMode = Enum.IsDefined(settings.ThemeMode) ? settings.ThemeMode : ApplicationThemeMode.Dark,
+        WorkbenchLayout = WorkbenchLayout.Normalize(settings.WorkbenchLayout)
+    };
 
     public void Save(RoadWatcherSettings settings)
     {
