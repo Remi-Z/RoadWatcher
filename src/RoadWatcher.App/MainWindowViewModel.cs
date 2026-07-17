@@ -6,6 +6,7 @@ using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FluentIcons.Common;
 using LibVLCSharp.Shared;
 using RoadWatcher.App.Controls;
 using RoadWatcher.App.Services;
@@ -533,7 +534,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         "Other"
     ];
 
-    public string PlayIcon => IsPlaying ? "Pause" : "Play";
+    public Icon PlayIcon => IsPlaying ? Icon.Pause : Icon.Play;
     public string PlayLabel => IsPlaying ? "Pause" : "Play";
     public string PlaybackRateText => $"{PlaybackRate:0.0}×";
     public double MinimumPlaybackRate => PlaybackRateScale.Minimum;

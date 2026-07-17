@@ -91,6 +91,8 @@ M11 — Fluent Route Replay Canvas: the selected third visual direction is imple
 - Video, Map, Incident inspector, and Timeline are stable direct grid hosts assigned to primary, secondary, side, and bottom workbench slots. Dragging a heading onto another host swaps their slots, highlights the target, validates/persists the arrangement locally, and Settings can reset it. Incidents, Jobs, and Settings remain deliberate page/drawer workflows.
 - The video surface and player controls move together inside one host; the embedded LibVLC control itself is not reparented, retaining the native-handle and black-frame safeguards from M06/M08.
 - Release build passed with 0 warnings/errors and the full suite passed 180/180. Three new focused tests cover workspace swapping, malformed saved layout fallback, and fixed slot coordinates.
+- The visual icon audit removed Material controls from every visible Avalonia surface and replaced them with `FluentIcons.Avalonia` 2.0.321, the mature version compatible with the Avalonia 11 baseline. The only remaining Material dependency is a Mapsui-only source for cached road-context SVG marker paths; it is not an Avalonia UI component.
+- Because a reviewer-held RoadWatcher process locks the normal Release output, the icon slice used `artifacts/verification-fluent-icons/`. Its Release build passed with 0 warnings/errors and the full suite passed 180/180 without touching that running process.
 - Interactive visual acceptance is documented but not claimed: this Codex desktop session still has no visible Windows application window handle. The required 1152 × 820 capture state is recorded in `docs/milestones/M11-fluent-workbench/README.md`.
 
 ## M07 closure record

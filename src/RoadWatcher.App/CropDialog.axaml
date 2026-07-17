@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:fluentIcons="using:FluentIcons.Avalonia"
         x:Class="RoadWatcher.App.CropDialog"
         Title="Crop evidence"
         Width="900"
@@ -15,7 +15,7 @@
         <TextBlock Classes="muted" FontSize="11" Text="Drag over the evidence frame. The saved crop keeps source-time provenance." />
       </StackPanel>
       <Button Grid.Column="1" Classes="icon" Click="OnCancelClicked">
-        <materialIcons:MaterialIcon Kind="Close" Width="19" Height="19" />
+        <fluentIcons:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size20" />
       </Button>
     </Grid>
 
@@ -40,11 +40,10 @@
       <Button Grid.Column="1" Margin="0,0,8,0" Click="OnCancelClicked" Content="Cancel" />
       <Button Grid.Column="2" Classes="primary" Click="OnSaveClicked">
         <StackPanel Orientation="Horizontal" Spacing="7">
-          <materialIcons:MaterialIcon Kind="Crop" Width="18" Height="18" />
+          <fluentIcons:FluentIcon Icon="Crop" IconVariant="Regular" IconSize="Size20" />
           <TextBlock Text="Save crop" />
         </StackPanel>
       </Button>
     </Grid>
   </Grid>
 </Window>
-

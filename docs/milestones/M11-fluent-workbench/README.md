@@ -13,11 +13,18 @@ Implement the selected third design direction, **Route Replay Canvas**, as the A
 - The video pane moves as one grid host containing both player and controls. `EmbeddedVideoView` is never reparented, preserving its native LibVLC child handle and the clip-transition black-frame protection.
 - The established timeline speed graph, map speed gradient, transparency for upcoming travel, map styles, live GPX synchronization preview, hover frames, review proxy/LRV policy, 0.5×–5× playback bar, marking mode, incident library, and batch editing are retained inside the new shell.
 
+## Audit slice — Fluent icon system
+
+- Every visible Avalonia command, navigation item, playback action, pane heading, map-card action, inspector action, drawer action, and crop-dialog action now uses the Avalonia-11-compatible Fluent System Icon control library. The play/pause binding is strongly typed to the Fluent icon enum instead of relying on a runtime string-to-enum conversion.
+- Material icons remain only behind Mapsui's cached, non-UI SVG marker pipeline. That preserves existing road-context markers without mixing Material controls into the Fluent shell.
+- The normal Release output is held by a live RoadWatcher process, so this slice was built and tested in `artifacts/verification-fluent-icons/` rather than interrupting a reviewer session.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx -c Release --no-restore` — passed with 0 warnings and 0 errors.
 - `dotnet test RoadWatcher.slnx -c Release --no-restore` — passed 180/180.
 - `WorkbenchLayoutTests` adds three focused regressions for slot swapping, malformed local-layout fallback, and fixed grid placement.
+- The isolated Release build passed with 0 warnings/errors and the full isolated Release suite passed 180/180 after the icon migration.
 
 ## Screenshot state
 

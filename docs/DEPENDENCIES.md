@@ -10,7 +10,8 @@ Pin versions centrally and upgrade intentionally. The application composes matur
 | Native VLC | VideoLAN.LibVLC.Windows | 3.0.23.1 | Reproducible Windows native runtime. |
 | Map | Mapsui.Avalonia | 5.1.0 | Mature Avalonia 11 map control; supports OpenStreetMap tiles and overlays without conflicting native text dependencies. |
 | Reverse geocoding | OpenStreetMap Nominatim HTTP API | public API v1 | User-triggered address suggestions without credentials; project-local cache, process-wide throttling, attribution, and endpoint override enforce the provider policy. |
-| Icons | Material.Icons.Avalonia | 2.4.1 | Maintained vector icon library compatible with Avalonia 11; avoids handmade glyphs. |
+| Fluent UI icons | FluentIcons.Avalonia | 2.0.321 | Avalonia-11-compatible Fluent System Icon controls for every visible app command, state, and pane affordance. |
+| Mapsui marker paths | Material.Icons.Avalonia | 2.4.1 | Retained only as a non-UI SVG-path source for cached Mapsui road-context marker assets; it is not used by Avalonia controls. |
 | Application logging | Serilog + Serilog.Sinks.File | 4.2.0 / 6.0.0 | Mature structured logging with a local 14-day rolling file; defaults to Warning without writing source media/GPX content. |
 | JSON | System.Text.Json | platform | Built-in, fast, versioned project serialization. |
 | Media derivatives | FFmpeg | 8.x external tool | H.264/AAC incident review clips, bounded H.264 playback proxies, and lazy timeline thumbnails. |
