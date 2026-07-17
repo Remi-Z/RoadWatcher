@@ -772,7 +772,8 @@
                   <DataTemplate x:DataType="local:IncidentLibraryItemViewModel">
                     <Border Margin="12,0,12,8"
                             Padding="12"
-                            Classes="overlay-card"
+                            Classes="overlay-card incident-card"
+                            Cursor="Hand"
                             BorderThickness="1"
                             DoubleTapped="OnIncidentLibraryItemDoubleTapped"
                             ToolTip.Tip="Double-click to preview this incident's video window">
@@ -790,7 +791,17 @@
                         </StackPanel>
                         <StackPanel Grid.Column="2" HorizontalAlignment="Right" Spacing="4">
                           <TextBlock Classes="muted" FontSize="10" Text="{Binding AttachmentCount, StringFormat={}{0} file(s)}" />
-                          <TextBlock Classes="muted" FontSize="9" Text="Double-click preview" />
+                          <Button Padding="7,3"
+                                  HorizontalAlignment="Right"
+                                  Click="OnIncidentLibraryPreviewClicked"
+                                  ToolTip.Tip="Preview this incident's source-correct video window"
+                                  AutomationProperties.Name="Preview incident video">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                              <fluentIcons:FluentIcon Icon="Play" IconVariant="Regular" IconSize="Size16" />
+                              <TextBlock FontSize="9" Text="Preview" />
+                            </StackPanel>
+                          </Button>
+                          <TextBlock Classes="muted" FontSize="9" Text="or double-click card" />
                         </StackPanel>
                         <TextBlock Grid.Row="1"
                                    Grid.Column="1"

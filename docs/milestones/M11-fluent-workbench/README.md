@@ -39,6 +39,12 @@ Implement the selected third design direction, **Route Replay Canvas**, as the A
 - The Video row still contains the source-correct hover-preview target, while the Timeline row retains its existing virtual timeline below the wrapping commands. No media or timeline control has been reparented.
 - The isolated Release build passed with 0 warnings/errors and the full suite passed 180/180 in `artifacts/verification-responsive-workbench/`.
 
+## Audit slice — incident preview affordance
+
+- Each incident-library card now has a direct Fluent **Preview** action, in addition to its existing double-click gesture. This makes video/window/details review discoverable and keyboard reachable without changing the source-correct preview workflow.
+- Incident cards receive a theme-aware hover treatment that communicates their interactive review state while keeping checkbox batch selection independent.
+- The isolated Release build passed with 0 warnings/errors and the full suite passed 180/180 in `artifacts/verification-incident-preview-affordance/`.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx -c Release --no-restore` — passed with 0 warnings and 0 errors.

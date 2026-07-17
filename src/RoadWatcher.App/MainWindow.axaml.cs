@@ -1149,7 +1149,27 @@ public sealed partial class MainWindow : Window
     {
         if (eventArgs.Source is CheckBox ||
             sender is not Control { DataContext: IncidentLibraryItemViewModel item } ||
-            DataContext is not MainWindowViewModel viewModel)
+            DataContext is not MainWindowViewModel)
+        {
+            return;
+        }
+
+        await PreviewIncidentFromLibraryAsync(item);
+    }
+
+    private async void OnIncidentLibraryPreviewClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is not Control { DataContext: IncidentLibraryItemViewModel item })
+        {
+            return;
+        }
+
+        await PreviewIncidentFromLibraryAsync(item);
+    }
+
+    private async Task PreviewIncidentFromLibraryAsync(IncidentLibraryItemViewModel item)
+    {
+        if (DataContext is not MainWindowViewModel viewModel)
         {
             return;
         }
