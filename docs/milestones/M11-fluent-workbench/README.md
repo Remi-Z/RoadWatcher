@@ -45,6 +45,12 @@ Implement the selected third design direction, **Route Replay Canvas**, as the A
 - Incident cards receive a theme-aware hover treatment that communicates their interactive review state while keeping checkbox batch selection independent.
 - The isolated Release build passed with 0 warnings/errors and the full suite passed 180/180 in `artifacts/verification-incident-preview-affordance/`.
 
+## Audit slice — background-work drawer
+
+- The FFmpeg jobs drawer now renders an intentional empty state that explains when source-safe preview/export work will appear; its **Cancel all** action is disabled until a job is available.
+- The view model exposes explicit populated/empty job state derived from the existing snapshot, keeping this transient Fluent surface reactive without modifying evidence or job scheduling behavior.
+- The isolated Release build passed with 0 warnings/errors and the full suite passed 180/180 in `artifacts/verification-jobs-empty-state/`.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx -c Release --no-restore` — passed with 0 warnings and 0 errors.

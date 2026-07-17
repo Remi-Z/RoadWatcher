@@ -356,6 +356,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActiveFfmpegJobCount))]
     [NotifyPropertyChangedFor(nameof(QueuedFfmpegJobCount))]
+    [NotifyPropertyChangedFor(nameof(HasFfmpegJobs))]
+    [NotifyPropertyChangedFor(nameof(HasNoFfmpegJobs))]
     private IReadOnlyList<FfmpegJobSnapshot> _ffmpegJobsSnapshot = [];
 
     [ObservableProperty]
@@ -549,6 +551,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public bool CanPrepareProxies => HasLoadedMedia && !IsPreparingProxies;
     public int ActiveFfmpegJobCount => FfmpegJobsSnapshot.Count(job => job.State == FfmpegJobState.Running);
     public int QueuedFfmpegJobCount => FfmpegJobsSnapshot.Count(job => job.State == FfmpegJobState.Queued);
+    public bool HasFfmpegJobs => FfmpegJobsSnapshot.Count > 0;
+    public bool HasNoFfmpegJobs => !HasFfmpegJobs;
     public string[] SettingsLogLevels => Enum.GetNames<RoadWatcherLogLevel>();
     public string[] SettingsMapStyles => Enum.GetNames<ContextMapStyle>();
     public string[] SettingsThemeModes => Enum.GetNames<ApplicationThemeMode>();
