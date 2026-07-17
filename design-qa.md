@@ -66,3 +66,16 @@ Console/runtime errors checked: no build warnings or errors; the running app rem
 
 Final result: passed
 
+---
+
+# M11 design QA — Fluent Route Replay Canvas
+
+Source visual truth: the user-selected third Route Replay Canvas rendering at `C:\Users\Remi Z\.codex\generated_images\019f6cf1-bcff-7c20-9cce-45721a1025fe\exec-6b218c78-49fd-4050-a325-5abc21b1e1ab.png`.
+
+Implemented interpretation: compact Avalonia Fluent shell, narrow navigation rail, project header, primary/secondary review panes, persistent side inspector, and bottom timeline. The design keeps the source hierarchy while retaining the existing real Mapsui, LibVLC, and virtual-timeline controls rather than substituting mock content.
+
+Required comparison viewport/state: 1152 × 820 logical desktop, Dark appearance, all four workbench panes visible. Repeat after dragging Timeline onto Video's slot, confirm the target highlight/swap, then use Settings → Reset layout. Also inspect Light and System appearance modes.
+
+Source capture is available, but implementation capture is blocked: this Codex session has no visible Windows desktop window handle for the Avalonia app. Build and 180/180 regression tests pass, but that is not visual verification. The source image and the same-state app capture must be compared together before fixing any remaining P0/P1/P2 visual differences.
+
+Final result: blocked

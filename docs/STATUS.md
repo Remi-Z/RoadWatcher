@@ -4,7 +4,7 @@ Last updated: 2026-07-16
 
 ## Current milestone
 
-M10 — Incident workflow: implementing intersection-first locations, richer vehicle identity, incident-library batch editing, and incident clip preview. M09's interactive visual capture remains pending because this Codex session cannot access a visible Windows desktop window handle; M08's separate visual-acceptance capture and M07 release gates remain external.
+M11 — Fluent Route Replay Canvas: the selected third visual direction is implemented as an Avalonia Fluent shell with app-local Dark/Light/System appearance and persisted docked-pane swapping. Interactive visual acceptance remains pending because this Codex session cannot access a visible Windows desktop window handle; M08/M09 capture and M07 release gates remain external.
 
 ## Completed
 
@@ -83,6 +83,15 @@ M10 — Incident workflow: implementing intersection-first locations, richer veh
 - A new **Incidents** sidebar page lists every saved record, supports explicit multi-select batch changes (category, make, type, colour, tags, and vehicle confirmation), and preserves source-frame provenance, locations, evidence windows, attachments, notes, and creation times. If a batch changes the incident already open in the inspector, its persisted values reload immediately so stale text cannot overwrite that change.
 - Double-clicking a library row returns to the workbench with its detail inspector loaded and plays its bounded project-time video window. The preview stops at the incident end or at the reviewer’s explicit stop action, while unavailable/gapped sources remain explicit instead of presenting a false active preview.
 - Release build passed with 0 warnings/errors and the full suite passed 177/177, including pure batch-edit and clip-preview planning tests.
+
+## M11 progress
+
+- The selected third Route Replay Canvas direction is now a compact Avalonia Fluent workbench: a narrow navigation rail, project command bar, semantic dark/light resource dictionaries, Fluent density, and a responsive four-pane review canvas replace the prior fixed dark shell treatment.
+- Dark, Light, and System appearance modes are app-local settings. They update the existing Fluent theme without changing the evidence project, source files, or exports.
+- Video, Map, Incident inspector, and Timeline are stable direct grid hosts assigned to primary, secondary, side, and bottom workbench slots. Dragging a heading onto another host swaps their slots, highlights the target, validates/persists the arrangement locally, and Settings can reset it. Incidents, Jobs, and Settings remain deliberate page/drawer workflows.
+- The video surface and player controls move together inside one host; the embedded LibVLC control itself is not reparented, retaining the native-handle and black-frame safeguards from M06/M08.
+- Release build passed with 0 warnings/errors and the full suite passed 180/180. Three new focused tests cover workspace swapping, malformed saved layout fallback, and fixed slot coordinates.
+- Interactive visual acceptance is documented but not claimed: this Codex desktop session still has no visible Windows application window handle. The required 1152 × 820 capture state is recorded in `docs/milestones/M11-fluent-workbench/README.md`.
 
 ## M07 closure record
 
@@ -172,6 +181,8 @@ M10 — Incident workflow: implementing intersection-first locations, richer veh
 - `d470ba1` — GPX speed bands and stop visualization
 - `9fee3be` — visible V1 workbench integrity closure
 - `4dc5880` — deferred secondary-camera lane removal
+- `e1c54c8` — persisted docked pane assignments
+- `cfda6b8` — Fluent docked Route Replay Canvas shell
 
 ## Next actions
 
