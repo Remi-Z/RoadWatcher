@@ -36,5 +36,6 @@ internal static class Program
         .Configure<App>()
         .UsePlatformDetect()
         .WithInterFont()
+        .WithDeveloperTools()
         .LogToTrace();
 }

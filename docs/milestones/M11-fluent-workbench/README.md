@@ -51,6 +51,12 @@ Implement the selected third design direction, **Route Replay Canvas**, as the A
 - The view model exposes explicit populated/empty job state derived from the existing snapshot, keeping this transient Fluent surface reactive without modifying evidence or job scheduling behavior.
 - The isolated Release build passed with 0 warnings/errors and the full suite passed 180/180 in `artifacts/verification-jobs-empty-state/`.
 
+## Audit slice — Developer Tools readiness
+
+- The supported `AvaloniaUI.DiagnosticsSupport` bridge replaces the deprecated `Avalonia.Diagnostics` package. Debug application startup now enables the Developer Tools infrastructure and attaches the F12 inspector after XAML initialization.
+- This prepares the remaining visual acceptance reviewer to inspect Fluent control state, resources, and docked layout bounds without changing any project evidence or Release workflow.
+- The isolated Release and Debug builds passed with 0 warnings/errors; the Release suite passed 180/180 in `artifacts/verification-developer-tools/`.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx -c Release --no-restore` — passed with 0 warnings and 0 errors.
