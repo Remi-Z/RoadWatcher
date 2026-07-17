@@ -26,6 +26,13 @@ Implement the selected third design direction, **Route Replay Canvas**, as the A
 - Shared surface, transient-card, and overlay-card classes replace repeated ad-hoc border/radius/colour declarations and retain a Fluent 2-style 6-DIP radius.
 - The isolated Release build passed with 0 warnings/errors and the full suite passed 180/180 in `artifacts/verification-theme-surfaces/`.
 
+## Audit slice — compiled presentation bindings
+
+- Compiled bindings are enabled by default for the Avalonia application. The workbench and both repeated-content templates declare their concrete data types, so renamed or missing presentation properties become build failures.
+- The sole intentionally dynamic binding is the FFmpeg-row command reached through its Window ancestor. Its reflection use is explicit and local rather than a silent application-wide fallback.
+- This audit caught a stale binding in Settings: **Reset layout** now invokes the source-generated `ResetWorkbenchLayoutCommand` and once again persists the default dock arrangement locally.
+- The isolated Release build passed with 0 warnings/errors and the full suite passed 180/180 in `artifacts/verification-compiled-bindings/`.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx -c Release --no-restore` — passed with 0 warnings and 0 errors.

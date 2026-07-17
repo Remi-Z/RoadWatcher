@@ -4,7 +4,7 @@
     <Version>0.1.0</Version>
     <AssemblyName>RoadWatcher.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\RoadWatcher.Core\RoadWatcher.Core.csproj" />
