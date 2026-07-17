@@ -33,6 +33,12 @@ Implement the selected third design direction, **Route Replay Canvas**, as the A
 - This audit caught a stale binding in Settings: **Reset layout** now invokes the source-generated `ResetWorkbenchLayoutCommand` and once again persists the default dock arrangement locally.
 - The isolated Release build passed with 0 warnings/errors and the full suite passed 180/180 in `artifacts/verification-compiled-bindings/`.
 
+## Audit slice — responsive docked command bars
+
+- Video transport and Timeline edit controls now use wrapping command bars instead of assuming a single wide row. This preserves every operation when a reviewer moves Video or Timeline into a narrow primary or side dock.
+- The Video row still contains the source-correct hover-preview target, while the Timeline row retains its existing virtual timeline below the wrapping commands. No media or timeline control has been reparented.
+- The isolated Release build passed with 0 warnings/errors and the full suite passed 180/180 in `artifacts/verification-responsive-workbench/`.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx -c Release --no-restore` — passed with 0 warnings and 0 errors.
@@ -42,6 +48,6 @@ Implement the selected third design direction, **Route Replay Canvas**, as the A
 
 ## Screenshot state
 
-Target viewport: 1152 × 820 logical desktop surface, Dark appearance, workbench open with map, video, inspector, and timeline visible; repeat after moving Timeline into the primary slot and reset it from Settings.
+Target viewport: 1152 × 820 logical desktop surface, Dark appearance, workbench open with map, video, inspector, and timeline visible; repeat after moving Timeline and Video into the primary and narrow side slots, then reset from Settings. Confirm that wrapped command bars keep all controls reachable.
 
 The current Codex desktop session cannot access a visible Windows application window handle, so an honest interactive capture/comparison cannot be added here. No implementation screenshot is claimed. The required capture must be saved in this folder together with the tested state above before visual acceptance is marked passed.

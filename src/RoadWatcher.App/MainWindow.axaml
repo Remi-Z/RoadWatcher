@@ -110,7 +110,7 @@
           Grid.Column="{Binding VideoPanePlacement.Column}"
           Grid.RowSpan="{Binding VideoPanePlacement.RowSpan}"
           Grid.ColumnSpan="{Binding VideoPanePlacement.ColumnSpan}"
-          RowDefinitions="32,*,42"
+          RowDefinitions="32,*,Auto"
           Classes="workbench-pane"
           Tag="Video"
           DragDrop.AllowDrop="True"
@@ -216,22 +216,25 @@
     </Border>
 
     <!-- Player controls -->
-    <Border Grid.Row="2" Classes="panel">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto" Margin="9,0">
-        <Button Grid.Column="0" Classes="icon" Command="{Binding TogglePlaybackCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="{Binding PlayLabel}" AutomationProperties.Name="{Binding PlayLabel}">
-          <fluentIcons:FluentIcon Icon="{Binding PlayIcon}" IconVariant="Regular" IconSize="Size24" />
-        </Button>
-        <Button Grid.Column="1" Classes="icon" Command="{Binding SeekBackCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Back 10 seconds">
-          <fluentIcons:FluentIcon Icon="ArrowCounterclockwise" IconVariant="Regular" IconSize="Size20" />
-        </Button>
-        <Button Grid.Column="2" Classes="icon" Command="{Binding SeekForwardCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Forward 10 seconds">
-          <fluentIcons:FluentIcon Icon="FastForward" IconVariant="Regular" IconSize="Size20" />
-        </Button>
-        <TextBlock Grid.Column="3" Margin="8,0,8,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding CurrentTimeText}" ToolTip.Tip="Project time" />
-        <TextBlock Grid.Column="4" Margin="0,0,12,0" VerticalAlignment="Center" Classes="muted" FontFamily="Consolas" FontSize="9" Text="{Binding SourceTimeText}" />
+    <Border Grid.Row="2" Classes="panel" Padding="9,4">
+      <WrapPanel VerticalAlignment="Center">
+        <StackPanel Margin="0,0,10,0" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button Classes="icon" Command="{Binding TogglePlaybackCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="{Binding PlayLabel}" AutomationProperties.Name="{Binding PlayLabel}">
+            <fluentIcons:FluentIcon Icon="{Binding PlayIcon}" IconVariant="Regular" IconSize="Size24" />
+          </Button>
+          <Button Classes="icon" Command="{Binding SeekBackCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Back 10 seconds">
+            <fluentIcons:FluentIcon Icon="ArrowCounterclockwise" IconVariant="Regular" IconSize="Size20" />
+          </Button>
+          <Button Classes="icon" Command="{Binding SeekForwardCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Forward 10 seconds">
+            <fluentIcons:FluentIcon Icon="FastForward" IconVariant="Regular" IconSize="Size20" />
+          </Button>
+          <TextBlock Margin="8,0,8,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding CurrentTimeText}" ToolTip.Tip="Project time" />
+          <TextBlock VerticalAlignment="Center" Classes="muted" FontFamily="Consolas" FontSize="9" Text="{Binding SourceTimeText}" />
+        </StackPanel>
         <Slider x:Name="PlayerProgressSlider"
-                Grid.Column="5"
-                Margin="0,0,14,0"
+                Width="220"
+                Margin="0,0,12,0"
+                VerticalAlignment="Center"
                 Minimum="0"
                 Maximum="{Binding MaximumSeconds}"
                 Value="{Binding CurrentSeconds, Mode=TwoWay}"
@@ -241,15 +244,7 @@
                 PointerExited="OnPlayerProgressPointerExited"
                 ToolTip.Tip="Hover briefly for a frame preview; drag to seek"
                 AutomationProperties.Name="Project timeline position" />
-        <Popup x:Name="PlayerProgressPreviewPopup" Placement="Top" IsLightDismissEnabled="False">
-          <Border Padding="6" Classes="transient-card" IsHitTestVisible="False">
-            <StackPanel Spacing="4">
-              <Image x:Name="PlayerProgressPreviewImage" Width="192" Height="108" Stretch="Uniform" IsVisible="False" />
-              <TextBlock x:Name="PlayerProgressPreviewStatus" MaxWidth="220" FontSize="9" TextWrapping="Wrap" />
-            </StackPanel>
-          </Border>
-        </Popup>
-        <Grid Grid.Column="6" Margin="0,0,8,0" VerticalAlignment="Center" ColumnDefinitions="Auto,108" IsEnabled="{Binding CanUsePlaybackControls}">
+        <Grid Width="156" Margin="0,0,8,0" VerticalAlignment="Center" ColumnDefinitions="Auto,108" IsEnabled="{Binding CanUsePlaybackControls}">
           <TextBlock Margin="0,0,6,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="10" Text="{Binding PlaybackRateText}" />
           <Slider Grid.Column="1"
                   Minimum="{Binding MinimumPlaybackRate}"
@@ -260,8 +255,7 @@
                   ToolTip.Tip="Playback speed from 0.5× to 5×"
                   AutomationProperties.Name="Playback speed from 0.5× to 5×" />
         </Grid>
-        <CheckBox Grid.Column="7"
-                  Margin="0,0,9,0"
+        <CheckBox Margin="0,0,9,0"
                   VerticalAlignment="Center"
                   IsEnabled="{Binding HasLoadedMedia}"
                   IsChecked="{Binding IsMarkingModeEnabled, Mode=TwoWay}"
@@ -271,21 +265,28 @@
                   AutomationProperties.Name="Marking mode">
           <TextBlock FontSize="10" Text="Marking mode" />
         </CheckBox>
-        <Button Grid.Column="8"
-                Margin="0,0,6,0"
+        <Button Margin="0,0,6,0"
                 Command="{Binding StopIncidentPreviewCommand}"
                 IsVisible="{Binding IsIncidentPreviewActive}"
                 Content="Stop preview"
                 ToolTip.Tip="Stop at the current preview frame"
                 AutomationProperties.Name="Stop incident clip preview" />
-        <Button Grid.Column="9" Classes="icon" Command="{Binding CaptureFrameCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Capture screenshot" AutomationProperties.Name="Capture current frame">
+        <Button Classes="icon" Command="{Binding CaptureFrameCommand}" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Capture screenshot" AutomationProperties.Name="Capture current frame">
           <fluentIcons:FluentIcon Icon="Camera" IconVariant="Regular" IconSize="Size20" />
         </Button>
-        <Button Grid.Column="10" Classes="icon" Click="OnCropFrameClicked" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Crop current frame" AutomationProperties.Name="Crop current frame">
+        <Button Classes="icon" Click="OnCropFrameClicked" IsEnabled="{Binding CanUsePlaybackControls}" ToolTip.Tip="Crop current frame" AutomationProperties.Name="Crop current frame">
           <fluentIcons:FluentIcon Icon="Crop" IconVariant="Regular" IconSize="Size20" />
         </Button>
-      </Grid>
+      </WrapPanel>
     </Border>
+    <Popup x:Name="PlayerProgressPreviewPopup" Placement="Top" IsLightDismissEnabled="False">
+      <Border Padding="6" Classes="transient-card" IsHitTestVisible="False">
+        <StackPanel Spacing="4">
+          <Image x:Name="PlayerProgressPreviewImage" Width="192" Height="108" Stretch="Uniform" IsVisible="False" />
+          <TextBlock x:Name="PlayerProgressPreviewStatus" MaxWidth="220" FontSize="9" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+    </Popup>
     </Grid>
 
     <!-- Workbench grid splitters. Pane assignment only moves stable hosts, never child controls. -->
@@ -659,9 +660,9 @@
             DragDrop.DragOver="OnWorkspacePaneDragOver"
             DragDrop.DragLeave="OnWorkspacePaneDragLeave"
             DragDrop.Drop="OnWorkspacePaneDrop">
-      <Grid RowDefinitions="42,*,29">
-        <Grid Margin="14,0" ColumnDefinitions="Auto,*,Auto">
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+      <Grid RowDefinitions="Auto,*,29">
+        <Grid Margin="14,0">
+          <WrapPanel VerticalAlignment="Center">
             <Border Tag="Timeline" Classes="pane-drag-handle" PointerPressed="OnWorkspacePaneHeaderPointerPressed" ToolTip.Tip="Drag Timeline to another workbench slot">
               <StackPanel Orientation="Horizontal" Spacing="7">
                 <fluentIcons:FluentIcon Icon="Drag" IconVariant="Regular" IconSize="Size16" />
@@ -675,8 +676,8 @@
             <RadioButton GroupName="TimelineEditMode" IsEnabled="{Binding HasLoadedMedia}" Checked="OnTimelinePositionModeChecked" Content="Position" ToolTip.Tip="Drag clips freely to create or adjust gaps" AutomationProperties.Name="Position timeline clips" />
             <Button Padding="7,4" Command="{Binding UndoTimelineCommand}" IsEnabled="{Binding CanUndoTimeline}" Content="Undo" AutomationProperties.Name="Undo timeline edit" />
             <Button Padding="7,4" Command="{Binding RedoTimelineCommand}" IsEnabled="{Binding CanRedoTimeline}" Content="Redo" AutomationProperties.Name="Redo timeline edit" />
-          </StackPanel>
-          <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="muted" Text="{Binding TimelineSummaryText}" />
+            <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Classes="muted" Text="{Binding TimelineSummaryText}" />
+          </WrapPanel>
         </Grid>
         <controls:VirtualTimelineControl x:Name="TimelineSurface"
                                          Grid.Row="1"
