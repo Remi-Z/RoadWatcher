@@ -19,6 +19,13 @@ Implement the selected third design direction, **Route Replay Canvas**, as the A
 - Material icons remain only behind Mapsui's cached, non-UI SVG marker pipeline. That preserves existing road-context markers without mixing Material controls into the Fluent shell.
 - The normal Release output is held by a live RoadWatcher process, so this slice was built and tested in `artifacts/verification-fluent-icons/` rather than interrupting a reviewer session.
 
+## Audit slice — semantic theme surfaces
+
+- The entire visible shell now resolves colours through theme-aware DynamicResource tokens: video and marking surfaces, the crop dialog, map canvas/cards, GPX synchronization flyout, inspector preview, timeline speed legend, incident-library cards, job drawer, and Settings overlay all follow the selected Dark, Light, or System appearance.
+- The semantic palette preserves special-purpose media and map treatment without hard-coding a dark palette into individual views. Primary action text also switches to the appropriate theme contrast colour.
+- Shared surface, transient-card, and overlay-card classes replace repeated ad-hoc border/radius/colour declarations and retain a Fluent 2-style 6-DIP radius.
+- The isolated Release build passed with 0 warnings/errors and the full suite passed 180/180 in `artifacts/verification-theme-surfaces/`.
+
 ## Verification
 
 - `dotnet build RoadWatcher.slnx -c Release --no-restore` — passed with 0 warnings and 0 errors.

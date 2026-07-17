@@ -65,7 +65,7 @@
     </Border>
 
     <!-- Header -->
-    <Border Grid.Column="1" Grid.ColumnSpan="5" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1">
+    <Border Grid.Column="1" Grid.ColumnSpan="5" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="0,0,0,1">
       <Grid ColumnDefinitions="*,Auto,8,Auto,8,Auto,16,Auto" Margin="14,0,18,0">
         <StackPanel VerticalAlignment="Center" Spacing="3">
           <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding ProjectTitle}" />
@@ -95,7 +95,7 @@
           </StackPanel>
         </Button>
         <StackPanel Grid.Column="7" VerticalAlignment="Center" Spacing="3">
-          <TextBlock Foreground="{StaticResource AccentTeal}" Text="{Binding ProjectStateText}" />
+          <TextBlock Foreground="{DynamicResource AccentTeal}" Text="{Binding ProjectStateText}" />
           <TextBlock Classes="muted" FontSize="10" Text="{Binding MissingSourceCount, StringFormat={}{0} missing source(s)}" />
         </StackPanel>
       </Grid>
@@ -126,9 +126,9 @@
           <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="muted" FontSize="9" Text="Review surface" />
         </Grid>
       </Border>
-    <Border Grid.Row="1" Background="#020609" ClipToBounds="True">
+    <Border Grid.Row="1" Background="{DynamicResource VideoSurface}" ClipToBounds="True">
       <Grid RowDefinitions="Auto,*">
-        <Border Padding="13,8" Background="#D90A1A20" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,0,1" IsVisible="{Binding ShowTelemetryOverlay}">
+        <Border Padding="13,8" Background="{DynamicResource VideoOverlaySurface}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="0,0,0,1" IsVisible="{Binding ShowTelemetryOverlay}">
           <Grid ColumnDefinitions="Auto,20,Auto,20,Auto,20,*">
             <StackPanel Orientation="Horizontal" Spacing="7">
               <fluentIcons:FluentIcon Icon="Gauge" IconVariant="Regular" IconSize="Size16" />
@@ -160,11 +160,11 @@
         <Border x:Name="MarkingFrameSurface"
                 Grid.Row="1"
                 IsVisible="{Binding IsMarkingFrameActive}"
-                Background="#020609"
+                Background="{DynamicResource VideoSurface}"
                 ClipToBounds="True">
           <Grid>
             <Canvas x:Name="MarkingCanvas"
-                    Background="#020609"
+                    Background="{DynamicResource VideoSurface}"
                     PointerPressed="OnMarkingCanvasPointerPressed"
                     PointerMoved="OnMarkingCanvasPointerMoved"
                     PointerReleased="OnMarkingCanvasPointerReleased">
@@ -174,8 +174,8 @@
                      Stretch="Uniform" />
               <Border x:Name="MarkingSelectionBorder"
                       IsVisible="False"
-                      Background="#38FFAD18"
-                      BorderBrush="{StaticResource AccentAmber}"
+                      Background="{DynamicResource SelectionOverlay}"
+                      BorderBrush="{DynamicResource AccentAmber}"
                       BorderThickness="2"
                       CornerRadius="2" />
             </Canvas>
@@ -183,8 +183,8 @@
                     Padding="9,6"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
-                    Background="#D90A1A20"
-                    BorderBrush="{StaticResource PanelBorder}"
+                    Background="{DynamicResource VideoOverlaySurface}"
+                    BorderBrush="{DynamicResource PanelBorder}"
                     BorderThickness="1"
                     CornerRadius="4"
                     IsHitTestVisible="False">
@@ -203,7 +203,7 @@
             </Button>
           </Grid>
         </Border>
-        <Border Grid.Row="1" IsVisible="{Binding ShowEmptyState}" Background="#061217">
+        <Border Grid.Row="1" IsVisible="{Binding ShowEmptyState}" Background="{DynamicResource VideoEmptySurface}">
           <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
             <TextBlock HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="No video loaded" />
             <TextBlock HorizontalAlignment="Center" Classes="muted" Text="Create or open a project, then import ride sources." />
@@ -239,7 +239,7 @@
                 ToolTip.Tip="Hover briefly for a frame preview; drag to seek"
                 AutomationProperties.Name="Project timeline position" />
         <Popup x:Name="PlayerProgressPreviewPopup" Placement="Top" IsLightDismissEnabled="False">
-          <Border Padding="6" Background="#0A1C23" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="4" IsHitTestVisible="False">
+          <Border Padding="6" Classes="transient-card" IsHitTestVisible="False">
             <StackPanel Spacing="4">
               <Image x:Name="PlayerProgressPreviewImage" Width="192" Height="108" Stretch="Uniform" IsVisible="False" />
               <TextBlock x:Name="PlayerProgressPreviewStatus" MaxWidth="220" FontSize="9" TextWrapping="Wrap" />
@@ -325,7 +325,7 @@
             <ComboBoxItem Tag="OpenStreetMap" Content="OSM" />
           </ComboBox>
         </Grid>
-        <Border Grid.Row="1" Margin="10,0" CornerRadius="6" ClipToBounds="True" Background="#0B222B">
+        <Border Grid.Row="1" Margin="10,0" CornerRadius="6" ClipToBounds="True" Background="{DynamicResource MapSurface}">
           <Grid>
             <mapsui:MapControl x:Name="ContextMap" />
             <Border x:Name="RoadContextMapPopup"
@@ -334,10 +334,7 @@
                     Padding="8"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
-                    Background="#0A1C23"
-                    BorderBrush="{StaticResource PanelBorder}"
-                    BorderThickness="1"
-                    CornerRadius="4"
+                    Classes="transient-card"
                     IsVisible="False">
               <StackPanel Spacing="4">
                 <Grid ColumnDefinitions="*,Auto">
@@ -355,10 +352,7 @@
                     Padding="8"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Bottom"
-                    Background="#0A1C23"
-                    BorderBrush="{StaticResource PanelBorder}"
-                    BorderThickness="1"
-                    CornerRadius="4"
+                    Classes="transient-card"
                     IsVisible="False">
               <StackPanel Spacing="4">
                 <Grid ColumnDefinitions="*,Auto">
@@ -390,7 +384,7 @@
           <Button IsEnabled="{Binding HasGpx}" Content="GPX synchronization…" AutomationProperties.Name="GPX synchronization">
             <Button.Flyout>
               <Flyout Closed="OnGpxSynchronizationFlyoutClosed">
-                <Border Width="320" Padding="14" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="6">
+                <Border Width="320" Padding="14" Classes="surface-card">
                   <StackPanel Spacing="7">
                     <TextBlock FontWeight="SemiBold" Text="GPX synchronization" />
                     <TextBlock Classes="muted" FontSize="10" Text="Whole-route shift (seconds)" />
@@ -431,7 +425,7 @@
               </Flyout>
             </Button.Flyout>
           </Button>
-          <Border Padding="9" Background="#0D2630" BorderBrush="#21414A" BorderThickness="1" CornerRadius="5">
+          <Border Padding="9" Background="{DynamicResource InfoSurface}" BorderBrush="{DynamicResource InfoBorder}" BorderThickness="1" CornerRadius="6">
             <StackPanel Spacing="6">
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Road context" />
@@ -502,10 +496,10 @@
           <StackPanel Margin="14,0,14,14" Spacing="8">
             <Border IsVisible="{Binding IsIncidentPreviewActive}"
                     Padding="8"
-                    Background="#163B4B"
-                    BorderBrush="#2A7287"
+                    Background="{DynamicResource PreviewSurface}"
+                    BorderBrush="{DynamicResource PreviewBorder}"
                     BorderThickness="1"
-                    CornerRadius="4">
+                    CornerRadius="6">
               <StackPanel Spacing="2">
                 <TextBlock FontWeight="SemiBold" Text="{Binding IncidentPreviewTitle}" />
                 <TextBlock Classes="muted" FontSize="9" TextWrapping="Wrap" Text="{Binding IncidentPreviewDetail}" />
@@ -710,15 +704,15 @@
                         IsVisible="{Binding HasGpx}"
                         ToolTip.Tip="Fixed GPX speed scale in km/h: red at 0–1, then orange/yellow/green through 50+ • a stop requires ≤1 km/h for at least 3 seconds">
               <TextBlock Classes="muted" FontSize="9" Text="Speed (km/h)" />
-              <TextBlock Foreground="#D94A4A" FontSize="9" Text="━ 0–1" />
-              <TextBlock Foreground="#F28E3A" FontSize="9" Text="━ 10" />
-              <TextBlock Foreground="#F1C84B" FontSize="9" Text="━ 20" />
-              <TextBlock Foreground="#8ACB57" FontSize="9" Text="━ 30" />
-              <TextBlock Foreground="#24A75D" FontSize="9" Text="━ 50+" />
-              <TextBlock Foreground="#D85CFF" FontSize="9" Text="● stop" />
+              <TextBlock Foreground="{DynamicResource SpeedZeroBrush}" FontSize="9" Text="━ 0–1" />
+              <TextBlock Foreground="{DynamicResource SpeedLowBrush}" FontSize="9" Text="━ 10" />
+              <TextBlock Foreground="{DynamicResource SpeedMediumBrush}" FontSize="9" Text="━ 20" />
+              <TextBlock Foreground="{DynamicResource SpeedHighBrush}" FontSize="9" Text="━ 30" />
+              <TextBlock Foreground="{DynamicResource SpeedFastBrush}" FontSize="9" Text="━ 50+" />
+              <TextBlock Foreground="{DynamicResource SpeedStopBrush}" FontSize="9" Text="● stop" />
             </StackPanel>
             <TextBlock Classes="muted" FontSize="9" Text="◇ incident" />
-            <TextBlock Foreground="{StaticResource AccentAmber}" FontSize="9" Text="▰ selected" />
+            <TextBlock Foreground="{DynamicResource AccentAmber}" FontSize="9" Text="▰ selected" />
           </StackPanel>
           <TextBlock Grid.Column="1" Classes="muted" FontSize="10" Text="{Binding StatusText}" />
         </Grid>
@@ -732,7 +726,7 @@
             Grid.RowSpan="4"
             Grid.Column="1"
             Grid.ColumnSpan="5"
-            Background="#F2081A22"
+            Background="{DynamicResource DialogBackdrop}"
             IsVisible="{Binding IsIncidentLibraryOpen}">
       <Grid Margin="20" RowDefinitions="56,*" ColumnDefinitions="*,330">
         <Grid Grid.ColumnSpan="2" ColumnDefinitions="*,Auto">
@@ -774,10 +768,8 @@
                   <DataTemplate>
                     <Border Margin="12,0,12,8"
                             Padding="12"
-                            Background="#C6081A22"
-                            BorderBrush="{StaticResource PanelBorder}"
+                            Classes="overlay-card"
                             BorderThickness="1"
-                            CornerRadius="5"
                             DoubleTapped="OnIncidentLibraryItemDoubleTapped"
                             ToolTip.Tip="Double-click to preview this incident's video window">
                       <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
@@ -880,8 +872,8 @@
             Grid.ColumnSpan="5"
             Width="372"
             HorizontalAlignment="Right"
-            Background="#F20B222B"
-            BorderBrush="{StaticResource PanelBorder}"
+            Background="{DynamicResource DrawerSurface}"
+            BorderBrush="{DynamicResource PanelBorder}"
             BorderThickness="1,0,0,0"
             IsVisible="{Binding IsJobsDrawerOpen}">
       <Grid RowDefinitions="53,Auto,*,Auto">
@@ -903,7 +895,7 @@
           <ItemsControl ItemsSource="{Binding FfmpegJobsSnapshot}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Border Margin="0,0,0,8" Padding="10" Background="#C6081A22" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="4">
+                <Border Margin="0,0,0,8" Padding="10" Classes="overlay-card">
                   <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
                     <StackPanel Spacing="2">
                       <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" />
@@ -934,10 +926,10 @@
             Grid.RowSpan="4"
             Grid.Column="1"
             Grid.ColumnSpan="5"
-            Background="#F2081A22"
+            Background="{DynamicResource DialogBackdrop}"
             IsVisible="{Binding IsSettingsPageOpen}">
       <Grid ColumnDefinitions="248,*">
-        <Border Background="#0B222B" BorderBrush="{StaticResource PanelBorder}" BorderThickness="0,0,1,0">
+        <Border Background="{DynamicResource MapSurface}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="0,0,1,0">
           <StackPanel Margin="20" Spacing="9">
             <fluentIcons:FluentIcon Icon="Settings" IconVariant="Regular" IconSize="Size28" Foreground="{DynamicResource AccentTeal}" />
             <TextBlock FontSize="16" FontWeight="SemiBold" Text="Settings" />

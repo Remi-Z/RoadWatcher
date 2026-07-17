@@ -14,10 +14,30 @@
           <SolidColorBrush x:Key="TextSecondary">#B0B8C1</SolidColorBrush>
           <SolidColorBrush x:Key="AccentTeal">#45D6C5</SolidColorBrush>
           <SolidColorBrush x:Key="AccentAmber">#F4C44E</SolidColorBrush>
+          <SolidColorBrush x:Key="AccentAmberForeground">#1A1200</SolidColorBrush>
           <SolidColorBrush x:Key="Danger">#E97878</SolidColorBrush>
           <SolidColorBrush x:Key="NavigationBackground">#171A1E</SolidColorBrush>
           <SolidColorBrush x:Key="PaneHeaderBackground">#20242A</SolidColorBrush>
           <SolidColorBrush x:Key="PaneDropBackground">#244843</SolidColorBrush>
+          <SolidColorBrush x:Key="VideoSurface">#020609</SolidColorBrush>
+          <SolidColorBrush x:Key="VideoEmptySurface">#061217</SolidColorBrush>
+          <SolidColorBrush x:Key="VideoOverlaySurface">#D90A1A20</SolidColorBrush>
+          <SolidColorBrush x:Key="TransientSurface">#0A1C23</SolidColorBrush>
+          <SolidColorBrush x:Key="MapSurface">#0B222B</SolidColorBrush>
+          <SolidColorBrush x:Key="InfoSurface">#0D2630</SolidColorBrush>
+          <SolidColorBrush x:Key="InfoBorder">#21414A</SolidColorBrush>
+          <SolidColorBrush x:Key="PreviewSurface">#163B4B</SolidColorBrush>
+          <SolidColorBrush x:Key="PreviewBorder">#2A7287</SolidColorBrush>
+          <SolidColorBrush x:Key="DialogBackdrop">#F2081A22</SolidColorBrush>
+          <SolidColorBrush x:Key="DrawerSurface">#F20B222B</SolidColorBrush>
+          <SolidColorBrush x:Key="OverlayCardSurface">#C6081A22</SolidColorBrush>
+          <SolidColorBrush x:Key="SelectionOverlay">#38FFAD18</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedStopBrush">#D85CFF</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedZeroBrush">#D94A4A</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedLowBrush">#F28E3A</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedMediumBrush">#F1C84B</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedHighBrush">#8ACB57</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedFastBrush">#24A75D</SolidColorBrush>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
           <SolidColorBrush x:Key="AppBackground">#F5F6F8</SolidColorBrush>
@@ -28,10 +48,30 @@
           <SolidColorBrush x:Key="TextSecondary">#5C6570</SolidColorBrush>
           <SolidColorBrush x:Key="AccentTeal">#007F73</SolidColorBrush>
           <SolidColorBrush x:Key="AccentAmber">#9B6500</SolidColorBrush>
+          <SolidColorBrush x:Key="AccentAmberForeground">#FFFFFF</SolidColorBrush>
           <SolidColorBrush x:Key="Danger">#B42318</SolidColorBrush>
           <SolidColorBrush x:Key="NavigationBackground">#FFFFFF</SolidColorBrush>
           <SolidColorBrush x:Key="PaneHeaderBackground">#F8F9FB</SolidColorBrush>
           <SolidColorBrush x:Key="PaneDropBackground">#D9F2ED</SolidColorBrush>
+          <SolidColorBrush x:Key="VideoSurface">#020609</SolidColorBrush>
+          <SolidColorBrush x:Key="VideoEmptySurface">#10151A</SolidColorBrush>
+          <SolidColorBrush x:Key="VideoOverlaySurface">#D9FFFFFF</SolidColorBrush>
+          <SolidColorBrush x:Key="TransientSurface">#FFFFFF</SolidColorBrush>
+          <SolidColorBrush x:Key="MapSurface">#E7EBF0</SolidColorBrush>
+          <SolidColorBrush x:Key="InfoSurface">#E8F3F5</SolidColorBrush>
+          <SolidColorBrush x:Key="InfoBorder">#93C5D0</SolidColorBrush>
+          <SolidColorBrush x:Key="PreviewSurface">#E2F2F6</SolidColorBrush>
+          <SolidColorBrush x:Key="PreviewBorder">#79B5CA</SolidColorBrush>
+          <SolidColorBrush x:Key="DialogBackdrop">#CCF0F2F5</SolidColorBrush>
+          <SolidColorBrush x:Key="DrawerSurface">#F2FFFFFF</SolidColorBrush>
+          <SolidColorBrush x:Key="OverlayCardSurface">#FFF7F8FA</SolidColorBrush>
+          <SolidColorBrush x:Key="SelectionOverlay">#38B06E00</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedStopBrush">#9C36C8</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedZeroBrush">#B42318</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedLowBrush">#B54708</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedMediumBrush">#8A5C00</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedHighBrush">#507F28</SolidColorBrush>
+          <SolidColorBrush x:Key="SpeedFastBrush">#16733B</SolidColorBrush>
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
     </ResourceDictionary>
@@ -53,6 +93,28 @@
     <Setter Property="Background" Value="{DynamicResource PanelBackground}" />
     <Setter Property="BorderBrush" Value="{DynamicResource PanelBorder}" />
     <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+  </Style>
+
+  <Style Selector="Border.surface-card">
+    <Setter Property="Background" Value="{DynamicResource PanelRaised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PanelBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+  </Style>
+
+  <Style Selector="Border.transient-card">
+    <Setter Property="Background" Value="{DynamicResource TransientSurface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PanelBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+  </Style>
+
+  <Style Selector="Border.overlay-card">
+    <Setter Property="Background" Value="{DynamicResource OverlayCardSurface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PanelBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
   </Style>
 
   <Style Selector="Border.pane-header">
@@ -98,6 +160,19 @@
     <Setter Property="Padding" Value="7" />
   </Style>
 
+  <Style Selector="Button">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12" />
+        <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <Style Selector="Button:disabled">
+    <Setter Property="Opacity" Value="0.58" />
+  </Style>
+
   <Style Selector="Button.nav">
     <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="Background" Value="Transparent" />
@@ -112,7 +187,7 @@
 
   <Style Selector="Button.primary">
     <Setter Property="Background" Value="{DynamicResource AccentAmber}" />
-    <Setter Property="Foreground" Value="#1A1200" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentAmberForeground}" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 

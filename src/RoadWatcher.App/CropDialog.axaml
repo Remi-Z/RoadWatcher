@@ -19,7 +19,7 @@
       </Button>
     </Grid>
 
-    <Border Grid.Row="1" Margin="16,0" Background="#020609" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="5" ClipToBounds="True">
+    <Border Grid.Row="1" Margin="16,0" Background="{DynamicResource VideoSurface}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="1" CornerRadius="6" ClipToBounds="True">
       <Canvas x:Name="Surface"
               Background="Transparent"
               PointerPressed="OnPointerPressed"
@@ -28,8 +28,8 @@
         <Image x:Name="SourceImage" Width="{Binding #Surface.Bounds.Width}" Height="{Binding #Surface.Bounds.Height}" Stretch="Uniform" />
         <Border x:Name="SelectionBorder"
                 IsVisible="False"
-                Background="#38FFAD18"
-                BorderBrush="{StaticResource AccentAmber}"
+                Background="{DynamicResource SelectionOverlay}"
+                BorderBrush="{DynamicResource AccentAmber}"
                 BorderThickness="2"
                 CornerRadius="2" />
       </Canvas>
