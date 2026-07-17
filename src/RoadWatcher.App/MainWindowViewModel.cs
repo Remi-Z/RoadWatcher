@@ -211,6 +211,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanLoadRoadContext))]
+    [NotifyPropertyChangedFor(nameof(ShowMapEmptyState))]
     private bool _hasGpx;
 
     [ObservableProperty]
@@ -545,6 +546,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     public string NotesCharacterCount => $"{Notes.Length} / 500";
     public string CurrentTimeText => TimeSpan.FromSeconds(CurrentSeconds).ToString(@"hh\:mm\:ss\.fff");
     public bool ShowEmptyState => !HasLoadedMedia;
+    public bool ShowMapEmptyState => !HasGpx;
     public bool ShowTelemetryOverlay => HasLoadedMedia && IsTelemetryOverlayVisible;
     public bool ShowPlaybackSurface => HasLoadedMedia && !IsMarkingFrameActive;
     public bool CanUsePlaybackControls => HasLoadedMedia && !IsMarkingFrameActive;

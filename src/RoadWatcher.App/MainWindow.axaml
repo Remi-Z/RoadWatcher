@@ -208,6 +208,7 @@
         </Border>
         <Border Grid.Row="1" IsVisible="{Binding ShowEmptyState}" Background="{DynamicResource VideoEmptySurface}">
           <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+            <fluentIcons:FluentIcon HorizontalAlignment="Center" Icon="MoviesAndTv" IconVariant="Regular" IconSize="28" Foreground="{DynamicResource AccentTeal}" />
             <TextBlock HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="No video loaded" />
             <TextBlock HorizontalAlignment="Center" Classes="muted" Text="Create or open a project, then import ride sources." />
           </StackPanel>
@@ -332,6 +333,25 @@
         <Border Grid.Row="1" Margin="10,0" CornerRadius="6" ClipToBounds="True" Background="{DynamicResource MapSurface}">
           <Grid>
             <mapsui:MapControl x:Name="ContextMap" />
+            <Border x:Name="MapEmptyState"
+                    MaxWidth="260"
+                    Padding="18"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Classes="transient-card"
+                    IsVisible="{Binding ShowMapEmptyState}"
+                    IsHitTestVisible="False">
+              <StackPanel HorizontalAlignment="Center" Spacing="6">
+                <fluentIcons:FluentIcon HorizontalAlignment="Center" Icon="Map" IconVariant="Regular" IconSize="28" Foreground="{DynamicResource AccentTeal}" />
+                <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="No route to display" />
+                <TextBlock HorizontalAlignment="Center"
+                           Classes="muted"
+                           FontSize="10"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           Text="Import a ride with GPX to review speed, stops, and time alignment." />
+              </StackPanel>
+            </Border>
             <Border x:Name="RoadContextMapPopup"
                     Width="242"
                     Margin="10"
@@ -429,7 +449,12 @@
               </Flyout>
             </Button.Flyout>
           </Button>
-          <Border Padding="9" Background="{DynamicResource InfoSurface}" BorderBrush="{DynamicResource InfoBorder}" BorderThickness="1" CornerRadius="6">
+          <Border Padding="9"
+                  Background="{DynamicResource InfoSurface}"
+                  BorderBrush="{DynamicResource InfoBorder}"
+                  BorderThickness="1"
+                  CornerRadius="6"
+                  IsEnabled="{Binding HasGpx}">
             <StackPanel Spacing="6">
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Road context" />
@@ -700,6 +725,23 @@
                                          SelectedIncidentEndSeconds="{Binding SelectedIncidentEndSeconds}"
                                          ToolTip.Tip="Wheel jogs video time • Shift+wheel zooms • horizontal scroll pans the timeline without moving the cursor • visual GPX workspace extends around media • drag the GPX route or anchors to preview sync • Alt+Arrow nudges nearest GPX anchor"
                                          AutomationProperties.Name="Interactive project timeline" />
+        <Border x:Name="TimelineEmptyState"
+                Grid.Row="1"
+                Padding="18"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Classes="transient-card"
+                IsVisible="{Binding ShowEmptyState}"
+                IsHitTestVisible="False">
+          <StackPanel HorizontalAlignment="Center" Spacing="6">
+            <fluentIcons:FluentIcon HorizontalAlignment="Center" Icon="MoviesAndTv" IconVariant="Regular" IconSize="24" Foreground="{DynamicResource AccentTeal}" />
+            <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="No project timeline" />
+            <TextBlock HorizontalAlignment="Center"
+                       Classes="muted"
+                       FontSize="10"
+                       Text="Import clips to place review footage and route telemetry." />
+          </StackPanel>
+        </Border>
 
         <Grid Grid.Row="2" Margin="14,8" ColumnDefinitions="*,Auto">
           <StackPanel Orientation="Horizontal" Spacing="10">
@@ -881,7 +923,8 @@
 
     <!-- Global FFmpeg process drawer. It is deliberately outside the workbench
          panes so job state stays available while media controls are busy. -->
-    <Border Grid.Row="0"
+    <Border x:Name="JobsDrawer"
+            Grid.Row="0"
             Grid.RowSpan="4"
             Grid.Column="1"
             Grid.ColumnSpan="5"
@@ -891,16 +934,20 @@
             BorderBrush="{DynamicResource PanelBorder}"
             BorderThickness="1,0,0,0"
             IsVisible="{Binding IsJobsDrawerOpen}">
-      <Grid RowDefinitions="53,Auto,*,Auto">
-        <Grid Margin="14,0" ColumnDefinitions="*,Auto,8,Auto">
-          <StackPanel VerticalAlignment="Center" Spacing="2">
-            <TextBlock FontSize="13" FontWeight="SemiBold" Text="FFmpeg jobs" />
-            <TextBlock Classes="muted" FontSize="10" Text="Two encoders run globally; queued work starts automatically." />
-          </StackPanel>
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid Margin="14,12,14,6" RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto,8,Auto">
+          <TextBlock VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Text="FFmpeg jobs" />
           <Button Grid.Column="1" VerticalAlignment="Center" Command="{Binding CancelAllFfmpegJobsCommand}" IsEnabled="{Binding HasFfmpegJobs}" Content="Cancel all" />
           <Button Grid.Column="3" Classes="icon" VerticalAlignment="Center" Command="{Binding ToggleJobsDrawerCommand}">
             <fluentIcons:FluentIcon Icon="Dismiss" IconVariant="Regular" IconSize="Size20" />
           </Button>
+          <TextBlock Grid.Row="1"
+                     Grid.ColumnSpan="4"
+                     Margin="0,4,0,0"
+                     Classes="muted"
+                     FontSize="10"
+                     TextWrapping="Wrap"
+                     Text="Two encoders run globally; queued work starts automatically." />
         </Grid>
         <Grid Grid.Row="1" Margin="14,0,14,10" ColumnDefinitions="*,Auto">
           <TextBlock Classes="muted" Text="{Binding ActiveFfmpegJobCount, StringFormat={}{0} running}" />
@@ -951,7 +998,8 @@
 
     <!-- App-local Settings page. It deliberately sits outside ProjectDocument
          and never affects canonical evidence or an export manifest. -->
-    <Border Grid.Row="0"
+    <Border x:Name="SettingsOverlay"
+            Grid.Row="0"
             Grid.RowSpan="4"
             Grid.Column="1"
             Grid.ColumnSpan="5"

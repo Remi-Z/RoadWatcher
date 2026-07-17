@@ -5,6 +5,7 @@ Pin versions centrally and upgrade intentionally. The application composes matur
 | Capability | Dependency | Pinned baseline | Reason |
 |---|---|---:|---|
 | Desktop UI | Avalonia | 11.3.18 | Stable cross-platform desktop UI, compatible with selected media/map packages. |
+| UI shell rendering | Avalonia.Headless.XUnit | 11.3.18 | Official off-screen Avalonia renderer for deterministic M11 Fluent shell layout/state tests and milestone captures; test-only. |
 | UI inspection | AvaloniaUI.DiagnosticsSupport | 2.2.3 | Supported Developer Tools bridge for inspecting the Fluent control tree and layout bounds in Debug; replaces the deprecated `Avalonia.Diagnostics` package. |
 | MVVM | CommunityToolkit.Mvvm | 8.4.0 | Mature observable properties and commands. |
 | Video | LibVLCSharp.Avalonia | 3.10.0 | VLC-backed HEVC playback and native Avalonia surface. |

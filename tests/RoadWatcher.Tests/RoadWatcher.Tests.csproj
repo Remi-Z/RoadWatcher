@@ -4,6 +4,7 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Avalonia.Headless.XUnit" />
     <ProjectReference Include="..\..\src\RoadWatcher.App\RoadWatcher.App.csproj" />
     <ProjectReference Include="..\..\src\RoadWatcher.Core\RoadWatcher.Core.csproj" />
     <ProjectReference Include="..\..\src\RoadWatcher.Infrastructure\RoadWatcher.Infrastructure.csproj" />

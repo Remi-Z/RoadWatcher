@@ -4,7 +4,7 @@ Last updated: 2026-07-16
 
 ## Current milestone
 
-M11 — Fluent Route Replay Canvas: the selected third visual direction is implemented as an Avalonia Fluent shell with app-local Dark/Light/System appearance and persisted docked-pane swapping. Interactive visual acceptance remains pending because this Codex session cannot access a visible Windows desktop window handle; M08/M09 capture and M07 release gates remain external.
+M11 — Fluent Route Replay Canvas: the selected third visual direction is implemented as an Avalonia Fluent shell with app-local Dark/Light/System appearance and persisted docked-pane swapping. Deterministic 1152 × 820 Dark shell acceptance is now rendered and recorded through Avalonia's official headless test host; native LibVLC/map-tile and interactive drag acceptance remain separate from that scoped proof because this Codex session has no visible Windows window handle.
 
 ## Completed
 
@@ -101,6 +101,9 @@ M11 — Fluent Route Replay Canvas: the selected third visual direction is imple
 - Avalonia’s supported Developer Tools bridge is configured for the UI audit: `AvaloniaUI.DiagnosticsSupport` replaces the deprecated diagnostics package, the global Developer Tools inspector is available, and Debug builds attach it after XAML initialization. Isolated Release and Debug builds passed with 0 warnings/errors; the Release suite passed 180/180.
 - Final source audit: no AXAML view retains an inline colour/static-resource reference, no visible Material control remains, compiled bindings are the application default, and the only nonstandard visual hosts are the approved native video, Mapsui map, and planned virtual timeline. After a full restore, the final isolated Release build passed with 0 warnings/errors and the suite passed 180/180 in `artifacts/verification-fluent-audit/`.
 - Interactive visual acceptance is documented but not claimed: this Codex desktop session still has no visible Windows application window handle. The required 1152 × 820 capture state is recorded in `docs/milestones/M11-fluent-workbench/README.md`.
+- The M11 render audit now has deterministic evidence for the actual Dark Fluent shell at 1152 × 820: empty workbench, empty FFmpeg drawer, and Settings overlay. `Avalonia.Headless.XUnit` renders the same XAML/Fluent resources off screen; the targeted suite passes 3/3 and can save only those scoped milestone images via `ROADWATCHER_CAPTURE_UI=1`.
+- Reviewing those renders against the selected Route Replay Canvas reference closed the no-project hierarchy gap: Video, Map, and Timeline now state their empty purpose with Fluent icon/card treatment; map road-context controls are disabled until GPX exists. The empty Jobs drawer header now wraps its description below the command row instead of clipping it at its fixed drawer width.
+- Final render-audit verification used `artifacts/verification-fluent-render-audit/`: Release build passed with 0 warnings/errors and the full Release suite passed 183/183.
 
 ## M07 closure record
 

@@ -6,6 +6,7 @@
     <PackageVersion Include="Avalonia" Version="11.3.18" />
     <PackageVersion Include="Avalonia.Desktop" Version="11.3.18" />
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="11.3.18" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.18" />
     <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
     <PackageVersion Include="FluentIcons.Avalonia" Version="2.0.321" />

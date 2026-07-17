@@ -12,6 +12,7 @@ Implement the selected third design direction, **Route Replay Canvas**, as the A
 - Each arrangement is validated and stored in `%LocalAppData%\RoadWatcher\settings.json`. Settings offers **Reset layout**. Incidents, Jobs, and Settings remain non-dockable page/drawer workflows.
 - The video pane moves as one grid host containing both player and controls. `EmbeddedVideoView` is never reparented, preserving its native LibVLC child handle and the clip-transition black-frame protection.
 - The established timeline speed graph, map speed gradient, transparency for upcoming travel, map styles, live GPX synchronization preview, hover frames, review proxy/LRV policy, 0.5×–5× playback bar, marking mode, incident library, and batch editing are retained inside the new shell.
+- No-project Video, Map, and Timeline states are explicit Fluent empty surfaces. The Map points to the GPX-dependent review workflow while its road-context options remain disabled; the Timeline points to clips/route telemetry rather than appearing as an unexplained blank grid.
 
 ## Audit slice — Fluent icon system
 
@@ -65,9 +66,18 @@ Implement the selected third design direction, **Route Replay Canvas**, as the A
 - The isolated Release build passed with 0 warnings/errors and the full isolated Release suite passed 180/180 after the icon migration.
 - Final source audit found no inline visual colour/static-resource reference in AXAML views, no visible Material control, and no deprecated `Avalonia.Diagnostics` reference. The approved native video host, Mapsui map, and virtual timeline remain the only nonstandard visual hosts.
 - After `dotnet restore RoadWatcher.slnx`, the final isolated Release build passed with 0 warnings/errors and the suite passed 180/180 in `artifacts/verification-fluent-audit/`.
+- `dotnet test tests/RoadWatcher.Tests/RoadWatcher.Tests.csproj -c Release --no-restore --filter FullyQualifiedName~FluentShellRenderTests -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-headless-shell\bin\` — passed 3/3. The test host uses official `Avalonia.Headless.XUnit` and Skia to render the real `MainWindow` XAML and Fluent resources off screen.
+- `dotnet build RoadWatcher.slnx -c Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-fluent-render-audit\bin\` — passed with 0 warnings and 0 errors.
+- `dotnet test RoadWatcher.slnx -c Release --no-restore -p:BaseOutputPath=D:\RoadWatcher\artifacts\verification-fluent-render-audit\bin\` — passed 183/183.
 
 ## Screenshot state
 
-Target viewport: 1152 × 820 logical desktop surface, Dark appearance, workbench open with map, video, inspector, and timeline visible; repeat after moving Timeline and Video into the primary and narrow side slots, then reset from Settings. Confirm that wrapped command bars keep all controls reachable.
+All images below are the actual 1152 × 820 logical Dark `MainWindow` rendered by the scoped Avalonia headless host, not design mockups. Their state is asserted in `FluentShellRenderTests` before the optional capture is saved.
 
-The current Codex desktop session cannot access a visible Windows application window handle, so an honest interactive capture/comparison cannot be added here. No implementation screenshot is claimed. The required capture must be saved in this folder together with the tested state above before visual acceptance is marked passed.
+- `fluent-shell-empty.png` — no project open; Video, Map, Incident inspector, and Timeline are visible. The Map and Timeline explain their GPX/media prerequisites, and road-context options are visibly unavailable until a GPX route exists.
+- `fluent-shell-jobs-empty.png` — no project open with the global FFmpeg drawer open. The disabled **Cancel all** action, complete two-encoder explanation, count row, source-safe empty state, and cancellation note are visible without clipping.
+- `fluent-shell-settings.png` — no project open with the app-local Settings overlay open. Status, logging, FFmpeg, map/cache, and appearance/workspace cards remain structured Fluent surfaces over the dimmed workbench.
+
+The selected Route Replay Canvas reference and the empty-shell capture were reviewed together at the same target viewport. The reference contains a populated ride, whereas the capture deliberately contains no invented media or evidence; the matching review concerns are the compact Fluent rail, dark semantic hierarchy, four-surface workbench, right-side inspector, and persistent timeline.
+
+The headless proof covers app XAML, Fluent theme resources, layout, binding-driven visibility, and these three documented shell states. It does not claim native LibVLC video composition, downloaded map tiles, OS window chrome, or pointer-driven pane dragging—those remain runtime acceptance items because this session has no visible Windows window handle. The existing M08/M09 native acceptance records remain the evidence for their respective media/map behaviors.
